@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <title>映芽 — E2E smoke test</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: Fraunces; src: local("Fraunces"); font-weight: 600 700; }
+      @font-face { font-family: "IBM Plex Mono"; src: local("IBM Plex Mono"); font-weight: 400 500; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #071A12; }
+      body { color: #EAF7EE; font-family: "IBM Plex Mono", monospace; }
+      #smoke-root { position: relative; width: 1280px; height: 720px; overflow: hidden; }
+      .clip { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+      .scene-fill { position: absolute; inset: 0; background: #071A12; }
+      #hero-frame { position: absolute; inset: -18px; overflow: hidden; }
+      #hero-image { display: block; width: 100%; height: 100%; object-fit: cover; transform-origin: 52% 46%; will-change: transform; }
+      .forest-veil { position: absolute; inset: 0; background: rgba(7, 26, 18, 0.63); }
+      .content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 86px 76px; }
+      .label { margin: 0 0 20px; color: #9BE7A9; font-size: 14px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; }
+      .accent-rule { width: 118px; height: 2px; margin: 0 0 22px; background: #9BE7A9; transform-origin: left center; }
+      h1 { margin: 0; color: #EAF7EE; font-family: Fraunces, serif; font-size: 130px; font-weight: 700; letter-spacing: 0.04em; line-height: 0.95; }
+      .subtitle { max-width: 620px; margin: 20px 0 0; color: #EAF7EE; font-family: "IBM Plex Mono", monospace; font-size: 24px; font-weight: 400; letter-spacing: 0.12em; line-height: 1.45; }
+      .corner-note { position: absolute; right: 86px; bottom: 82px; color: #9BE7A9; font-size: 12px; letter-spacing: 0.12em; opacity: 0.85; }
+    </style>
+  </head>
+  <body>
+    <div id="smoke-root" data-composition-id="e2e-smoke" data-start="0" data-duration="6" data-width="1280" data-height="720">
+      <section id="nature-scene" class="clip" data-start="0" data-duration="6" data-track-index="1">
+        <div class="scene-fill" aria-hidden="true"></div>
+        <div id="hero-frame" data-layout-allow-overflow><img id="hero-image" data-layout-allow-overflow src="assets/hero.png" alt="" /></div>
+        <div class="forest-veil" aria-hidden="true"></div>
+        <div class="content">
+          <p id="scene-label" class="label">Nature / moving image</p>
+          <div id="accent-rule" class="accent-rule" aria-hidden="true"></div>
+          <h1 id="title">映芽</h1>
+          <p id="subtitle" class="subtitle">让想法长成影像</p>
+        </div>
+        <p class="corner-note">06 SEC · 1280 × 720</p>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true, defaults: { ease: "power2.out" } });
+      tl.addLabel("opening", 0)
+        .to("#hero-image", { scale: 1.1, x: -8, y: -4, duration: 6, ease: "none" }, "opening")
+        .fromTo("#scene-label", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.65 }, 0.28)
+        .fromTo("#accent-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.72 }, 0.5)
+        .fromTo("#title", { opacity: 0, y: 42 }, { opacity: 1, y: 0, duration: 0.9, ease: "power3.out" }, 0.64)
+        .fromTo("#subtitle", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.75 }, 1.02)
+        .addLabel("lockup", 1.77);
+      window.__timelines["e2e-smoke"] = tl;
+    </script>
+  </body>
+</html>

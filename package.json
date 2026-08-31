@@ -1,0 +1,30 @@
+{
+  "name": "yingya",
+  "version": "0.1.0",
+  "private": true,
+  "description": "映芽 · Yingya，通过对话创作视频，让想法长成影像。",
+  "scripts": {
+    "test": "npm run test:rust && npm run test:hyperframes",
+    "test:rust": "cargo test",
+    "test:hyperframes": "npm --prefix tests/fixtures/hyperframes-smoke run check",
+    "codex:version": "codex --version",
+    "codex:login-status": "CODEX_HOME=$PWD/.runtime/codex-home codex login status",
+    "codex:app-server": "CODEX_HOME=$PWD/.runtime/codex-home codex app-server",
+    "codex:upgrade": "npm install --save-exact @openai/codex@latest",
+    "hyperframes:version": "hyperframes --version",
+    "hyperframes:info": "HOME=$PWD/.runtime/hyperframes-home HYPERFRAMES_NO_UPDATE_CHECK=1 hyperframes info --json",
+    "hyperframes:doctor": "HOME=$PWD/.runtime/hyperframes-home HYPERFRAMES_NO_UPDATE_CHECK=1 hyperframes doctor --json",
+    "hyperframes:browser:ensure": "HOME=$PWD/.runtime/hyperframes-home HYPERFRAMES_NO_UPDATE_CHECK=1 hyperframes browser ensure",
+    "hyperframes:browser:path": "HOME=$PWD/.runtime/hyperframes-home HYPERFRAMES_NO_UPDATE_CHECK=1 hyperframes browser path",
+    "hyperframes:skills:install": "bash scripts/install-hyperframes-skills.sh",
+    "voxcpm2:skill:install": "bash scripts/install-voxcpm2-skill.sh",
+    "hyperframes:upgrade": "npm install --save-exact hyperframes@latest && npm run hyperframes:skills:install && npm run hyperframes:browser:ensure"
+  },
+  "dependencies": {
+    "@openai/codex": "0.151.0",
+    "hyperframes": "0.8.20"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

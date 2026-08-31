@@ -1,0 +1,18 @@
+node_modules/
+.runtime/
+target/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Yingya runtime data and generated artifacts
+data/*
+!data/README.md
+artifacts/*
+!artifacts/README.md
+
+# HyperFrames outputs are reproducible from composition sources.
+**/renders/
+**/snapshots/

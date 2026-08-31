@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoxCPM2 TTS"
+  short_description: "调用本机 VoxCPM2 服务生成中文及多语言语音"
+  default_prompt: "使用 $voxcpm2-tts 把这段文字合成为 WAV 音频。"

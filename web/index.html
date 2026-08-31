@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>映芽 · 图片生成</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+      body { margin: 0; background: #101511; color: #edf5ee; }
+      main { width: min(880px, calc(100% - 40px)); margin: 64px auto; }
+      h1 { font-size: clamp(32px, 6vw, 64px); margin: 0 0 12px; letter-spacing: -.04em; }
+      p { color: #9cac9f; }
+      form { display: grid; gap: 14px; margin: 36px 0; }
+      textarea, input, button { font: inherit; }
+      textarea { min-height: 120px; resize: vertical; padding: 16px; color: inherit; background: #19201a; border: 1px solid #344037; border-radius: 12px; }
+      input[type=file] { padding: 14px; background: #19201a; border-radius: 12px; }
+      button { justify-self: start; padding: 12px 22px; border: 0; border-radius: 999px; background: #b9f6c5; color: #102014; font-weight: 700; cursor: pointer; }
+      button:disabled { opacity: .45; cursor: wait; }
+      #status { min-height: 24px; }
+      #gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+      figure { margin: 0; overflow: hidden; border: 1px solid #344037; border-radius: 16px; background: #19201a; }
+      img { display: block; width: 100%; height: auto; }
+      figcaption { padding: 12px; color: #b8c6ba; font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>映芽</h1>
+      <p>输入画面描述，也可以上传参考图。生成结果会保存到运行数据目录，并可直接交给 HyperFrames。</p>
+      <form id="generator">
+        <textarea id="prompt" required placeholder="例如：一株从黑色土壤中长出的嫩芽，电影光效，16:9，无文字"></textarea>
+        <input id="reference" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" />
+        <button type="submit">生成参考图</button>
+      </form>
+      <p id="status"></p>
+      <section id="gallery"></section>
+    </main>
+    <script>
+      const form = document.querySelector('#generator');
+      const button = form.querySelector('button');
+      const status = document.querySelector('#status');
+      const gallery = document.querySelector('#gallery');
+
+      async function json(response) {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || response.statusText);
+        return body;
+      }
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        button.disabled = true;
+        status.textContent = '正在调用 Codex imagegen…';
+        try {
+          const references = [];
+          const file = document.querySelector('#reference').files[0];
+          if (file) {
+            const data = new FormData();
+            data.append('file', file);
+            const uploaded = await json(await fetch('/api/assets/images', { method: 'POST', body: data }));
+            references.push(uploaded.url);
+          }
+          const thread = await json(await fetch('/api/codex/threads', { method: 'POST' }));
+          const result = await json(await fetch(`/api/codex/threads/${thread.threadId}/images`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ prompt: document.querySelector('#prompt').value, referenceImages: references })
+          }));
+          for (const image of result.images) {
+            const figure = document.createElement('figure');
+            const preview = document.createElement('img');
+            const caption = document.createElement('figcaption');
+            preview.src = image.url;
+            preview.alt = image.revisedPrompt || 'Codex 生成图片';
+            caption.textContent = `HyperFrames: ${image.hyperframesPath}`;
+            figure.append(preview, caption);
+            gallery.prepend(figure);
+          }
+          status.textContent = result.images.length ? result.text || '生成完成' : result.text || '没有收到图片。';
+        } catch (error) {
+          status.textContent = `失败：${error.message}`;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "duration": 6,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#title", "bySec": 1.6 },
+    { "kind": "before", "a": "#title", "b": "#subtitle" },
+    { "kind": "staysInFrame", "selector": "#title" },
+    { "kind": "staysInFrame", "selector": "#subtitle" },
+    { "kind": "keepsMoving", "withinSelector": "#hero-frame", "maxStaticSec": 2 }
+  ]
+}
