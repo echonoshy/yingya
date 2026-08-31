@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 140" role="img" aria-label="映芽图形标">
+  <defs><linearGradient id="left" x1="24" y1="18" x2="74" y2="130" gradientUnits="userSpaceOnUse"><stop stop-color="#C1F54C"/><stop offset=".5" stop-color="#3DDA85"/><stop offset="1" stop-color="#08A887"/></linearGradient><linearGradient id="right" x1="142" y1="18" x2="88" y2="130" gradientUnits="userSpaceOnUse"><stop stop-color="#69EBC0"/><stop offset=".5" stop-color="#29CEA2"/><stop offset="1" stop-color="#087E71"/></linearGradient></defs>
+  <path d="M21 17C13 14 8 22 12 30L40 115C44 128 61 129 65 116L76 56C78 47 74 40 66 36L21 17Z" fill="url(#left)"/><path d="M139 17C147 14 152 22 148 30L120 115C116 128 99 129 95 116L84 56C82 47 86 40 94 36L139 17Z" fill="url(#right)"/>
+</svg>
