@@ -62,6 +62,10 @@ near-duplicate tracks when one is sufficient. If the local service is
 unreachable, report that Yingya must be started or restarted; do not fall back
 to exposing the API key.
 
+All project reads and writes use the current `/api/agent-projects` API. Imported
+files are served from that project's `/files/` endpoint; do not construct or
+reuse any legacy project-file URL.
+
 The build workflow reads `assets.json`: unassigned `mediaType=music` becomes
 background music, while assigned `mediaType=sound_effects` is placed at a key
 action or transition in that scene.

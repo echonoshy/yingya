@@ -87,7 +87,7 @@ async function requestJson(baseUrl, route, init) {
     body = { error: text || response.statusText };
   }
   if (!response.ok) {
-    throw new Error(`Yingya API returned HTTP ${response.status}: ${body.error ?? response.statusText}`);
+    throw new Error(`Yingya API returned HTTP ${response.status}: ${body.message ?? body.error ?? response.statusText}`);
   }
   return body;
 }
@@ -109,12 +109,15 @@ async function main() {
 
   if (args.command === "project") {
     const projectId = resolveProjectId(args["project-id"]);
-    const project = await requestJson(baseUrl, `/api/projects/${projectId}`);
+    const [project, media] = await Promise.all([
+      requestJson(baseUrl, `/api/agent-projects/${projectId}`),
+      requestJson(baseUrl, `/api/agent-projects/${projectId}/media`),
+    ]);
     print({
       ok: true,
       project: { id: project.id, title: project.title, status: project.status },
-      scenes: project.scenes.map(({ id, order, narrativeRole, assetIds }) => ({ id, order, narrativeRole, assetIds })),
-      audioAssets: project.assets.filter(asset => asset.mediaType).map(({ id, name, mediaType, durationSeconds, providerId }) => ({ id, name, mediaType, durationSeconds, providerId })),
+      scenes: media.scenes.map(({ id, order, narrativeRole, assetIds }) => ({ id, order, narrativeRole, assetIds })),
+      audioAssets: media.assets.filter(asset => asset.mediaType).map(({ id, name, mediaType, durationSeconds, providerId }) => ({ id, name, mediaType, durationSeconds, providerId })),
     });
     return;
   }
@@ -141,7 +144,7 @@ async function main() {
     if (!args.query?.trim()) throw new Error("import requires --query");
     const type = normalizeType(args.type);
     const projectId = resolveProjectId(args["project-id"]);
-    const asset = await requestJson(baseUrl, `/api/projects/${projectId}/heygen/audio`, {
+    const asset = await requestJson(baseUrl, `/api/agent-projects/${projectId}/heygen/audio`, {
       method: "POST",
       body: JSON.stringify({ id: args.id, query: args.query.trim(), type }),
     });
@@ -153,18 +156,17 @@ async function main() {
     if (!args["asset-id"]) throw new Error("assign requires --asset-id");
     if (!args["scene-id"]) throw new Error("assign requires --scene-id");
     const projectId = resolveProjectId(args["project-id"]);
-    const project = await requestJson(baseUrl, `/api/projects/${projectId}`);
-    const scene = project.scenes.find(item => item.id === args["scene-id"]);
+    const media = await requestJson(baseUrl, `/api/agent-projects/${projectId}/media`);
+    const scene = media.scenes.find(item => item.id === args["scene-id"]);
     if (!scene) throw new Error(`Unknown scene ID: ${args["scene-id"]}`);
-    if (!project.assets.some(asset => asset.id === args["asset-id"])) {
+    if (!media.assets.some(asset => asset.id === args["asset-id"])) {
       throw new Error(`Unknown project asset ID: ${args["asset-id"]}`);
     }
     const assetIds = [...new Set([...(scene.assetIds ?? []), args["asset-id"]])];
-    const updated = await requestJson(baseUrl, `/api/projects/${projectId}/scenes/${scene.id}`, {
+    const updatedScene = await requestJson(baseUrl, `/api/agent-projects/${projectId}/scenes/${scene.id}`, {
       method: "PATCH",
       body: JSON.stringify({ assetIds }),
     });
-    const updatedScene = updated.scenes.find(item => item.id === scene.id);
     print({ ok: true, projectId, scene: { id: updatedScene.id, order: updatedScene.order, narrativeRole: updatedScene.narrativeRole, assetIds: updatedScene.assetIds } });
     return;
   }
