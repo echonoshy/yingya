@@ -5,7 +5,7 @@
   "description": "映芽 · Yingya，通过对话创作视频，让想法长成影像。",
   "scripts": {
     "test": "npm run test:rust && npm run typecheck && npm run web:build && npm run test:hyperframes && npm run test:ui",
-    "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8002 --strictPort",
+    "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
     "web:service:status": "systemctl --user status yingya-web --no-pager",
     "web:service:reload": "systemctl --user restart yingya-web",
     "web:build": "vite build --config web/vite.config.ts",

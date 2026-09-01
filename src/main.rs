@@ -392,7 +392,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state);
 
     let address: SocketAddr = env::var("YINGYA_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:3000".to_owned())
+        .unwrap_or_else(|_| "127.0.0.1:8797".to_owned())
         .parse()?;
     let listener = TcpListener::bind(address).await?;
     info!(%address, "Yingya Rust backend is listening");

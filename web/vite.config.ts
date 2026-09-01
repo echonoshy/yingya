@@ -11,15 +11,15 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    port: 8002,
+    port: 8798,
     strictPort: true,
     watch: {
       usePolling: process.env.YINGYA_VITE_POLLING === "1",
     },
     proxy: {
-      "/api": "http://127.0.0.1:3000",
-      "/assets": "http://127.0.0.1:3000",
-      "/project-files": "http://127.0.0.1:3000",
+      "/api": "http://127.0.0.1:8797",
+      "/assets": "http://127.0.0.1:8797",
+      "/project-files": "http://127.0.0.1:8797",
     },
   },
 });

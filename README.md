@@ -12,20 +12,20 @@ npm run web:build
 cargo run
 ```
 
-The server listens on `127.0.0.1:3000` by default and starts Codex app-server
+The server listens on `127.0.0.1:8797` by default and starts Codex app-server
 over local stdio with the isolated `.runtime/codex-home` credential.
 
 ```bash
-curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:8797/health
 
-curl -X POST http://127.0.0.1:3000/api/codex/threads
+curl -X POST http://127.0.0.1:8797/api/codex/threads
 
-curl -X POST http://127.0.0.1:3000/api/codex/threads/THREAD_ID/turns \
+curl -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/turns \
   -H 'content-type: application/json' \
   -d '{"prompt":"Reply with YINGYA_OK only."}'
 ```
 
-Open `http://127.0.0.1:3000/` for the Yingya video Agent workspace. A new video
+Open `http://127.0.0.1:8797/` for the Yingya video Agent workspace. A new video
 project creates a persistent Codex thread and an isolated HyperFrames workspace
 under `data/video-projects/<project-id>/`. The browser sends turns through the
 generic `/api/agent-projects` API, streams the complete Codex event log over
@@ -38,7 +38,7 @@ snapshots. Old `data/projects` records remain untouched and are not shown in the
 new UI.
 
 During frontend development, run `npm run web:dev` and open
-`http://127.0.0.1:8002/`. Vite listens on `0.0.0.0`, proxies API and asset
+`http://127.0.0.1:8798/`. Vite listens on `0.0.0.0`, proxies API and asset
 requests to the Rust server, and applies React changes through HMR. The local
 user service runs the same command with automatic restart; use
 `npm run web:service:status` to inspect it or `npm run web:service:reload` to
@@ -54,14 +54,14 @@ accepts optional local reference images, listens for structured
 Upload a reference image first (maximum request size: 25 MiB):
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/assets/images \
+curl -X POST http://127.0.0.1:8797/api/assets/images \
   -F 'file=@reference.png;type=image/png'
 ```
 
 Then create a thread and request an image:
 
 ```bash
-curl -X POST http://127.0.0.1:3000/api/codex/threads/THREAD_ID/images \
+curl -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/images \
   -H 'content-type: application/json' \
   -d '{
     "prompt": "Create a cinematic 16:9 seedling image with no text.",
@@ -104,7 +104,7 @@ HEYGEN_API_KEY=your-key
 Search the catalog without exposing the credential to the browser:
 
 ```bash
-curl --get http://127.0.0.1:3000/api/heygen/audio \
+curl --get http://127.0.0.1:8797/api/heygen/audio \
   --data-urlencode 'query=warm restrained product background music' \
   --data-urlencode 'type=music' \
   --data-urlencode 'limit=8'

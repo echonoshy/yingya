@@ -3,7 +3,7 @@
 import { basename, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const DEFAULT_API_BASE = "http://127.0.0.1:3000";
+const DEFAULT_API_BASE = "http://127.0.0.1:8797";
 const REQUEST_TIMEOUT_MS = 60_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
