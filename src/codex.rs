@@ -52,6 +52,8 @@ pub enum CodexError {
     TurnTimeout(String),
     #[error("Codex turn {0} was interrupted")]
     TurnInterrupted(String),
+    #[error("Codex turn {0} did not stop within the interrupt grace period")]
+    InterruptTimeout(String),
     #[error("Codex event stream closed")]
     EventStreamClosed,
     #[error("Codex turn failed: {0}")]
@@ -145,41 +147,9 @@ pub struct CodexClient {
 impl CodexClient {
     pub async fn spawn(config: CodexConfig) -> Result<Arc<Self>, CodexError> {
         ensure_runtime_files(&config)?;
-
-        let mut command = Command::new(&config.binary);
-        command
-            .arg("app-server")
-            .arg("-c")
-            .arg(format!(
-                "sandbox_workspace_write.network_access={}",
-                config.network_access
-            ))
-            .current_dir(&config.workspace)
-            .env("CODEX_HOME", &config.home)
-            .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
-            .env("HYPERFRAMES_SKIP_SKILLS", "1");
-        if let Some(browser) = &config.hyperframes_browser {
-            command.env("HYPERFRAMES_BROWSER_PATH", browser);
-        }
-
-        let mut child = command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(CodexError::Spawn)?;
-
-        let stdin = child.stdin.take().ok_or(CodexError::MissingStdin)?;
-        let stdout = child.stdout.take().ok_or(CodexError::MissingStdout)?;
-        let stderr = child.stderr.take();
         let pending = PendingRequests::default();
         let (events, _) = broadcast::channel(2_048);
-
-        spawn_stdout_reader(stdout, Arc::clone(&pending), events.clone());
-        if let Some(stderr) = stderr {
-            spawn_stderr_reader(stderr);
-        }
+        let (child, stdin) = spawn_app_server(&config, Arc::clone(&pending), events.clone())?;
 
         let client = Arc::new(Self {
             config,
@@ -190,25 +160,41 @@ impl CodexClient {
             _child: Mutex::new(child),
         });
 
-        client
-            .request(
-                "initialize",
-                json!({
-                    "clientInfo": {
-                        "name": "yingya",
-                        "title": "Yingya",
-                        "version": env!("CARGO_PKG_VERSION")
-                    }
-                }),
-            )
-            .await?;
-        client.notify("initialized", json!({})).await?;
+        client.initialize().await?;
 
         Ok(client)
     }
 
     pub fn model(&self) -> &str {
         &self.config.model
+    }
+
+    pub async fn restart(&self) -> Result<(), CodexError> {
+        self.pending.lock().await.clear();
+        {
+            let mut current = self._child.lock().await;
+            let _ = current.kill().await;
+        }
+        let (child, stdin) =
+            spawn_app_server(&self.config, Arc::clone(&self.pending), self.events.clone())?;
+        *self._child.lock().await = child;
+        *self.stdin.lock().await = stdin;
+        self.initialize().await
+    }
+
+    async fn initialize(&self) -> Result<(), CodexError> {
+        self.request(
+            "initialize",
+            json!({
+                "clientInfo": {
+                    "name": "yingya",
+                    "title": "Yingya",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }),
+        )
+        .await?;
+        self.notify("initialized", json!({})).await
     }
 
     pub async fn list_skills(&self) -> Result<Value, CodexError> {
@@ -238,7 +224,8 @@ impl CodexClient {
         id: Value,
         result: Value,
     ) -> Result<(), CodexError> {
-        self.write_message(json!({ "id": id, "result": result })).await
+        self.write_message(json!({ "id": id, "result": result }))
+            .await
     }
 
     pub async fn start_thread(&self) -> Result<ThreadStarted, CodexError> {
@@ -328,27 +315,35 @@ impl CodexClient {
             let mut generated_images = Vec::new();
             let mut interrupt_sent = false;
             let mut inactivity_deadline = Instant::now() + self.config.turn_timeout;
+            let mut interrupt_deadline = None;
 
             loop {
                 let receive_event = async {
                     if !interrupt_sent {
-                    if let Some(cancellation) = options.cancellation {
-                        tokio::select! {
-                            result = events.recv() => Some(result),
-                            _ = cancellation.cancelled() => None,
+                        if let Some(cancellation) = options.cancellation {
+                            tokio::select! {
+                                result = events.recv() => Some(result),
+                                _ = cancellation.cancelled() => None,
+                            }
+                        } else {
+                            Some(events.recv().await)
                         }
                     } else {
                         Some(events.recv().await)
                     }
-                } else {
-                    Some(events.recv().await)
-                    }
                 };
 
-                let remaining = inactivity_deadline.saturating_duration_since(Instant::now());
+                let deadline = interrupt_deadline
+                    .map_or(inactivity_deadline, |deadline: Instant| {
+                        deadline.min(inactivity_deadline)
+                    });
+                let remaining = deadline.saturating_duration_since(Instant::now());
                 let event_result = match timeout(remaining, receive_event).await {
                     Ok(result) => result,
                     Err(_) => {
+                        if interrupt_deadline.is_some_and(|deadline| deadline <= Instant::now()) {
+                            return Err(CodexError::InterruptTimeout(turn_id.clone()));
+                        }
                         let _ = self
                             .request(
                                 "turn/interrupt",
@@ -366,6 +361,7 @@ impl CodexClient {
                     )
                     .await?;
                     interrupt_sent = true;
+                    interrupt_deadline = Some(Instant::now() + Duration::from_secs(10));
                     continue;
                 };
 
@@ -561,6 +557,41 @@ fn ensure_runtime_files(config: &CodexConfig) -> Result<(), CodexError> {
         return Err(CodexError::MissingCredential(credential));
     }
     Ok(())
+}
+
+fn spawn_app_server(
+    config: &CodexConfig,
+    pending: PendingRequests,
+    events: broadcast::Sender<Value>,
+) -> Result<(Child, ChildStdin), CodexError> {
+    let mut command = Command::new(&config.binary);
+    command
+        .arg("app-server")
+        .arg("-c")
+        .arg(format!(
+            "sandbox_workspace_write.network_access={}",
+            config.network_access
+        ))
+        .current_dir(&config.workspace)
+        .env("CODEX_HOME", &config.home)
+        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
+        .env("HYPERFRAMES_SKIP_SKILLS", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(browser) = &config.hyperframes_browser {
+        command.env("HYPERFRAMES_BROWSER_PATH", browser);
+    }
+    let mut child = command.spawn().map_err(CodexError::Spawn)?;
+    let stdin = child.stdin.take().ok_or(CodexError::MissingStdin)?;
+    let stdout = child.stdout.take().ok_or(CodexError::MissingStdout)?;
+    let stderr = child.stderr.take();
+    spawn_stdout_reader(stdout, pending, events);
+    if let Some(stderr) = stderr {
+        spawn_stderr_reader(stderr);
+    }
+    Ok((child, stdin))
 }
 
 fn spawn_stdout_reader(
