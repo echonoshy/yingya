@@ -1,10 +1,10 @@
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -15,8 +15,8 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
-    sync::{Mutex, broadcast, oneshot},
-    time::timeout,
+    sync::{Mutex, Notify, broadcast, mpsc, oneshot},
+    time::{Instant, timeout},
 };
 use tracing::{debug, error, warn};
 
@@ -50,6 +50,8 @@ pub enum CodexError {
     MissingField(&'static str),
     #[error("Codex turn {0} timed out")]
     TurnTimeout(String),
+    #[error("Codex turn {0} was interrupted")]
+    TurnInterrupted(String),
     #[error("Codex event stream closed")]
     EventStreamClosed,
     #[error("Codex turn failed: {0}")]
@@ -66,6 +68,7 @@ pub struct CodexConfig {
     pub model: String,
     pub network_access: bool,
     pub hyperframes_browser: Option<PathBuf>,
+    pub video_agent_skill: Option<PathBuf>,
     pub turn_timeout: Duration,
 }
 
@@ -93,6 +96,41 @@ pub struct GeneratedImageEvent {
     pub saved_path: Option<PathBuf>,
     pub revised_prompt: Option<String>,
     pub failure: Option<String>,
+}
+
+#[derive(Default)]
+pub struct TurnOptions<'a> {
+    pub use_imagegen: bool,
+    pub model: Option<&'a str>,
+    pub effort: Option<&'a str>,
+    pub cancellation: Option<&'a TurnCancellation>,
+    pub use_video_agent: bool,
+    pub event_tx: Option<mpsc::UnboundedSender<Value>>,
+}
+
+#[derive(Clone, Default)]
+pub struct TurnCancellation {
+    cancelled: Arc<AtomicBool>,
+    notify: Arc<Notify>,
+}
+
+impl TurnCancellation {
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        self.notify.notify_waiters();
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    pub async fn cancelled(&self) {
+        let notified = self.notify.notified();
+        if self.is_cancelled() {
+            return;
+        }
+        notified.await;
+    }
 }
 
 pub struct CodexClient {
@@ -184,14 +222,42 @@ impl CodexClient {
         .await
     }
 
+    pub async fn list_models(&self) -> Result<Value, CodexError> {
+        self.request(
+            "model/list",
+            json!({
+                "limit": 100,
+                "includeHidden": false
+            }),
+        )
+        .await
+    }
+
+    pub async fn respond_to_server_request(
+        &self,
+        id: Value,
+        result: Value,
+    ) -> Result<(), CodexError> {
+        self.write_message(json!({ "id": id, "result": result })).await
+    }
+
     pub async fn start_thread(&self) -> Result<ThreadStarted, CodexError> {
+        self.start_thread_at(&self.config.workspace, None).await
+    }
+
+    pub async fn start_thread_at(
+        &self,
+        cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<ThreadStarted, CodexError> {
+        let model = model.unwrap_or(&self.config.model);
         let result = self
             .request(
                 "thread/start",
                 json!({
-                    "model": self.config.model,
-                    "cwd": self.config.workspace,
-                    "approvalPolicy": "never",
+                    "model": model,
+                    "cwd": cwd,
+                    "approvalPolicy": "on-request",
                     "sandbox": "workspace-write",
                     "ephemeral": false,
                     "serviceName": "yingya"
@@ -213,15 +279,24 @@ impl CodexClient {
         thread_id: &str,
         prompt: &str,
         reference_images: &[PathBuf],
-        use_imagegen: bool,
+        options: TurnOptions<'_>,
     ) -> Result<TurnCompleted, CodexError> {
         let mut events = self.events.subscribe();
         let mut input = Vec::with_capacity(reference_images.len() + 2);
-        if use_imagegen {
+        if options.use_imagegen {
             input.push(json!({
                 "type": "skill",
                 "name": "imagegen",
                 "path": self.config.home.join("skills/.system/imagegen/SKILL.md")
+            }));
+        }
+        if options.use_video_agent
+            && let Some(path) = &self.config.video_agent_skill
+        {
+            input.push(json!({
+                "type": "skill",
+                "name": "yingya-video-agent",
+                "path": path
             }));
         }
         input.push(json!({ "type": "text", "text": prompt }));
@@ -231,15 +306,17 @@ impl CodexClient {
                 .map(|path| json!({ "type": "localImage", "path": path, "detail": "original" })),
         );
 
-        let result = self
-            .request(
-                "turn/start",
-                json!({
-                    "threadId": thread_id,
-                    "input": input
-                }),
-            )
-            .await?;
+        let mut params = json!({
+            "threadId": thread_id,
+            "input": input
+        });
+        if let Some(model) = options.model {
+            params["model"] = json!(model);
+        }
+        if let Some(effort) = options.effort.filter(|value| *value != "auto") {
+            params["effort"] = json!(effort);
+        }
+        let result = self.request("turn/start", params).await?;
         let turn_id = result
             .pointer("/turn/id")
             .and_then(Value::as_str)
@@ -249,9 +326,50 @@ impl CodexClient {
         let wait_for_turn = async {
             let mut final_text = String::new();
             let mut generated_images = Vec::new();
+            let mut interrupt_sent = false;
+            let mut inactivity_deadline = Instant::now() + self.config.turn_timeout;
 
             loop {
-                let event = match events.recv().await {
+                let receive_event = async {
+                    if !interrupt_sent {
+                    if let Some(cancellation) = options.cancellation {
+                        tokio::select! {
+                            result = events.recv() => Some(result),
+                            _ = cancellation.cancelled() => None,
+                        }
+                    } else {
+                        Some(events.recv().await)
+                    }
+                } else {
+                    Some(events.recv().await)
+                    }
+                };
+
+                let remaining = inactivity_deadline.saturating_duration_since(Instant::now());
+                let event_result = match timeout(remaining, receive_event).await {
+                    Ok(result) => result,
+                    Err(_) => {
+                        let _ = self
+                            .request(
+                                "turn/interrupt",
+                                json!({ "threadId": thread_id, "turnId": turn_id }),
+                            )
+                            .await;
+                        return Err(CodexError::TurnTimeout(turn_id.clone()));
+                    }
+                };
+
+                let Some(event_result) = event_result else {
+                    self.request(
+                        "turn/interrupt",
+                        json!({ "threadId": thread_id, "turnId": turn_id }),
+                    )
+                    .await?;
+                    interrupt_sent = true;
+                    continue;
+                };
+
+                let event = match event_result {
                     Ok(event) => event,
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
                         warn!(skipped, "Codex event consumer lagged");
@@ -267,9 +385,27 @@ impl CodexClient {
                     .pointer("/params/turnId")
                     .or_else(|| event.pointer("/params/turn/id"))
                     .and_then(Value::as_str);
+                let event_thread_id = event
+                    .pointer("/params/threadId")
+                    .or_else(|| event.pointer("/params/thread/id"))
+                    .and_then(Value::as_str);
 
                 if event_turn_id.is_some_and(|id| id != turn_id) {
                     continue;
+                }
+                if event_thread_id.is_some_and(|id| id != thread_id) {
+                    continue;
+                }
+                if event_turn_id.is_none() && event_thread_id.is_none() {
+                    continue;
+                }
+
+                // Only activity from this turn renews the deadline. Events from
+                // concurrent turns must not keep an otherwise stalled turn alive.
+                inactivity_deadline = Instant::now() + self.config.turn_timeout;
+
+                if let Some(sender) = &options.event_tx {
+                    let _ = sender.send(event.clone());
                 }
 
                 if method == Some("item/completed") {
@@ -329,6 +465,10 @@ impl CodexClient {
                         .unwrap_or("completed")
                         .to_owned();
 
+                    if status == "interrupted" {
+                        return Err(CodexError::TurnInterrupted(turn_id.clone()));
+                    }
+
                     if status == "failed" {
                         let message = event
                             .pointer("/params/turn/error/message")
@@ -349,9 +489,7 @@ impl CodexClient {
             }
         };
 
-        timeout(self.config.turn_timeout, wait_for_turn)
-            .await
-            .map_err(|_| CodexError::TurnTimeout(turn_id.clone()))?
+        wait_for_turn.await
     }
 
     async fn request(&self, method: &str, params: Value) -> Result<Value, CodexError> {
@@ -371,10 +509,17 @@ impl CodexClient {
             return Err(error);
         }
 
-        let response = timeout(REQUEST_TIMEOUT, receiver)
-            .await
-            .map_err(|_| CodexError::RequestTimeout(id))?
-            .map_err(|_| CodexError::RequestCancelled(id))?;
+        let response = match timeout(REQUEST_TIMEOUT, receiver).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(_)) => {
+                self.pending.lock().await.remove(&id);
+                return Err(CodexError::RequestCancelled(id));
+            }
+            Err(_) => {
+                self.pending.lock().await.remove(&id);
+                return Err(CodexError::RequestTimeout(id));
+            }
+        };
 
         if let Some(error) = response.get("error") {
             let message = error
@@ -429,9 +574,13 @@ fn spawn_stdout_reader(
             match lines.next_line().await {
                 Ok(Some(line)) => match serde_json::from_str::<Value>(&line) {
                     Ok(message) => {
-                        if let Some(id) = message.get("id").and_then(Value::as_u64) {
+                        if message.get("method").is_some() {
+                            let _ = events.send(message);
+                        } else if let Some(id) = message.get("id").and_then(Value::as_u64) {
                             if let Some(sender) = pending.lock().await.remove(&id) {
                                 let _ = sender.send(message);
+                            } else {
+                                let _ = events.send(message);
                             }
                         } else {
                             let _ = events.send(message);
@@ -472,6 +621,7 @@ mod tests {
             model: "test".to_owned(),
             network_access: false,
             hyperframes_browser: None,
+            video_agent_skill: None,
             turn_timeout: Duration::from_secs(300),
         };
 

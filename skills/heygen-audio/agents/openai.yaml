@@ -1,0 +1,4 @@
+interface:
+  display_name: "HeyGen Audio"
+  short_description: "为映芽视频搜索、导入并匹配 HeyGen 背景音乐和音效"
+  default_prompt: "使用 $heygen-audio 为当前视频搜索合适的背景音乐和转场音效。"

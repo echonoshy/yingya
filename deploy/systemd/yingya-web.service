@@ -1,0 +1,17 @@
+[Unit]
+Description=Yingya Vite frontend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lake/workspace/yingya
+Environment=PATH=/home/lake/.nvm/versions/node/v24.15.0/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NO_PROXY=127.0.0.1,localhost
+ExecStart=/home/lake/.nvm/versions/node/v24.15.0/bin/npm run web:dev
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+KillSignal=SIGINT
+
+[Install]
+WantedBy=default.target

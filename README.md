@@ -8,6 +8,7 @@ to install a pinned Codex native binary and will also be used by HyperFrames.
 
 ```bash
 npm install
+npm run web:build
 cargo run
 ```
 
@@ -24,7 +25,24 @@ curl -X POST http://127.0.0.1:3000/api/codex/threads/THREAD_ID/turns \
   -d '{"prompt":"Reply with YINGYA_OK only."}'
 ```
 
-Open `http://127.0.0.1:3000/` for the minimal image-generation UI.
+Open `http://127.0.0.1:3000/` for the Yingya video Agent workspace. A new video
+project creates a persistent Codex thread and an isolated HyperFrames workspace
+under `data/video-projects/<project-id>/`. The browser sends turns through the
+generic `/api/agent-projects` API, streams the complete Codex event log over
+SSE, and renders artifacts from `.yingya/manifest.json`.
+
+The project-owned `yingya-video-agent` skill enforces a production-plan
+checkpoint before composition work and a draft checkpoint before final render.
+It also requires HyperFrames lint, validate, and inspect gates and durable Draft
+snapshots. Old `data/projects` records remain untouched and are not shown in the
+new UI.
+
+During frontend development, run `npm run web:dev` and open
+`http://127.0.0.1:8002/`. Vite listens on `0.0.0.0`, proxies API and asset
+requests to the Rust server, and applies React changes through HMR. The local
+user service runs the same command with automatic restart; use
+`npm run web:service:status` to inspect it or `npm run web:service:reload` to
+restart it after configuration changes.
 
 ## Codex image generation
 
@@ -64,12 +82,51 @@ nor its caches are modified. `data/` is runtime state and is not committed.
 Runtime settings can be overridden with `YINGYA_ADDR`, `YINGYA_CODEX_BIN`,
 `YINGYA_CODEX_HOME`, `YINGYA_WORKSPACE`, `YINGYA_CODEX_MODEL`, and
 `YINGYA_HYPERFRAMES_BROWSER_PATH`. The assets directory defaults to
-`data/assets/` and can be changed with `YINGYA_ASSETS_DIR`. Long
-Codex/HyperFrames jobs default
-to a 900-second timeout, configurable with `YINGYA_CODEX_TURN_TIMEOUT_SECS`.
+`data/assets/` and can be changed with `YINGYA_ASSETS_DIR`. Codex/HyperFrames
+jobs use a 3600-second inactivity timeout by default, configurable with
+`YINGYA_CODEX_TURN_TIMEOUT_SECS`. Activity from the current turn renews the
+deadline, so this setting does not cap the total production time.
 `YINGYA_CODEX_NETWORK_ACCESS` defaults to `true`, allowing the workspace-write
 sandbox to call local services such as the VoxCPM2 TTS API. Set it to `false` to
 disable network access for Codex turns.
+The new project root can be overridden with `YINGYA_AGENT_PROJECTS_DIR`.
+
+## HeyGen music and sound effects
+
+The Rust backend can search HeyGen's semantic audio catalog and import selected
+music or sound effects into a Yingya project. Keep the server-only credential in
+the ignored `.env` file (copy `.env.example` for a new environment):
+
+```bash
+HEYGEN_API_KEY=your-key
+```
+
+Search the catalog without exposing the credential to the browser:
+
+```bash
+curl --get http://127.0.0.1:3000/api/heygen/audio \
+  --data-urlencode 'query=warm restrained product background music' \
+  --data-urlencode 'type=music' \
+  --data-urlencode 'limit=8'
+```
+
+Use `type=sound_effects` for effects. The web asset workspace provides search,
+preview, and import controls. Importing re-runs the search on the server to
+refresh HeyGen's short-lived signed URL, downloads the audio into the project's
+`assets/audio/` directory, and records the provider metadata in `assets.json`.
+The build Agent treats unassigned music as a global background track and places
+scene-assigned sound effects at relevant actions or transitions.
+
+Install the project-owned Codex integration into the isolated runtime:
+
+```bash
+npm run heygen:skill:install
+```
+
+After restarting Yingya, Codex can invoke `$heygen-audio` to search music or
+sound effects, import a selected result, inspect project audio, and assign an
+effect to a scene. The Skill calls the local Yingya API and never reads or
+exposes the HeyGen credential.
 
 ## HyperFrames tooling
 

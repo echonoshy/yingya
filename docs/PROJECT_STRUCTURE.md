@@ -36,10 +36,13 @@ state with different cleanup rules:
 | `huggingface/` | Regenerated Transformers dynamic-module cache | Safe to remove while the service is stopped; recreated on startup |
 | `voxcpm2/` | Service PID and active log | Keep while the service is running |
 
-## HyperFrames project boundary
+## HyperFrames project boundaries
 
-Every generated video should live in `data/projects/<project-id>/` and remain
-self-contained:
+New Agent-created videos live in `data/video-projects/<project-id>/`. The older
+`data/projects/<project-id>/` layout is retained as legacy runtime data and is
+not shown in the V1 UI. Both formats are mutable user data and stay out of Git.
+
+Each project must remain self-contained:
 
 ```text
 <project-id>/

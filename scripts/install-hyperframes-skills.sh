@@ -57,5 +57,16 @@ for skill_name in "${skill_names[@]}"; do
   cp -a "$source_path/." "$target_path/"
 done
 
-printf 'Installed %d HyperFrames skills into %s\n' "${#skill_names[@]}" "$target_root"
+local_skill_names=(faceless-explainer heygen-audio)
+for skill_name in "${local_skill_names[@]}"; do
+  local_skill="$project_root/skills/$skill_name"
+  if [[ ! -f "$local_skill/SKILL.md" ]]; then
+    echo "Local $skill_name skill is missing" >&2
+    exit 1
+  fi
+  mkdir -p "$target_root/$skill_name"
+  cp -a "$local_skill/." "$target_root/$skill_name/"
+done
+
+printf 'Installed HyperFrames and project-owned skills into %s\n' "$target_root"
 rm -rf -- "$staging_root"

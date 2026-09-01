@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yingya Video Agent"
+  short_description: "用两次确认编排 HyperFrames 视频项目"
+  default_prompt: "Use $yingya-video-agent to take this video project from brief to a verified HyperFrames deliverable."

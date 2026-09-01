@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 160" role="img" aria-label="映芽深色背景 Logo">
-  <rect width="560" height="160" rx="24" fill="#173F35"/>
-  <defs><linearGradient id="left" x1="24" y1="18" x2="74" y2="130" gradientUnits="userSpaceOnUse"><stop stop-color="#D5FF70"/><stop offset="1" stop-color="#35DDA2"/></linearGradient><linearGradient id="right" x1="142" y1="18" x2="88" y2="130" gradientUnits="userSpaceOnUse"><stop stop-color="#83F1CE"/><stop offset="1" stop-color="#17AB95"/></linearGradient></defs>
-  <g transform="translate(4 5)"><path d="M21 17C13 14 8 22 12 30L40 115C44 128 61 129 65 116L76 56C78 47 74 40 66 36L21 17Z" fill="url(#left)"/><path d="M139 17C147 14 152 22 148 30L120 115C116 128 99 129 95 116L84 56C82 47 86 40 94 36L139 17Z" fill="url(#right)"/></g>
-  <text x="194" y="82" fill="#FBFCF8" font-family="Noto Sans CJK SC, Noto Sans SC, sans-serif" font-size="54" font-weight="700" letter-spacing="1">映芽</text><text x="336" y="81" fill="#C1D3CD" font-family="Noto Sans CJK SC, Noto Sans, sans-serif" font-size="34" font-weight="700" letter-spacing="3">YINGYA</text>
-</svg>
