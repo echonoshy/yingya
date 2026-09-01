@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <title>映芽 — HyperFrames smoke test</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: #071a12; }
+      body { color: #eaf7ee; font-family: ui-monospace, monospace; }
+      #smoke-root, .clip { position: absolute; inset: 0; width: 1280px; height: 720px; overflow: hidden; }
+      #botanical-field { position: absolute; inset: -60px; transform-origin: 50% 55%; will-change: transform; }
+      .leaf { position: absolute; width: 420px; height: 180px; border: 2px solid #315c43; border-radius: 100% 0 100% 0; background: #0d2a1c; opacity: .72; }
+      .leaf-one { left: 120px; top: 100px; transform: rotate(24deg); }
+      .leaf-two { right: 70px; top: 210px; transform: rotate(154deg) scale(.82); }
+      .leaf-three { left: 430px; bottom: 40px; transform: rotate(-18deg) scale(1.2); }
+      .content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 86px 76px; background: rgba(7, 26, 18, .32); }
+      .label { margin: 0 0 20px; color: #9be7a9; font-size: 14px; letter-spacing: .18em; text-transform: uppercase; }
+      .accent-rule { width: 118px; height: 2px; margin-bottom: 22px; background: #9be7a9; transform-origin: left; }
+      h1 { margin: 0; font-family: serif; font-size: 130px; line-height: .95; letter-spacing: .04em; }
+      .subtitle { margin: 20px 0 0; font-size: 24px; letter-spacing: .12em; }
+      .corner-note { position: absolute; right: 86px; bottom: 82px; color: #9be7a9; font-size: 12px; letter-spacing: .12em; }
+    </style>
+  </head>
+  <body>
+    <div id="smoke-root" data-composition-id="e2e-smoke" data-start="0" data-duration="6" data-width="1280" data-height="720">
+      <section id="nature-scene" class="clip" data-start="0" data-duration="6" data-track-index="1">
+        <div id="botanical-field" data-layout-allow-overflow>
+          <i class="leaf leaf-one"></i><i class="leaf leaf-two"></i><i class="leaf leaf-three"></i>
+        </div>
+        <div class="content">
+          <p id="scene-label" class="label">Nature / moving image</p>
+          <div id="accent-rule" class="accent-rule"></div>
+          <h1 id="title">映芽</h1>
+          <p id="subtitle" class="subtitle">让想法长成影像</p>
+        </div>
+        <p class="corner-note">06 SEC · 1280 × 720</p>
+      </section>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const timeline = gsap.timeline({ paused: true, defaults: { ease: "power2.out" } });
+      timeline
+        .to("#botanical-field", { scale: 1.08, x: -12, y: -6, duration: 6, ease: "none" }, 0)
+        .fromTo("#scene-label", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: .65 }, .28)
+        .fromTo("#accent-rule", { scaleX: 0 }, { scaleX: 1, duration: .72 }, .5)
+        .fromTo("#title", { opacity: 0, y: 42 }, { opacity: 1, y: 0, duration: .9 }, .64)
+        .fromTo("#subtitle", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: .75 }, 1.02);
+      window.__timelines["e2e-smoke"] = timeline;
+    </script>
+  </body>
+</html>
