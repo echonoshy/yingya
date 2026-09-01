@@ -1,30 +1,26 @@
 import { ArrowClockwise, ArrowLeft, ArrowUp, CaretDown, Check, CheckCircle, CircleNotch, Code, Eye, File, FilmSlate, Paperclip, PencilSimple, Play, Queue, Stop, Terminal, Warning, X } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { api } from "../api";
-import { Sidebar } from "../App";
+import { ProjectSidebar } from "./ProjectSidebar";
 import type { AgentEvent, Artifact, CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "../types";
 import { buildTimeline, type TimelineActivity } from "./eventTimeline";
 import { ModelSelector } from "./ModelSelector";
+import { useAgentEvents } from "../hooks/useAgentEvents";
+import { readNumberSetting, writeNumberSetting } from "../storage";
+
+const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
 export function AgentWorkspace({ project, projects, models, selection, onSelection, onProject, onOpen, onRename, onDelete, onNew }: { project: ProjectDetail; projects: ProjectRecord[]; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onProject: (value: ProjectDetail) => void; onOpen: (id: string) => void; onRename: (id: string, title: string) => Promise<void>; onDelete: (project: ProjectRecord) => Promise<void>; onNew: () => void }) {
-  const [text, setText] = useState(""); const [files, setFiles] = useState<File[]>([]); const [contexts, setContexts] = useState<string[]>([]); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [studioUrl, setStudioUrl] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<"preview" | "artifacts">("preview"); const fileRef = useRef<HTMLInputElement>(null); const timelineRef = useRef<HTMLElement>(null); const latestSeq = useRef(project.events.at(-1)?.seq ?? 0); const projectRef = useRef(project);
+  const [text, setText] = useState(""); const [files, setFiles] = useState<File[]>([]); const [contexts, setContexts] = useState<string[]>([]); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [studioUrl, setStudioUrl] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<"preview" | "artifacts">("preview"); const fileRef = useRef<HTMLInputElement>(null); const timelineRef = useRef<HTMLElement>(null);
   const [artifactPreview, setArtifactPreview] = useState<{ artifact: Artifact; content: string; loading: boolean; error: string } | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(true); const [sidebarWidth, setSidebarWidth] = useState(() => savedWidth("yingya-sidebar-width", 270)); const [canvasWidth, setCanvasWidth] = useState(() => savedWidth("yingya-canvas-width", 440));
   const [editingTitle, setEditingTitle] = useState(false); const [titleDraft, setTitleDraft] = useState(""); const [renaming, setRenaming] = useState(false); const [titleError, setTitleError] = useState("");
   const [dismissedCheckpoint, setDismissedCheckpoint] = useState("");
   const running = Boolean(project.activeTurnId);
   const refresh = useCallback(async () => { try { onProject(await api.getProject(project.id)); } catch { /* retain last stable project */ } }, [onProject, project.id]);
+  const { events } = useAgentEvents(project.id, refresh);
   const assistantTexts = useMemo(() => new Set(project.messages.filter(message => message.role === "assistant").map(message => message.text.trim())), [project.messages]);
-  const activities = useMemo(() => buildTimeline(project.events, assistantTexts), [project.events, assistantTexts]);
-  useEffect(() => { projectRef.current = project; latestSeq.current = project.events.at(-1)?.seq ?? 0; }, [project]);
-  useEffect(() => {
-    const source = new EventSource(`/api/agent-projects/${project.id}/events?after=${latestSeq.current}`);
-    source.addEventListener("agent-event", event => { const item = JSON.parse((event as MessageEvent).data) as AgentEvent; latestSeq.current = Math.max(latestSeq.current, item.seq); const current = projectRef.current; if (!current.events.some(value => value.seq === item.seq)) { const next = { ...current, events: [...current.events, item] }; projectRef.current = next; onProject(next); } if (["turn/completed", "turn/failed", "item/completed"].some(value => item.method.includes(value))) void refresh(); });
-    return () => source.close();
-  }, [project.id, onProject, refresh]);
-  useEffect(() => { if (!running && !project.queueDepth) return; const timer = window.setInterval(() => void refresh(), 2200); return () => window.clearInterval(timer); }, [running, project.queueDepth, refresh]);
+  const activities = useMemo(() => buildTimeline(events, assistantTexts), [events, assistantTexts]);
   useEffect(() => { const timeline = timelineRef.current; if (timeline) timeline.scrollTop = timeline.scrollHeight; }, [project.messages.length, activities.length]);
 
   async function send(event: FormEvent) {
@@ -54,6 +50,7 @@ export function AgentWorkspace({ project, projects, models, selection, onSelecti
     finally { setBusy(false); }
   }
   async function stop() { setStopping(true); setError(""); try { await api.interrupt(project.id); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "停止失败"); } finally { setStopping(false); } }
+  async function resumeQueue() { setBusy(true); setError(""); try { await api.resume(project.id); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "恢复队列失败"); } finally { setBusy(false); } }
   async function previewArtifact(artifact: Artifact) {
     setCanvasOpen(true); setMobilePanel("canvas");
     if (artifact.kind.includes("video")) { setArtifactPreview(null); setCanvasTab("preview"); return; }
@@ -84,9 +81,9 @@ export function AgentWorkspace({ project, projects, models, selection, onSelecti
   const workspaceStyle = { "--sidebar-width": `${sidebarWidth}px`, "--canvas-width": `${canvasWidth}px` } as CSSProperties;
   function dragSidebar(event: ReactPointerEvent<HTMLDivElement>) { if (event.currentTarget.hasPointerCapture(event.pointerId)) setSidebarWidth(Math.min(360, Math.max(190, event.clientX))); }
   function dragCanvas(event: ReactPointerEvent<HTMLDivElement>) { if (event.currentTarget.hasPointerCapture(event.pointerId)) setCanvasWidth(Math.min(720, Math.max(320, window.innerWidth - event.clientX))); }
-  function finishResize(event: ReactPointerEvent<HTMLDivElement>, key: string, value: number) { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); localStorage.setItem(key, String(value)); }
+  function finishResize(event: ReactPointerEvent<HTMLDivElement>, key: string, value: number) { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); writeNumberSetting(key, value); }
   return <div className={`workspace ${showCanvas ? "workspace--canvas" : ""} workspace-mobile--${mobilePanel}`} style={workspaceStyle}>
-    <Sidebar projects={projects} activeId={project.id} onOpen={onOpen} onDelete={onDelete} onNew={onNew}/>
+    <ProjectSidebar projects={projects} activeId={project.id} onOpen={onOpen} onDelete={onDelete} onNew={onNew}/>
     <div className="workspace-splitter workspace-splitter--sidebar" role="separator" aria-label="调整项目栏宽度" aria-orientation="vertical" onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragSidebar} onPointerUp={event => finishResize(event, "yingya-sidebar-width", sidebarWidth)}/>
     {showCanvas ? <div className="workspace-splitter workspace-splitter--canvas" role="separator" aria-label="调整产物栏宽度" aria-orientation="vertical" onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragCanvas} onPointerUp={event => finishResize(event, "yingya-canvas-width", canvasWidth)}/> : null}
     {showCanvas ? <nav className="workspace-tabs" aria-label="工作区视图"><button className={mobilePanel === "thread" ? "active" : ""} onClick={() => setMobilePanel("thread")}>对话</button><button className={mobilePanel === "canvas" && canvasTab === "artifacts" ? "active" : ""} onClick={() => { setMobilePanel("canvas"); setCanvasTab("artifacts"); }}>产物</button><button className={mobilePanel === "canvas" && canvasTab === "preview" ? "active" : ""} onClick={() => { setMobilePanel("canvas"); setCanvasTab("preview"); }}>预览</button></nav> : null}
@@ -96,14 +93,53 @@ export function AgentWorkspace({ project, projects, models, selection, onSelecti
         {project.messages.map(message => <article className={`message message--${message.role}`} key={message.id}><div className="message-body">{message.context.length ? <div className="context-line">{message.context.map(value => <span key={value}>{value}</span>)}</div> : null}<div>{message.text}</div>{message.attachments.length ? <small>{message.attachments.length} 个附件</small> : null}</div></article>)}
         <ActivityFeed activities={activities}/>
         {visibleCheckpoint ? <CheckpointCard title={visibleCheckpoint.title} summary={visibleCheckpoint.summary} busy={busy} onPreview={checkpointArtifact ? () => void previewArtifact(checkpointArtifact) : undefined} onConfirm={() => void confirm()}/> : null}
-        {project.queue.length ? <section className="queue-card"><header><Queue/><b>待处理消息</b><span>{project.queue.length}</span></header>{project.queue.map((turn, index) => <div key={turn.id}><i>{String(index + 1).padStart(2, "0")}</i><span>{turn.text}</span><button aria-label="撤回排队消息" onClick={() => void api.removeQueued(project.id, turn.id).then(refresh)}><X/></button></div>)}</section> : null}
-        {project.events.length ? <details className="debug-events"><summary><Code/>技术详情 <span>{project.events.length} 条事件</span></summary><pre>{project.events.map(event => JSON.stringify(event)).join("\n")}</pre></details> : null}
+        {project.queue.length ? <section className="queue-card"><header><Queue/><b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b><span>{project.queue.length}</span>{project.queuePaused ? <button className="queue-resume" disabled={busy} onClick={() => void resumeQueue()}>继续处理</button> : null}</header>{project.queue.map((turn, index) => <div key={turn.id}><i>{String(index + 1).padStart(2, "0")}</i><span>{turn.text}</span><button aria-label="撤回排队消息" onClick={() => void api.removeQueued(project.id, turn.id).then(refresh)}><X/></button></div>)}</section> : null}
+        <TechnicalEventLog projectId={project.id} liveEvents={events}/>
       </div></section>
-      <footer className="thread-footer">{contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}<form className="composer" onSubmit={send}><textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述修改，或继续推进视频…"}/><div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div><div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><ModelSelector models={models} value={selection} onChange={onSelection}/>{running ? <label className="interrupt-toggle"><input type="checkbox" checked={interrupt} onChange={event => setInterrupt(event.target.checked)}/><span>{interrupt ? "立即应用" : "排队"}</span></label> : null}</div><div>{running ? <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "正在停止" : "停止"}</button> : null}<button className="send-button" aria-label="发送消息" disabled={!text.trim() || busy}><ArrowUp weight="bold"/></button></div></div></form>{error ? <p className="form-error">{error}</p> : null}</footer>
+      <footer className="thread-footer">{contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}<form className="composer" onSubmit={send}><textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述修改，或继续推进视频…"}/><div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div><div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><ModelSelector models={models} value={selection} onChange={onSelection}/>{running ? <label className="interrupt-toggle"><input type="checkbox" checked={interrupt} onChange={event => setInterrupt(event.target.checked)}/><span>{interrupt ? "立即应用" : "排队"}</span></label> : null}</div><div>{running ? <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "正在停止" : "停止当前任务"}</button> : null}<button className="send-button" aria-label="发送消息" disabled={!text.trim() || busy}><ArrowUp weight="bold"/></button></div></div></form>{error ? <p className="form-error">{error}</p> : null}</footer>
     </main>
     {showCanvas ? <ArtifactCanvas project={project} activeTab={canvasTab} preview={artifactPreview} onClosePreview={() => setArtifactPreview(null)} onClosePanel={() => { setCanvasOpen(false); setMobilePanel("thread"); }} onTab={setCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onStudio={() => void openStudio()}/> : null}
     {studioUrl ? <div className="studio-modal"><header><div><b>HyperFrames Studio</b><span>关闭后会把当前 Draft 标记为待检查</span></div><button aria-label="关闭 Studio" onClick={() => { setStudioUrl(""); void api.markStudioDirty(project.id).then(refresh); }}><X/></button></header><iframe title="HyperFrames Studio" src={studioUrl} allow="autoplay; fullscreen"/></div> : null}
   </div>;
+}
+
+function TechnicalEventLog({ projectId, liveEvents }: { projectId: string; liveEvents: AgentEvent[] }) {
+  const [items, setItems] = useState<AgentEvent[]>([]);
+  const [nextBefore, setNextBefore] = useState<number>();
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const merge = useCallback((current: AgentEvent[], incoming: AgentEvent[]) => {
+    const bySeq = new Map(current.map(event => [event.seq, event]));
+    for (const event of incoming) bySeq.set(event.seq, event);
+    return [...bySeq.values()].sort((left, right) => left.seq - right.seq);
+  }, []);
+
+  useEffect(() => {
+    setItems([]);
+    setNextBefore(undefined);
+    setLoaded(false);
+  }, [projectId]);
+  useEffect(() => {
+    if (loaded) setItems(current => merge(current, liveEvents));
+  }, [liveEvents, loaded, merge]);
+
+  async function load(before?: number) {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const page = await api.eventLog(projectId, before, 200);
+      setItems(current => merge(current, page.items));
+      setNextBefore(page.nextBefore);
+      setLoaded(true);
+    } finally { setLoading(false); }
+  }
+
+  return <details className="debug-events" onToggle={event => { if (event.currentTarget.open && !loaded) void load(); }}>
+    <summary><Code/>技术详情 <span>{loaded ? `${items.length} 条已加载` : "按需加载"}</span></summary>
+    {loaded ? <div className="debug-event-list">{items.map(event => <pre key={event.seq}><code>{JSON.stringify(event)}</code></pre>)}</div> : null}
+    {nextBefore ? <button className="debug-load-more" disabled={loading} onClick={() => void load(nextBefore)}>{loading ? "正在加载…" : "加载更早 200 条"}</button> : null}
+  </details>;
 }
 
 function ActivityFeed({ activities }: { activities: TimelineActivity[] }) {
@@ -165,8 +201,8 @@ function ArtifactCanvas({ project, activeTab, preview, onClosePreview, onClosePa
 function InlineArtifactPreview({ preview, onClose }: { preview: { artifact: Artifact; content: string; loading: boolean; error: string }; onClose: () => void }) {
   const markdown = /\.md(?:own)?$/i.test(preview.artifact.path); const [source, setSource] = useState(false);
   useEffect(() => setSource(false), [preview.artifact.id]);
-  return <section className="artifact-inline-preview" aria-label={`${preview.artifact.label}预览`}><header><button aria-label="返回项目产物" onClick={onClose}><ArrowLeft/></button><div><small>ARTIFACT PREVIEW</small><h2>{preview.artifact.label}</h2><span>{preview.artifact.path}</span></div>{markdown ? <div className="artifact-view-toggle" role="tablist" aria-label="产物查看方式"><button role="tab" aria-selected={!source} className={!source ? "active" : ""} onClick={() => setSource(false)}>预览</button><button role="tab" aria-selected={source} className={source ? "active" : ""} onClick={() => setSource(true)}>源码</button></div> : null}</header><div>{preview.loading ? <div className="artifact-preview-state"><CircleNotch className="spin"/>正在读取产物…</div> : preview.error ? <div className="artifact-preview-state artifact-preview-state--error"><Warning/>{preview.error}</div> : markdown && !source ? <div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{preview.content}</ReactMarkdown></div> : <pre className="artifact-source">{preview.content}</pre>}</div></section>;
+  return <section className="artifact-inline-preview" aria-label={`${preview.artifact.label}预览`}><header><button aria-label="返回项目产物" onClick={onClose}><ArrowLeft/></button><div><small>ARTIFACT PREVIEW</small><h2>{preview.artifact.label}</h2><span>{preview.artifact.path}</span></div>{markdown ? <div className="artifact-view-toggle" role="tablist" aria-label="产物查看方式"><button role="tab" aria-selected={!source} className={!source ? "active" : ""} onClick={() => setSource(false)}>预览</button><button role="tab" aria-selected={source} className={source ? "active" : ""} onClick={() => setSource(true)}>源码</button></div> : null}</header><div>{preview.loading ? <div className="artifact-preview-state"><CircleNotch className="spin"/>正在读取产物…</div> : preview.error ? <div className="artifact-preview-state artifact-preview-state--error"><Warning/>{preview.error}</div> : markdown && !source ? <div className="markdown-body"><Suspense fallback={<div className="artifact-preview-state">正在加载预览…</div>}><MarkdownPreview>{preview.content}</MarkdownPreview></Suspense></div> : <pre className="artifact-source">{preview.content}</pre>}</div></section>;
 }
 
 function formatTimestamp(seconds: number) { const minutes = Math.floor(seconds / 60); return `${String(minutes).padStart(2, "0")}:${(seconds % 60).toFixed(1).padStart(4, "0")}`; }
-function savedWidth(key: string, fallback: number) { const value = Number(localStorage.getItem(key)); return Number.isFinite(value) && value > 0 ? value : fallback; }
+function savedWidth(key: string, fallback: number) { return readNumberSetting(key, fallback); }

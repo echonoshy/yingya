@@ -1,17 +1,18 @@
-import { ArrowRight, ArrowUp, CloudSlash, FilmSlate, Paperclip, Plus, Trash, WifiHigh } from "@phosphor-icons/react";
+import { ArrowRight, ArrowUp, CloudSlash, Paperclip, WifiHigh } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { api } from "./api";
 import { AgentWorkspace } from "./components/AgentWorkspace";
 import { ModelSelector } from "./components/ModelSelector";
+import { ProjectSidebar } from "./components/ProjectSidebar";
 import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "./types";
+import { readModelSelection, writeModelSelection } from "./storage";
 
 const fallbackModels: CodexModel[] = [
   ["gpt-5.6-terra", "GPT-5.6 Terra", "均衡的质量与速度"], ["gpt-5.6-sol", "GPT-5.6 Sol", "复杂创作与高质量推理"], ["gpt-5.6-luna", "GPT-5.6 Luna", "快速迭代"],
 ].map(([model, displayName, description], index) => ({ id: model, model, displayName, description, hidden: false, supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map(reasoningEffort => ({ reasoningEffort, description: "" })), defaultReasoningEffort: "medium", isDefault: index === 0 }));
 
 function savedSelection(): ModelSelection {
-  try { return JSON.parse(localStorage.getItem("yingya-agent-model") ?? "") as ModelSelection; }
-  catch { return { model: "gpt-5.6-terra", reasoningEffort: "high" }; }
+  return readModelSelection({ model: "gpt-5.6-terra", reasoningEffort: "high" });
 }
 
 const startIntroKey = "yingya-start-intro-seen";
@@ -47,13 +48,9 @@ function AnimatedHeadline({ lines, play }: { lines: string[]; play: boolean }) {
   </h1>;
 }
 
-export function Brand() {
-  return <div className="brand"><span className="brand-mark"><img src="/brand/invideo-favicon-white.ico" alt=""/></span><span><b>映芽</b><small>YINGYA</small></span></div>;
-}
-
 export function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection);
-  const saveSelection = (next: ModelSelection) => { setSelection(next); localStorage.setItem("yingya-agent-model", JSON.stringify(next)); };
+  const saveSelection = (next: ModelSelection) => { setSelection(next); writeModelSelection(next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
   useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(value.data)).catch(() => undefined); }, [refreshProjects]);
   async function open(id: string) { setLoading(true); setOpenError(""); try { const detail = await api.getProject(id); setActive(detail); saveSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); setOffline(false); } catch (reason) { setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } finally { setLoading(false); } }
@@ -93,7 +90,7 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
   }
   const starters = ["网站转产品宣传片", "知识解释动画", "品牌发布短片"];
   return <div className="start-layout">
-    <Sidebar projects={projects} loading={loading} onOpen={onOpen} onDelete={onDelete}/>
+    <ProjectSidebar projects={projects} loading={loading} onOpen={onOpen} onDelete={onDelete}/>
     <main className="start-main">
       <header className="topbar"><span>VIDEO CREATION</span><div className="topbar-status"><WifiHigh/>本地服务已连接</div></header>
       {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
@@ -118,24 +115,4 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
       </section>
     </main>
   </div>;
-}
-
-function formatProjectTime(timestamp: number) {
-  return new Date(timestamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-export function Sidebar({ projects, loading, activeId, onOpen, onDelete, onNew }: { projects: ProjectRecord[]; loading?: boolean; activeId?: string; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onNew?: () => void }) {
-  const [deletingId, setDeletingId] = useState("");
-  async function remove(project: ProjectRecord) {
-    if (!window.confirm(`确定删除“${project.title}”吗？\n项目文件和生成内容将被永久删除。`)) return;
-    setDeletingId(project.id);
-    try { await onDelete(project); }
-    catch (reason) { window.alert(reason instanceof Error ? reason.message : "项目删除失败"); }
-    finally { setDeletingId(""); }
-  }
-  return <aside className="sidebar">
-    <Brand/>
-    {onNew ? <button className="new-task kiro-fill" onClick={onNew}><Plus weight="bold"/>新建视频</button> : null}
-    <div className="project-list"><header><h2>项目</h2><span>{projects.length || ""}</span></header>{projects.map(project => <div className={`project-item ${project.id === activeId ? "active" : ""}`} key={project.id}><button className="project-open" onClick={() => onOpen(project.id)}><span className="project-glyph"><FilmSlate/></span><span><b>{project.title}</b><small className={`project-status project-status--${project.status}`}>{project.statusLabel}</small></span>{project.activeTurnId ? <i className="running-dot"/> : <time>{formatProjectTime(project.updatedAt)}</time>}</button><button className="project-delete" aria-label={`删除项目 ${project.title}`} title={project.activeTurnId ? "请先停止正在运行的任务" : "删除项目"} disabled={Boolean(project.activeTurnId) || deletingId === project.id} onClick={() => void remove(project)}><Trash/></button></div>)}{loading ? <p>正在读取项目…</p> : null}{!loading && !projects.length ? <div className="project-empty"><FilmSlate/><span>还没有视频项目</span></div> : null}</div>
-  </aside>;
 }

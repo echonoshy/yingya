@@ -4,14 +4,18 @@
   "private": true,
   "description": "映芽 · Yingya，通过对话创作视频，让想法长成影像。",
   "scripts": {
-    "test": "npm run test:rust && npm run typecheck && npm run web:build && npm run test:hyperframes && npm run test:ui",
+    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run web:build && npm run test:hyperframes && npm run test:ui",
+    "format:check": "cargo fmt --all -- --check",
+    "lint:rust": "cargo clippy --all-targets -- -D warnings",
     "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
     "web:service:status": "systemctl --user status yingya-web --no-pager",
     "web:service:reload": "systemctl --user restart yingya-web",
     "web:build": "vite build --config web/vite.config.ts",
     "web:preview": "vite preview --config web/vite.config.ts",
     "typecheck": "tsc --noEmit",
-    "test:rust": "cargo test",
+    "test:web": "vitest run web/src",
+    "test:heygen": "node --test tests/heygen-audio.test.mjs",
+    "test:rust": "cargo test --all-targets",
     "test:hyperframes": "npm --prefix tests/fixtures/hyperframes-smoke run check",
     "test:ui": "node tests/ui-qa.mjs",
     "codex:version": "codex --version",
@@ -37,15 +41,17 @@
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
     "@vitejs/plugin-react": "5.0.2",
-    "playwright": "^1.55.0",
+    "playwright": "^1.62.1",
     "typescript": "5.9.2",
-    "vite": "7.1.3"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22"
