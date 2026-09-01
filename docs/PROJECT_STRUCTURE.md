@@ -38,9 +38,8 @@ state with different cleanup rules:
 
 ## HyperFrames project boundaries
 
-New Agent-created videos live in `data/video-projects/<project-id>/`. The older
-`data/projects/<project-id>/` layout is retained as legacy runtime data and is
-not shown in the V1 UI. Both formats are mutable user data and stay out of Git.
+Agent-created videos live in `data/video-projects/<project-id>/`. This is the
+only supported project layout. It is mutable user data and stays out of Git.
 
 Each project must remain self-contained:
 

@@ -26,16 +26,16 @@ curl -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/turns \
 ```
 
 Open `http://127.0.0.1:8797/` for the Yingya video Agent workspace. A new video
-project creates a persistent Codex thread and an isolated HyperFrames workspace
-under `data/video-projects/<project-id>/`. The browser sends turns through the
-generic `/api/agent-projects` API, streams the complete Codex event log over
-SSE, and renders artifacts from `.yingya/manifest.json`.
+project creates an isolated HyperFrames workspace under
+`data/video-projects/<project-id>/`; its Codex thread is created lazily when the
+first queued turn starts. The browser uses `/api/agent-projects`, loads recent
+events in pages, follows incremental updates over SSE, and renders artifacts
+from `.yingya/manifest.json`.
 
 The project-owned `yingya-video-agent` skill enforces a production-plan
 checkpoint before composition work and a draft checkpoint before final render.
 It also requires HyperFrames lint, validate, and inspect gates and durable Draft
-snapshots. Old `data/projects` records remain untouched and are not shown in the
-new UI.
+snapshots. Agent projects are the application's single supported project model.
 
 During frontend development, run `npm run web:dev` and open
 `http://127.0.0.1:8798/`. Vite listens on `0.0.0.0`, proxies API and asset
