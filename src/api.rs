@@ -1666,7 +1666,7 @@ async fn run_agent_turn(
                 .await
                 .unwrap_or_default();
             let workflow = validate_completed_workflow(state, project_id, &manifest).await;
-            if workflow.invalid {
+            if workflow.needs_recovery {
                 manifest.dirty = true;
                 let _ = state
                     .agent_projects
@@ -1691,7 +1691,7 @@ async fn run_agent_turn(
                 .agent_projects
                 .update_project(project_id, |record| {
                     record.active_turn_id = None;
-                    record.queue_paused = workflow.invalid;
+                    record.queue_paused = workflow.needs_recovery;
                     record.status = workflow.status.to_owned();
                     record.status_label = workflow.label.to_owned();
                 })
@@ -1739,7 +1739,7 @@ async fn run_agent_turn(
 struct WorkflowCompletion {
     status: &'static str,
     label: &'static str,
-    invalid: bool,
+    needs_recovery: bool,
     guidance: &'static str,
 }
 
@@ -1748,10 +1748,6 @@ async fn validate_completed_workflow(
     project_id: &str,
     manifest: &agent_projects::AgentManifest,
 ) -> WorkflowCompletion {
-    let checkpoint_kind = manifest
-        .checkpoint
-        .as_ref()
-        .map(|value| value.kind.as_str());
     let checkpoint_artifacts_valid = if let Some(checkpoint) = &manifest.checkpoint {
         !checkpoint.artifact_ids.is_empty()
             && checkpoint.artifact_ids.iter().all(|id| {
@@ -1839,61 +1835,172 @@ async fn validate_completed_workflow(
     let completed_video_valid = manifest.artifacts.iter().any(|artifact| {
         artifact.kind.to_ascii_lowercase().contains("video") && !artifact.path.trim().is_empty()
     }) && referenced_paths_exist;
+    let has_untracked_composition = has_untracked_composition(state, project_id).await;
+    let quality_report_passed =
+        has_current_passing_quality_report(state, project_id, manifest).await;
+
+    classify_completed_workflow(
+        manifest,
+        WorkflowEvidence {
+            checkpoint_artifacts_valid,
+            referenced_paths_exist,
+            draft_valid,
+            draft_source_synced,
+            completed_video_valid,
+            has_untracked_composition,
+            quality_report_passed,
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+struct WorkflowEvidence {
+    checkpoint_artifacts_valid: bool,
+    referenced_paths_exist: bool,
+    draft_valid: bool,
+    draft_source_synced: bool,
+    completed_video_valid: bool,
+    has_untracked_composition: bool,
+    quality_report_passed: bool,
+}
+
+fn classify_completed_workflow(
+    manifest: &agent_projects::AgentManifest,
+    evidence: WorkflowEvidence,
+) -> WorkflowCompletion {
+    let checkpoint_kind = manifest
+        .checkpoint
+        .as_ref()
+        .map(|value| value.kind.as_str());
 
     match manifest.phase.as_str() {
         "plan_review"
             if checkpoint_kind == Some("plan")
-                && checkpoint_artifacts_valid
-                && referenced_paths_exist =>
+                && evidence.checkpoint_artifacts_valid
+                && evidence.referenced_paths_exist =>
         {
             WorkflowCompletion {
                 status: "waiting_plan",
                 label: "制作方案等待确认",
-                invalid: false,
+                needs_recovery: false,
                 guidance: "",
             }
         }
         "draft_review"
             if checkpoint_kind == Some("draft")
-                && checkpoint_artifacts_valid
-                && referenced_paths_exist
-                && draft_valid
-                && draft_source_synced =>
+                && evidence.checkpoint_artifacts_valid
+                && evidence.referenced_paths_exist
+                && evidence.draft_valid
+                && evidence.draft_source_synced =>
         {
             WorkflowCompletion {
                 status: "draft_review",
                 label: "草稿等待确认",
-                invalid: false,
+                needs_recovery: false,
                 guidance: "",
             }
         }
-        "completed" if manifest.checkpoint.is_none() && completed_video_valid => {
+        "completed" if manifest.checkpoint.is_none() && evidence.completed_video_valid => {
             WorkflowCompletion {
                 status: "completed",
                 label: "高清成片已完成",
-                invalid: false,
+                needs_recovery: false,
                 guidance: "",
             }
         }
         "briefing"
             if manifest.artifacts.is_empty()
                 && manifest.versions.is_empty()
-                && !has_untracked_composition(state, project_id).await =>
+                && !evidence.has_untracked_composition =>
         {
             WorkflowCompletion {
                 status: "waiting_input",
                 label: "等待补充创作信息",
-                invalid: false,
+                needs_recovery: false,
                 guidance: "",
             }
         }
+        "production" | "final_render" if evidence.quality_report_passed => WorkflowCompletion {
+            status: "incomplete",
+            label: "检查已通过，草稿待封存",
+            needs_recovery: true,
+            guidance: "质量检查已经通过，但草稿尚未完成封存。现有报告和视频已保留；请登记不可变版本、currentDraft 与 draft checkpoint 后提交审核。",
+        },
+        "briefing" | "plan_review" | "production" | "draft_review" | "final_render"
+        | "completed" => WorkflowCompletion {
+            status: "incomplete",
+            label: "制作流程待收尾",
+            needs_recovery: true,
+            guidance: "本次制作已停止在可恢复的中间状态，现有文件已保留。请先复用与当前源码匹配的有效检查报告和视频，只补齐缺失步骤，再完成版本与 checkpoint 登记。",
+        },
         _ => WorkflowCompletion {
             status: "failed",
-            label: "制作流程异常，已暂停",
-            invalid: true,
-            guidance: "检测到本次修改尚未形成与当前源码一致的可审阅版本，已暂停后续队列。请完成检查、渲染下一版视频，并把源码快照、视频和 manifest 一并登记为新的 draft 后再提交审核。",
+            label: "项目状态无法识别",
+            needs_recovery: true,
+            guidance: "项目 manifest 使用了无法识别的阶段，已暂停后续队列。请检查 manifest 后恢复到受支持的制作阶段。",
         },
     }
+}
+
+async fn has_current_passing_quality_report(
+    state: &AppState,
+    project_id: &str,
+    manifest: &agent_projects::AgentManifest,
+) -> bool {
+    let Ok(project_dir) = state.agent_projects.project_dir(project_id) else {
+        return false;
+    };
+    let source_modified = [manifest.studio_entry.as_str(), "index.motion.json"]
+        .into_iter()
+        .filter_map(|relative| {
+            state
+                .agent_projects
+                .resolve_relative(project_id, relative)
+                .ok()
+        })
+        .filter_map(|path| std::fs::metadata(path).ok()?.modified().ok())
+        .max();
+    for directory in [
+        project_dir.join(".yingya"),
+        project_dir.join(".yingya/reports"),
+    ] {
+        let Ok(mut entries) = fs::read_dir(directory).await else {
+            continue;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            if !name.starts_with("check")
+                || path.extension().and_then(|value| value.to_str()) != Some("json")
+            {
+                continue;
+            }
+            let Ok(metadata) = entry.metadata().await else {
+                continue;
+            };
+            if let Some(source_modified) = source_modified
+                && metadata
+                    .modified()
+                    .ok()
+                    .is_none_or(|modified| modified < source_modified)
+            {
+                continue;
+            }
+            let Ok(bytes) = fs::read(&path).await else {
+                continue;
+            };
+            if serde_json::from_slice::<Value>(&bytes)
+                .ok()
+                .and_then(|value| value.get("ok").and_then(Value::as_bool))
+                == Some(true)
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn has_untracked_composition(state: &AppState, project_id: &str) -> bool {
@@ -1919,7 +2026,7 @@ async fn audit_existing_project_workflows(state: &AppState) {
             continue;
         };
         let workflow = validate_completed_workflow(state, &project.id, &manifest).await;
-        if workflow.invalid && !manifest.dirty {
+        if workflow.needs_recovery && !manifest.dirty {
             manifest.dirty = true;
             let _ = state
                 .agent_projects
@@ -1929,7 +2036,7 @@ async fn audit_existing_project_workflows(state: &AppState) {
         let _ = state
             .agent_projects
             .update_project(&project.id, |record| {
-                record.queue_paused = workflow.invalid;
+                record.queue_paused = workflow.needs_recovery;
                 record.status = workflow.status.to_owned();
                 record.status_label = workflow.label.to_owned();
             })
@@ -2454,6 +2561,50 @@ mod tests {
         assert_eq!(audio_extension(b"OggSrest of an ogg file"), Some("ogg"));
         assert_eq!(audio_extension(b"0000ftyprest of an m4a file"), Some("m4a"));
         assert_eq!(audio_extension(b"not audio"), None);
+    }
+
+    fn workflow_evidence() -> WorkflowEvidence {
+        WorkflowEvidence {
+            checkpoint_artifacts_valid: false,
+            referenced_paths_exist: true,
+            draft_valid: false,
+            draft_source_synced: false,
+            completed_video_valid: false,
+            has_untracked_composition: true,
+            quality_report_passed: false,
+        }
+    }
+
+    #[test]
+    fn production_without_a_checkpoint_is_recoverable_not_failed() {
+        let manifest = agent_projects::AgentManifest {
+            phase: "production".to_owned(),
+            dirty: true,
+            ..Default::default()
+        };
+        let result = classify_completed_workflow(&manifest, workflow_evidence());
+        assert_eq!(result.status, "incomplete");
+        assert_eq!(result.label, "制作流程待收尾");
+        assert!(result.needs_recovery);
+    }
+
+    #[test]
+    fn passing_quality_report_is_exposed_as_ready_to_package() {
+        let manifest = agent_projects::AgentManifest {
+            phase: "production".to_owned(),
+            dirty: true,
+            ..Default::default()
+        };
+        let result = classify_completed_workflow(
+            &manifest,
+            WorkflowEvidence {
+                quality_report_passed: true,
+                ..workflow_evidence()
+            },
+        );
+        assert_eq!(result.status, "incomplete");
+        assert_eq!(result.label, "检查已通过，草稿待封存");
+        assert!(result.needs_recovery);
     }
 
     #[test]

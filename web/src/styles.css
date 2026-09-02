@@ -94,6 +94,7 @@ button:not(:disabled) { cursor: pointer; }
 .project-list time { align-self: end; padding: 0 0 3px 28px; color: var(--dim); font: 10px var(--font-mono); white-space: nowrap; }
 .project-status--running, .project-item.active small { color: var(--purple-300); }
 .project-status--failed { color: var(--danger); }
+.project-status--incomplete { color: var(--warning); }
 .project-delete { position: absolute; top: 7px; right: 7px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 8px; background: var(--prey-900); color: var(--dim); opacity: 0; transform: translateY(-2px); transition: opacity var(--motion-quick) ease, transform var(--motion-quick) ease, color var(--motion-quick) ease, border-color var(--motion-quick) ease; }
 .project-delete svg { width: 15px; height: 15px; }
 .project-item:hover .project-delete, .project-delete:focus-visible { opacity: 1; transform: translateY(0); }
@@ -189,6 +190,7 @@ button:not(:disabled) { cursor: pointer; }
 .project-state--running { position: relative; padding-left: 12px; color: var(--purple-300); }
 .project-state--running::before { content: ""; position: absolute; left: 0; top: 50%; width: 6px; height: 6px; border-radius: 50%; background: var(--purple-300); box-shadow: 0 0 0 0 rgba(197,158,255,.55); transform: translateY(-50%); animation: status-wave 2s ease-out infinite; }
 .project-state--waiting_input, .project-status--waiting_input { color: var(--warning); }
+.project-state--incomplete { color: var(--warning); }
 .project-state--failed { color: var(--danger); }
 .spec-chip, .dirty-chip { height: 32px; padding: 0 11px; display: flex; align-items: center; gap: 5px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-900); color: var(--muted); font: 11px var(--font-mono); }
 .timeline { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 28px 24px 34px; }
@@ -246,6 +248,8 @@ button:not(:disabled) { cursor: pointer; }
 .workflow-recovery button { min-height: 38px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-900); color: var(--text); }
 .workflow-recovery button:hover { border-color: var(--purple-500); }
 .workflow-recovery button svg { width: 13px; color: var(--purple-300); }
+.workflow-recovery--incomplete { border-color: color-mix(in srgb, var(--warning) 42%, var(--line)); background: color-mix(in srgb, var(--warning) 6%, var(--prey-950)); }
+.workflow-recovery--incomplete > svg { color: var(--warning); }
 .context-line { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
 .agent-update { position: relative; min-height: 42px; margin: 16px 0 18px; padding: 10px 38px 10px 13px; overflow: hidden; border-left: 2px solid var(--purple-500); color: var(--muted); animation: reveal-up 420ms .12s var(--ease-sprout) both; }
 .agent-update::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, rgba(145,71,255,.08), transparent 55%); transform: translateX(-100%); animation: work-scan 2.4s ease-in-out infinite; }

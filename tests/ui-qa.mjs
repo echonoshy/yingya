@@ -167,6 +167,25 @@ async function assertWorkflowRecovery(browser) {
   await page.close();
 }
 
+async function assertIncompleteWorkflowRecovery(browser) {
+  const page = await browser.newPage({ viewport: { width: 1200, height: 820 }, reducedMotion: "reduce" });
+  const incomplete = {
+    ...structuredClone(detail), status: "incomplete", statusLabel: "检查已通过，草稿待封存", queuePaused: true,
+    manifest: { ...structuredClone(manifest), phase: "production", dirty: true, checkpoint: null, versions: [], currentDraft: null },
+  };
+  await installApiMock(page, incomplete);
+  await page.goto(baseUrl);
+  await page.getByRole("button", { name: /^秋季新品短片/ }).click();
+  const recovery = page.getByRole("status");
+  await recovery.getByText("检查已通过，草稿待封存", { exact: true }).waitFor();
+  await recovery.getByText("只补齐缺失的版本与审核登记", { exact: false }).waitFor();
+  if (await page.getByText("制作流程已安全暂停", { exact: true }).count()) throw new Error("Recoverable incomplete work should not be presented as a failed workflow");
+  await page.screenshot({ path: "/tmp/yingya-ui-incomplete.png", fullPage: true });
+  await recovery.getByRole("button", { name: "检查并恢复项目流程" }).click();
+  if (await page.getByPlaceholder("描述修改，或继续推进视频…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
+  await page.close();
+}
+
 async function assertWaitingInputPrompt(browser) {
   const waiting = {
     ...structuredClone(detail), status: "waiting_input", statusLabel: "等待补充创作信息", queueDepth: 0, queuePaused: false, queue: [],
@@ -303,9 +322,10 @@ try {
   await assertSupersededCheckpoint(browser);
   await assertCheckpointHiddenAfterRevision(browser);
   await assertWorkflowRecovery(browser);
+  await assertIncompleteWorkflowRecovery(browser);
   await assertWaitingInputPrompt(browser);
   await assertCreateAndMobile(browser);
-  console.log("UI QA passed: waiting-input prompt, plan/draft checkpoints, workflow recovery, desktop project flow, and 360px create/message flow");
+  console.log("UI QA passed: waiting-input prompt, plan/draft checkpoints, failed/incomplete workflow recovery, desktop project flow, and 360px create/message flow");
   console.log("Screenshots: /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-mobile.png");
 } finally {
   await browser?.close();

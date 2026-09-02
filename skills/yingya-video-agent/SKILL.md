@@ -25,6 +25,16 @@ This skill is the authoritative outer workflow for Yingya. If a nested HyperFram
 
 If the root manifest is still `briefing` but composition or render files already exist, treat them as unapproved recovery material. Inspect them without continuing production, create `.yingya/plan.md` from the request and reusable findings, write the root `plan_review` checkpoint, and stop for confirmation. Do not present the existing composition as an approved draft and do not delete it.
 
+For any interrupted or timed-out quality command, do not equate the client wait limit with a failed HyperFrames process. Before rerunning work:
+
+1. Check whether the original process is still active and wait for it when possible.
+2. Check for a completed JSON report and validate that its top-level `ok` is true.
+3. Reuse a passing report only when it is newer than `index.html` and `index.motion.json` (when present), or when a recorded source hash matches both files.
+4. Check whether the expected video already exists and is readable with `ffprobe`.
+5. Rerun only the missing or stale gate. Never rerender solely because the command client stopped waiting.
+
+Long-running `check`, `inspect`, and `render` commands must be started through an execution path that can yield and be polled. Allow up to 10 minutes for a healthy process that continues producing progress. A timeout is an `incomplete` execution state until the process exits or a valid report proves success or failure.
+
 ## Phase 1: production plan
 
 Create a concise plan artifact, normally `.yingya/plan.md`, containing at least:
@@ -43,11 +53,11 @@ Begin only after the user or checkpoint message explicitly confirms the plan.
 
 1. Create or update the visual specification (`DESIGN.md` when appropriate), HyperFrames composition, referenced assets, audio, and captions.
 2. Use available image, voice, music, or website-capture capabilities when appropriate. If a capability is unavailable, state that clearly and choose an honest fallback: programmatic visuals, user-provided media, or recommending an installable plugin.
-3. For a new composition, run the HyperFrames checks in this order: `lint`, `validate`, then `inspect`. Significant animation work also requires an animation map before rendering.
+3. For a new composition, run the HyperFrames checks in this order: `lint`, `validate`, then `inspect`. Significant animation work also requires an animation map before rendering. Write machine-readable reports to a temporary path, validate the JSON, then rename it into place so recovery never reads a partial report.
 4. Do not mark a failed or skipped gate as passed. Fix issues and rerun the affected checks.
 5. Render a review-quality video only after all required gates pass.
-6. Create an immutable version under `.yingya/versions/draft-N/` containing the composition source, required assets, design/config files, check report, manifest snapshot, and video. Exclude `node_modules`, caches, generated intermediates, and older version directories.
-7. Update the manifest artifacts, versions, `currentDraft`, clear `dirty`, set `phase: "draft_review"`, and add a `draft` checkpoint. Then stop for review.
+6. Record a SHA-256 source fingerprint for `index.html` and `index.motion.json` alongside the passing report. Create an immutable version under `.yingya/versions/draft-N/` containing the composition source, required assets, design/config files, check report, source fingerprint, manifest snapshot, and video. Exclude `node_modules`, caches, generated intermediates, and older version directories.
+7. Treat draft registration as a commit: first verify every referenced source, report, snapshot, and video exists; then build and validate the complete next manifest in a temporary file; finally rename that file over `.yingya/manifest.json`. The manifest replacement is always the last write. It must update artifacts, versions, `currentDraft`, clear `dirty`, set `phase: "draft_review"`, and add a `draft` checkpoint together. Then stop for review.
 
 ## Revisions
 

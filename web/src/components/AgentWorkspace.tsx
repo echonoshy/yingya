@@ -131,7 +131,7 @@ export function AgentWorkspace({ project, projects, models, selection, onSelecti
       <section className="timeline" ref={timelineRef}><div className="timeline-inner">
         <ConversationFeed entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
-        {project.status === "failed" && project.manifest.dirty ? <WorkflowRecoveryCard briefing={project.manifest.phase === "briefing"} onRecover={selectQuickReply}/> : null}
+        {(project.status === "failed" || project.status === "incomplete") && project.manifest.dirty ? <WorkflowRecoveryCard briefing={project.manifest.phase === "briefing"} incomplete={project.status === "incomplete"} statusLabel={project.statusLabel} onRecover={selectQuickReply}/> : null}
         {visibleCheckpoint ? <CheckpointCard kind={visibleCheckpoint.kind} title={visibleCheckpoint.title} summary={visibleCheckpoint.summary} busy={busy} onPreview={checkpointArtifact ? () => void previewArtifact(checkpointArtifact) : undefined} onConfirm={() => void confirm()}/> : null}
         {project.queue.length ? <section className="queue-card"><header><Queue/><b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b><span>{project.queue.length}</span>{project.queuePaused ? <button className="queue-resume" disabled={busy} onClick={() => void resumeQueue()}>继续处理</button> : null}</header>{project.queue.map((turn, index) => <div key={turn.id}><i>{String(index + 1).padStart(2, "0")}</i><span>{turn.text}</span><button aria-label="撤回排队消息" onClick={() => void api.removeQueued(project.id, turn.id).then(refresh)}><X/></button></div>)}</section> : null}
       </div></section>
@@ -232,9 +232,10 @@ function CheckpointCard({ kind, title, summary, busy, onPreview, onConfirm }: { 
   return <section className="checkpoint-card"><div className="checkpoint-icon"><CheckCircle weight="fill"/></div><div className="checkpoint-copy"><small>REVIEW CHECKPOINT</small><h2>{title || (draft ? "草稿视频已就绪" : "制作方案已就绪")}</h2><p>{summary || (draft ? "确认草稿后，Agent 才会渲染最终高清成片。" : "确认方向后，Agent 才会开始制作完整 Composition。")}</p></div><div className="checkpoint-actions">{onPreview ? <button className="checkpoint-preview" onClick={onPreview}><Eye/>{draft ? "查看草稿" : "查看计划"}</button> : null}<button className="primary-button kiro-fill" disabled={busy} onClick={onConfirm}>{draft ? "确认并渲染成片" : "确认并制作"}<ArrowUp/></button></div></section>;
 }
 
-function WorkflowRecoveryCard({ briefing, onRecover }: { briefing: boolean; onRecover: (value: string) => void }) {
+function WorkflowRecoveryCard({ briefing, incomplete, statusLabel, onRecover }: { briefing: boolean; incomplete: boolean; statusLabel: string; onRecover: (value: string) => void }) {
   const prompt = briefing ? "重新生成制作方案" : "检查并恢复项目流程";
-  return <section className="workflow-recovery" role="alert"><Warning/><div><b>制作流程已安全暂停</b><p>{briefing ? "检测到视频制作越过了方案确认。已有文件会保留，恢复后将先生成可确认的制作方案。" : "项目状态或产物不完整。恢复后会先检查现有文件，再回到正确的确认节点。"}</p></div><button type="button" onClick={() => onRecover(prompt)}>{prompt}<ArrowRight/></button></section>;
+  const detail = briefing ? "检测到视频制作越过了方案确认。已有文件会保留，恢复后将先生成可确认的制作方案。" : incomplete ? "现有文件和有效检查结果已保留。恢复时会先复用已有成果，只补齐缺失的版本与审核登记。" : "项目状态或产物不完整。恢复后会先检查现有文件，再回到正确的确认节点。";
+  return <section className={`workflow-recovery ${incomplete ? "workflow-recovery--incomplete" : ""}`} role={incomplete ? "status" : "alert"}><Warning/><div><b>{incomplete ? statusLabel : "制作流程已安全暂停"}</b><p>{detail}</p></div><button type="button" onClick={() => onRecover(prompt)}>{prompt}<ArrowRight/></button></section>;
 }
 
 type RenderResolution = "landscape" | "landscape-4k" | "portrait" | "portrait-4k";
