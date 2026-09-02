@@ -8,9 +8,9 @@ use std::{
 
 use crate::agent_jobs::{ActiveAgentTurn, AgentJobCoordinator};
 use crate::agent_projects::{
-    self, AgentEvent, AgentMedia, AgentProjectDetail, AgentProjectRecord, AgentProjectStore,
-    AgentTurnRequest, AppendAgentMessage, CreateAgentProjectRequest, MediaAsset, MediaScene,
-    QueuedTurn,
+    self, AgentArtifact, AgentEvent, AgentMedia, AgentProjectDetail, AgentProjectRecord,
+    AgentProjectStore, AgentTurnRequest, AppendAgentMessage, CreateAgentProjectRequest, MediaAsset,
+    MediaScene, QueuedTurn,
 };
 use crate::codex::{
     CodexClient, CodexConfig, CodexError, GeneratedImageEvent, ThreadStarted, TurnCancellation,
@@ -179,6 +179,23 @@ struct AgentTurnAccepted {
     queue_depth: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderAgentVideoRequest {
+    version_id: String,
+    resolution: String,
+    fps: u16,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderAgentVideoResponse {
+    path: String,
+    label: String,
+    resolution: String,
+    fps: u16,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentUploadResponse {
@@ -206,6 +223,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(directory).await?;
     }
     let root = paths.resources.clone();
+    let video_agent_skill = install_bundled_video_agent_skill(&root, &paths.codex_home).await?;
     let hyperframes_browser = discover_hyperframes_browser(&root, &paths.hyperframes_home).await;
     let config = CodexConfig {
         binary: env_path("YINGYA_CODEX_BIN", root.join("node_modules/.bin/codex")),
@@ -214,7 +232,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         model: env::var("YINGYA_CODEX_MODEL").unwrap_or_else(|_| "gpt-5.6-terra".to_owned()),
         network_access: env_bool("YINGYA_CODEX_NETWORK_ACCESS", true),
         hyperframes_browser,
-        video_agent_skill: Some(root.join("skills/yingya-video-agent/SKILL.md")),
+        video_agent_skill: Some(video_agent_skill),
         // This is an inactivity timeout, not a cap on the total production time.
         turn_timeout: Duration::from_secs(env_u64("YINGYA_CODEX_TURN_TIMEOUT_SECS", 3600)),
     };
@@ -242,6 +260,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         agent_events,
         agent_jobs: AgentJobCoordinator::default(),
     };
+    audit_existing_project_workflows(&state).await;
     let app = Router::new()
         .route("/health", get(health))
         .route("/api/codex/skills", get(list_skills))
@@ -293,6 +312,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             post(confirm_agent_checkpoint),
         )
         .route(
+            "/api/agent-projects/{project_id}/render",
+            post(render_agent_video),
+        )
+        .route(
             "/api/agent-projects/{project_id}/requests/respond",
             post(respond_agent_request),
         )
@@ -341,6 +364,22 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     info!(%address, "Yingya Rust backend is listening");
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn install_bundled_video_agent_skill(
+    resources: &FilePath,
+    codex_home: &FilePath,
+) -> Result<PathBuf, std::io::Error> {
+    let source = resources.join("skills/yingya-video-agent");
+    let destination = codex_home.join("skills/yingya-video-agent");
+    fs::create_dir_all(destination.join("agents")).await?;
+    fs::copy(source.join("SKILL.md"), destination.join("SKILL.md")).await?;
+    fs::copy(
+        source.join("agents/openai.yaml"),
+        destination.join("agents/openai.yaml"),
+    )
+    .await?;
+    Ok(destination.join("SKILL.md"))
 }
 
 async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
@@ -419,6 +458,7 @@ async fn rename_agent_project(
         .update_project(&project_id, |record| record.title = title)
         .await
         .map_err(ApiError::Project)?;
+    emit_agent_state_event(&state, &project_id, None, "project/updated").await;
     Ok(Json(project))
 }
 
@@ -582,40 +622,65 @@ async fn confirm_agent_checkpoint(
         .get(&project_id)
         .await
         .map_err(ApiError::Project)?;
-    let checkpoint = detail
-        .manifest
-        .checkpoint
-        .ok_or_else(|| ApiError::Conflict("project is not waiting for confirmation".to_owned()))?;
-    if checkpoint.kind != "plan" {
-        return Err(ApiError::Conflict(
-            "草稿视频无需再次确认或导出，请直接在预览中审阅".to_owned(),
-        ));
+    let checkpoint =
+        detail.manifest.checkpoint.clone().ok_or_else(|| {
+            ApiError::Conflict("project is not waiting for confirmation".to_owned())
+        })?;
+    if checkpoint.kind != "plan" && checkpoint.kind != "draft" {
+        return Err(ApiError::Conflict("unsupported checkpoint kind".to_owned()));
     }
     let checkpoint_context = format!("checkpoint:{}", checkpoint.id);
     let active = state.agent_jobs.active(&project_id).await;
+    let mut manifest = state
+        .agent_projects
+        .manifest(&project_id)
+        .await
+        .map_err(ApiError::Project)?;
+    let previous_manifest = manifest.clone();
+    let transitioned = manifest
+        .checkpoint
+        .as_ref()
+        .is_some_and(|current| current.id == checkpoint.id);
+    if transitioned {
+        manifest.checkpoint = None;
+        manifest.phase = if checkpoint.kind == "plan" {
+            "production".to_owned()
+        } else {
+            "final_render".to_owned()
+        };
+        state
+            .agent_projects
+            .write_manifest(&project_id, &manifest)
+            .await
+            .map_err(ApiError::Project)?;
+    }
     let accepted = if let Some(active) = active.filter(|active| {
         active
             .context
             .iter()
             .any(|value| value == &checkpoint_context)
     }) {
-        Json(AgentTurnAccepted {
+        Ok(Json(AgentTurnAccepted {
             turn_id: active.request_id,
             status: "running".to_owned(),
             queue_depth: detail.queue.len(),
-        })
+        }))
     } else if let Some(existing) = detail.queue.iter().find(|turn| {
         turn.context
             .iter()
             .any(|value| value == &checkpoint_context)
     }) {
-        Json(AgentTurnAccepted {
+        Ok(Json(AgentTurnAccepted {
             turn_id: existing.id.clone(),
             status: "queued".to_owned(),
             queue_depth: detail.queue.len(),
-        })
+        }))
     } else {
-        let text = "当前制作方案已经确认。请按方案继续制作完整草稿；完成 HyperFrames lint、validate、inspect 和必要的动画检查后，写入 draft checkpoint 并返回可审阅视频。";
+        let text = if checkpoint.kind == "plan" {
+            "当前制作方案已经确认。请按方案继续制作完整草稿；完成 HyperFrames lint、validate、inspect 和必要的动画检查后，写入 draft checkpoint 并返回可审阅视频。"
+        } else {
+            "当前草稿已经明确确认。请执行最终质量检查并渲染高质量 MP4；成功后把最终视频写入 manifest artifacts，清除 checkpoint 和 dirty，并将 phase 设置为 completed。"
+        };
         post_agent_turn(
             State(state.clone()),
             Path(project_id.clone()),
@@ -628,27 +693,186 @@ async fn confirm_agent_checkpoint(
                 interrupt: false,
             }),
         )
-        .await?
+        .await
     };
+    if accepted.is_err() && transitioned {
+        let _ = state
+            .agent_projects
+            .write_manifest(&project_id, &previous_manifest)
+            .await;
+    }
+    accepted
+}
+
+async fn render_agent_video(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Json(request): Json<RenderAgentVideoRequest>,
+) -> Result<Json<RenderAgentVideoResponse>, ApiError> {
+    let (resolution, resolution_pixels, resolution_label) = match request.resolution.as_str() {
+        "landscape" => ("landscape", "1920x1080", "1920 × 1080 p"),
+        "landscape-4k" => ("landscape-4k", "3840x2160", "3840 × 2160 p"),
+        "portrait" => ("portrait", "1080x1920", "1080 × 1920 p"),
+        "portrait-4k" => ("portrait-4k", "2160x3840", "2160 × 3840 p"),
+        "square" => ("square", "1080x1080", "1080 × 1080 p"),
+        "square-4k" => ("square-4k", "2160x2160", "2160 × 2160 p"),
+        _ => {
+            return Err(ApiError::Validation("请选择支持的渲染分辨率".to_owned()));
+        }
+    };
+    if !matches!(request.fps, 30 | 60) {
+        return Err(ApiError::Validation("帧率必须是 30 或 60 FPS".to_owned()));
+    }
+
+    let _gate = state.agent_jobs.lock(&project_id).await;
+    if state.agent_jobs.contains(&project_id).await {
+        return Err(ApiError::Conflict(
+            "项目仍在制作中，请等待当前任务结束后再渲染成片".to_owned(),
+        ));
+    }
+
     let mut manifest = state
         .agent_projects
         .manifest(&project_id)
         .await
         .map_err(ApiError::Project)?;
-    if manifest
-        .checkpoint
-        .as_ref()
-        .is_some_and(|current| current.id == checkpoint.id)
+    if let Some(aspect_ratio) = manifest
+        .output_spec
+        .get("aspectRatio")
+        .and_then(Value::as_str)
     {
-        manifest.checkpoint = None;
-        manifest.phase = "production".to_owned();
-        state
-            .agent_projects
-            .write_manifest(&project_id, &manifest)
-            .await
-            .map_err(ApiError::Project)?;
+        let compatible = match aspect_ratio {
+            "16:9" => resolution.starts_with("landscape"),
+            "9:16" => resolution.starts_with("portrait"),
+            "1:1" => resolution.starts_with("square"),
+            _ => true,
+        };
+        if !compatible {
+            return Err(ApiError::Validation(format!(
+                "所选分辨率与项目画幅 {} 不匹配",
+                aspect_ratio
+            )));
+        }
     }
-    Ok(accepted)
+    let version = manifest
+        .versions
+        .iter()
+        .find(|version| version.id == request.version_id)
+        .cloned()
+        .ok_or_else(|| ApiError::NotFound("找不到要渲染的草稿版本".to_owned()))?;
+    let source = state
+        .agent_projects
+        .resolve_relative(&project_id, &version.source_path)
+        .map_err(ApiError::Project)?;
+    if fs::metadata(&source)
+        .await
+        .map(|value| !value.is_file())
+        .unwrap_or(true)
+    {
+        return Err(ApiError::NotFound("草稿源文件不存在，无法渲染".to_owned()));
+    }
+    let source_dir = source
+        .parent()
+        .ok_or_else(|| ApiError::Validation("草稿源文件路径无效".to_owned()))?;
+    let relative_output = format!(
+        ".yingya/exports/{}-{}-{}fps.mp4",
+        version.id, resolution, request.fps
+    );
+    let output_path = state
+        .agent_projects
+        .resolve_relative(&project_id, &relative_output)
+        .map_err(ApiError::Project)?;
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).await?;
+    }
+
+    let output = tokio::time::timeout(
+        Duration::from_secs(7_200),
+        Command::new(state.root.join("node_modules/.bin/hyperframes"))
+            .arg("render")
+            .args(["--output", output_path.to_string_lossy().as_ref()])
+            .args(["--quality", "high"])
+            .args(["--resolution", resolution])
+            .args(["--fps", &request.fps.to_string()])
+            .current_dir(source_dir)
+            .env("HOME", state.hyperframes_home.as_ref())
+            .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .map_err(|_| ApiError::External("视频渲染超时".to_owned()))??;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        return Err(ApiError::External(if stderr.is_empty() {
+            stdout
+        } else {
+            stderr
+        }));
+    }
+    if fs::metadata(&output_path)
+        .await
+        .map(|value| !value.is_file())
+        .unwrap_or(true)
+    {
+        return Err(ApiError::External(
+            "HyperFrames 未生成预期的视频文件".to_owned(),
+        ));
+    }
+
+    let label = format!(
+        "{} · {} · {} FPS 成片",
+        version.label, resolution_label, request.fps
+    );
+    let artifact_id = format!("final-{}-{}-{}fps", version.id, resolution, request.fps);
+    manifest
+        .artifacts
+        .retain(|artifact| artifact.id != artifact_id);
+    manifest.artifacts.push(AgentArtifact {
+        id: artifact_id,
+        kind: "final-video".to_owned(),
+        label: label.clone(),
+        path: relative_output.clone(),
+        version: Some(version.id.clone()),
+        metadata: json!({
+            "quality": "high",
+            "frameRate": request.fps,
+            "resolution": resolution_pixels,
+        }),
+    });
+    if let Some(output_spec) = manifest.output_spec.as_object_mut() {
+        output_spec.insert("finalQuality".to_owned(), Value::String("high".to_owned()));
+        output_spec.insert("frameRate".to_owned(), Value::from(request.fps));
+        output_spec.insert(
+            "resolution".to_owned(),
+            Value::String(resolution_pixels.to_owned()),
+        );
+    }
+    manifest.checkpoint = None;
+    manifest.phase = "completed".to_owned();
+    manifest.dirty = false;
+    state
+        .agent_projects
+        .write_manifest(&project_id, &manifest)
+        .await
+        .map_err(ApiError::Project)?;
+    state
+        .agent_projects
+        .update_project(&project_id, |record| {
+            record.status = "completed".to_owned();
+            record.status_label = format!("{} 成片已完成", resolution_label);
+        })
+        .await
+        .map_err(ApiError::Project)?;
+    emit_agent_state_event(&state, &project_id, None, "project/updated").await;
+
+    Ok(Json(RenderAgentVideoResponse {
+        path: relative_output,
+        label,
+        resolution: resolution_pixels.to_owned(),
+        fps: request.fps,
+    }))
 }
 
 async fn respond_agent_request(
@@ -1436,27 +1660,40 @@ async fn run_agent_turn(
                     )
                     .await;
             }
-            let manifest = state
+            let mut manifest = state
                 .agent_projects
                 .manifest(project_id)
                 .await
                 .unwrap_or_default();
-            let (status, label) = match manifest
-                .checkpoint
-                .as_ref()
-                .map(|value| value.kind.as_str())
-            {
-                Some("plan") => ("waiting_plan", "制作方案等待确认"),
-                Some("draft") => ("draft_review", "草稿等待确认"),
-                _ if manifest.phase == "completed" => ("completed", "高清成片已完成"),
-                _ => ("idle", "等待下一条指令"),
-            };
+            let workflow = validate_completed_workflow(state, project_id, &manifest).await;
+            if workflow.invalid {
+                manifest.dirty = true;
+                let _ = state
+                    .agent_projects
+                    .write_manifest(project_id, &manifest)
+                    .await;
+                let _ = state
+                    .agent_projects
+                    .append_message(
+                        project_id,
+                        AppendAgentMessage {
+                            turn_id: Some(queued.id.clone()),
+                            role: "assistant".to_owned(),
+                            text: workflow.guidance.to_owned(),
+                            attachments: vec![],
+                            context: vec![],
+                            status: "completed".to_owned(),
+                        },
+                    )
+                    .await;
+            }
             let _ = state
                 .agent_projects
                 .update_project(project_id, |record| {
                     record.active_turn_id = None;
-                    record.status = status.to_owned();
-                    record.status_label = label.to_owned();
+                    record.queue_paused = workflow.invalid;
+                    record.status = workflow.status.to_owned();
+                    record.status_label = workflow.label.to_owned();
                 })
                 .await;
         }
@@ -1496,6 +1733,207 @@ async fn run_agent_turn(
                 })
                 .await;
         }
+    }
+}
+
+struct WorkflowCompletion {
+    status: &'static str,
+    label: &'static str,
+    invalid: bool,
+    guidance: &'static str,
+}
+
+async fn validate_completed_workflow(
+    state: &AppState,
+    project_id: &str,
+    manifest: &agent_projects::AgentManifest,
+) -> WorkflowCompletion {
+    let checkpoint_kind = manifest
+        .checkpoint
+        .as_ref()
+        .map(|value| value.kind.as_str());
+    let checkpoint_artifacts_valid = if let Some(checkpoint) = &manifest.checkpoint {
+        !checkpoint.artifact_ids.is_empty()
+            && checkpoint.artifact_ids.iter().all(|id| {
+                manifest
+                    .artifacts
+                    .iter()
+                    .any(|artifact| artifact.id == *id && !artifact.path.trim().is_empty())
+            })
+    } else {
+        false
+    };
+    let referenced_paths_exist = async {
+        for artifact in &manifest.artifacts {
+            let Ok(path) = state
+                .agent_projects
+                .resolve_relative(project_id, &artifact.path)
+            else {
+                return false;
+            };
+            if fs::metadata(path).await.is_err() {
+                return false;
+            }
+        }
+        true
+    }
+    .await;
+    let draft_valid = if let Some(current) = manifest.current_draft.as_deref() {
+        if let Some(version) = manifest
+            .versions
+            .iter()
+            .find(|version| version.id == current)
+        {
+            let source = state
+                .agent_projects
+                .resolve_relative(project_id, &version.source_path);
+            let video = state
+                .agent_projects
+                .resolve_relative(project_id, &version.video_path);
+            match (source, video) {
+                (Ok(source), Ok(video)) => {
+                    fs::metadata(source).await.is_ok() && fs::metadata(video).await.is_ok()
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    let draft_source_synced = if let Some(current) = manifest.current_draft.as_deref() {
+        if let Some(version) = manifest
+            .versions
+            .iter()
+            .find(|version| version.id == current)
+        {
+            let snapshot = state
+                .agent_projects
+                .resolve_relative(project_id, &version.source_path);
+            let workspace = state
+                .agent_projects
+                .resolve_relative(project_id, &manifest.studio_entry);
+            match (snapshot, workspace) {
+                (Ok(mut snapshot), Ok(workspace)) => {
+                    if fs::metadata(&snapshot)
+                        .await
+                        .map(|metadata| metadata.is_dir())
+                        .unwrap_or(false)
+                    {
+                        snapshot = snapshot.join("index.html");
+                    }
+                    match (fs::read(snapshot).await, fs::read(workspace).await) {
+                        (Ok(snapshot), Ok(workspace)) => snapshot == workspace,
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    let completed_video_valid = manifest.artifacts.iter().any(|artifact| {
+        artifact.kind.to_ascii_lowercase().contains("video") && !artifact.path.trim().is_empty()
+    }) && referenced_paths_exist;
+
+    match manifest.phase.as_str() {
+        "plan_review"
+            if checkpoint_kind == Some("plan")
+                && checkpoint_artifacts_valid
+                && referenced_paths_exist =>
+        {
+            WorkflowCompletion {
+                status: "waiting_plan",
+                label: "制作方案等待确认",
+                invalid: false,
+                guidance: "",
+            }
+        }
+        "draft_review"
+            if checkpoint_kind == Some("draft")
+                && checkpoint_artifacts_valid
+                && referenced_paths_exist
+                && draft_valid
+                && draft_source_synced =>
+        {
+            WorkflowCompletion {
+                status: "draft_review",
+                label: "草稿等待确认",
+                invalid: false,
+                guidance: "",
+            }
+        }
+        "completed" if manifest.checkpoint.is_none() && completed_video_valid => {
+            WorkflowCompletion {
+                status: "completed",
+                label: "高清成片已完成",
+                invalid: false,
+                guidance: "",
+            }
+        }
+        "briefing"
+            if manifest.artifacts.is_empty()
+                && manifest.versions.is_empty()
+                && !has_untracked_composition(state, project_id).await =>
+        {
+            WorkflowCompletion {
+                status: "waiting_input",
+                label: "等待补充创作信息",
+                invalid: false,
+                guidance: "",
+            }
+        }
+        _ => WorkflowCompletion {
+            status: "failed",
+            label: "制作流程异常，已暂停",
+            invalid: true,
+            guidance: "检测到本次修改尚未形成与当前源码一致的可审阅版本，已暂停后续队列。请完成检查、渲染下一版视频，并把源码快照、视频和 manifest 一并登记为新的 draft 后再提交审核。",
+        },
+    }
+}
+
+async fn has_untracked_composition(state: &AppState, project_id: &str) -> bool {
+    for relative in ["index.html", "video/index.html"] {
+        if let Ok(path) = state.agent_projects.resolve_relative(project_id, relative)
+            && fs::metadata(path).await.is_ok()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+async fn audit_existing_project_workflows(state: &AppState) {
+    let Ok(projects) = state.agent_projects.list().await else {
+        return;
+    };
+    for project in projects {
+        if project.active_turn_id.is_some() {
+            continue;
+        }
+        let Ok(mut manifest) = state.agent_projects.manifest(&project.id).await else {
+            continue;
+        };
+        let workflow = validate_completed_workflow(state, &project.id, &manifest).await;
+        if workflow.invalid && !manifest.dirty {
+            manifest.dirty = true;
+            let _ = state
+                .agent_projects
+                .write_manifest(&project.id, &manifest)
+                .await;
+        }
+        let _ = state
+            .agent_projects
+            .update_project(&project.id, |record| {
+                record.queue_paused = workflow.invalid;
+                record.status = workflow.status.to_owned();
+                record.status_label = workflow.label.to_owned();
+            })
+            .await;
     }
 }
 
@@ -1948,6 +2386,44 @@ fn is_not_found_message(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn installs_bundled_video_agent_into_codex_home() {
+        let root = env::temp_dir().join(format!("yingya-skill-test-{}", Uuid::new_v4()));
+        let resources = root.join("resources");
+        let codex_home = root.join("codex-home");
+        fs::create_dir_all(resources.join("skills/yingya-video-agent/agents"))
+            .await
+            .unwrap();
+        fs::write(
+            resources.join("skills/yingya-video-agent/SKILL.md"),
+            "---\nname: yingya-video-agent\ndescription: test\n---\n",
+        )
+        .await
+        .unwrap();
+        fs::write(
+            resources.join("skills/yingya-video-agent/agents/openai.yaml"),
+            "interface:\n  display_name: \"Yingya\"\n",
+        )
+        .await
+        .unwrap();
+
+        let installed = install_bundled_video_agent_skill(&resources, &codex_home)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            installed,
+            codex_home.join("skills/yingya-video-agent/SKILL.md")
+        );
+        assert!(installed.is_file());
+        assert!(
+            codex_home
+                .join("skills/yingya-video-agent/agents/openai.yaml")
+                .is_file()
+        );
+        fs::remove_dir_all(root).await.unwrap();
+    }
 
     #[test]
     fn recognizes_missing_codex_threads_for_recovery() {

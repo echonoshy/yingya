@@ -15,7 +15,7 @@ describe("buildTimeline", () => {
     ], new Set());
 
     expect(timeline).toHaveLength(1);
-    expect(timeline[0]).toMatchObject({ id: "command-cmd", title: "检查 HyperFrames", status: "completed", output: "passed\n", firstSeq: 1, lastSeq: 3 });
+    expect(timeline[0]).toMatchObject({ id: "command-cmd", title: "检查 HyperFrames", status: "completed", output: "passed\n", firstSeq: 1, lastSeq: 3, createdAt: 1 });
   });
 
   it("does not repeat an assistant message already persisted", () => {

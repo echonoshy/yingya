@@ -282,7 +282,12 @@ impl AgentProjectStore {
             else {
                 continue;
             };
-            if project.title != derive_legacy_title(prompt) {
+            let looks_like_generated_title = project.title == derive_legacy_title(prompt)
+                || (["视频给我", "视频吧", "短片给我", "短片吧"]
+                    .iter()
+                    .any(|fragment| project.title.contains(fragment))
+                    && project.title.ends_with("视频"));
+            if !looks_like_generated_title {
                 continue;
             }
             let next = derive_title(prompt);
@@ -1091,10 +1096,17 @@ fn derive_title(prompt: &str) -> String {
         })
         .unwrap_or_else(|| clean_subject(&compact));
 
+    let subject = title_case_ascii_words(&subject);
     let title = if subject.is_empty() {
         video_type.to_owned()
+    } else if subject
+        .chars()
+        .last()
+        .is_some_and(|character| character.is_ascii_alphanumeric())
+    {
+        format!("{subject} {video_type}")
     } else {
-        format!("{} {}", title_case_ascii_words(&subject), video_type)
+        format!("{subject}{video_type}")
     };
     title.chars().take(24).collect()
 }
@@ -1130,6 +1142,20 @@ fn clean_subject(value: &str) -> String {
     for prefix in ["简单的", "简单", "关于", "用于"] {
         if let Some(rest) = subject.strip_prefix(prefix) {
             subject = rest.trim();
+        }
+    }
+    for suffix in [
+        "给我看一下",
+        "给我看看",
+        "给我看",
+        "给我",
+        "吧",
+        "好吗",
+        "可以吗",
+    ] {
+        if let Some(rest) = subject.strip_suffix(suffix) {
+            subject = rest.trim();
+            break;
         }
     }
     for suffix in [
@@ -1522,7 +1548,11 @@ mod tests {
         );
         assert_eq!(
             derive_title("请帮我制作一个关于量子纠缠的科普短片"),
-            "量子纠缠 科普视频"
+            "量子纠缠科普视频"
+        );
+        assert_eq!(
+            derive_title("生成一个关于斜面摩擦受力分析的视频给我"),
+            "斜面摩擦受力分析视频"
         );
     }
 
@@ -1578,6 +1608,34 @@ mod tests {
             })
             .await
             .expect("seed legacy title");
+
+        let awkward_prompt = "生成一个关于斜面摩擦受力分析的视频给我";
+        let mut awkward_input = request();
+        awkward_input.prompt = awkward_prompt.to_owned();
+        let awkward_project = store
+            .create(&awkward_input)
+            .await
+            .expect("create awkward-title project");
+        store
+            .append_message(
+                &awkward_project.id,
+                AppendAgentMessage {
+                    turn_id: None,
+                    role: "user".to_owned(),
+                    text: awkward_prompt.to_owned(),
+                    attachments: vec![],
+                    context: vec![],
+                    status: "completed".to_owned(),
+                },
+            )
+            .await
+            .expect("append awkward prompt");
+        store
+            .update_project(&awkward_project.id, |record| {
+                record.title = "斜面摩擦受力分析的视频给我 视频".to_owned()
+            })
+            .await
+            .expect("seed awkward generated title");
         drop(store);
 
         let migrated = AgentProjectStore::new(root.clone())
@@ -1590,6 +1648,14 @@ mod tests {
                 .expect("read migrated project")
                 .title,
             "Viaim 演示视频"
+        );
+        assert_eq!(
+            migrated
+                .read_project(&awkward_project.id)
+                .await
+                .expect("read migrated awkward title")
+                .title,
+            "斜面摩擦受力分析视频"
         );
         fs::remove_dir_all(root).await.expect("clean test store");
     }

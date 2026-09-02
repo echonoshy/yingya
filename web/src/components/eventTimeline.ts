@@ -10,6 +10,7 @@ export interface TimelineActivity {
   status: "running" | "completed" | "failed" | "interrupted" | "waiting";
   firstSeq: number;
   lastSeq: number;
+  createdAt: number;
   turnId?: string;
   event?: AgentEvent;
 }
@@ -30,7 +31,7 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
   function activity(id: string, kind: ActivityKind, event: AgentEvent, title: string) {
     let item = byId.get(id);
     if (!item) {
-      item = { id, kind, title, summary: "", output: "", status: "running", firstSeq: event.seq, lastSeq: event.seq, turnId: event.turnId };
+      item = { id, kind, title, summary: "", output: "", status: "running", firstSeq: event.seq, lastSeq: event.seq, createdAt: event.createdAt, turnId: event.turnId };
       byId.set(id, item);
       activities.push(item);
     }
@@ -45,7 +46,7 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
     const itemId = stringValue(params.itemId) || stringValue(item.id);
 
     if (isRequest(event, payload)) {
-      activities.push({ id: `request-${event.seq}`, kind: "request", title: requestTitle(event.method), summary: stringValue(params.reason) || stringValue(params.message), output: "", status: "waiting", firstSeq: event.seq, lastSeq: event.seq, event });
+      activities.push({ id: `request-${event.seq}`, kind: "request", title: requestTitle(event.method), summary: stringValue(params.reason) || stringValue(params.message), output: "", status: "waiting", firstSeq: event.seq, lastSeq: event.seq, createdAt: event.createdAt, event });
       continue;
     }
 

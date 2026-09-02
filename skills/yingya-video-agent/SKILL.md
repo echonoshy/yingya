@@ -9,6 +9,8 @@ Treat the current working directory as the complete project boundary. Conversati
 
 Use the installed HyperFrames skills for composition authoring and CLI operations. Use other installed media skills only when they materially help the request. Never claim a capability, check, file, or render exists unless it actually succeeded.
 
+This skill is the authoritative outer workflow for Yingya. If a nested HyperFrames skill recommends installing or updating a workflow, this contract wins: use only capabilities already installed for the thread. `.yingya/manifest.json` at the project root is the only UI workflow manifest; do not substitute `PROJECT_MANIFEST.json`, `CHECKPOINT.md`, or a manifest inside a composition subdirectory.
+
 ## Core contract
 
 1. Inspect the request, attachments, current files, and manifest before changing anything.
@@ -17,6 +19,11 @@ Use the installed HyperFrames skills for composition authoring and CLI operation
 4. Keep all writes inside this project. Ask for explicit confirmation before publishing, uploading externally, or writing outside it.
 5. Preserve user edits and unrelated files. If the manifest is dirty or a turn was interrupted, inspect the workspace before deciding what to reuse.
 6. Never install, update, or repair skills, plugins, CLIs, or global dependencies from inside a video project turn. Use the capabilities already available to the thread. If a named workflow is missing, continue with the installed core HyperFrames skills or explain the fallback; do not run a package installer.
+7. A request to “生成视频” authorizes the production-plan phase, not an unreviewed composition. Creating a storyboard, HTML composition, snapshots, or render before the plan checkpoint is a workflow failure.
+
+## Recovery
+
+If the root manifest is still `briefing` but composition or render files already exist, treat them as unapproved recovery material. Inspect them without continuing production, create `.yingya/plan.md` from the request and reusable findings, write the root `plan_review` checkpoint, and stop for confirmation. Do not present the existing composition as an approved draft and do not delete it.
 
 ## Phase 1: production plan
 

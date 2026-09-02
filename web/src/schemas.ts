@@ -28,6 +28,7 @@ export const agentManifestSchema = z.object({
 });
 export const projectDetailSchema = projectRecordSchema.extend({ manifest: agentManifestSchema, messages: z.array(agentMessageSchema), queue: z.array(queuedTurnSchema), eventCursor: z.number() });
 export const turnAcceptedSchema = z.object({ turnId: z.string(), status: z.string(), queueDepth: z.number() });
+export const renderVideoResultSchema = z.object({ path: z.string(), label: z.string(), resolution: z.string(), fps: z.union([z.literal(30), z.literal(60)]) });
 export const eventPageSchema = z.object({ items: z.array(agentEventSchema), nextBefore: z.number().optional(), latestSeq: z.number(), hasMore: z.boolean() });
 
 export type CodexModel = z.infer<typeof codexModelSchema>;

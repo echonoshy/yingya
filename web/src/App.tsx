@@ -1,11 +1,11 @@
 import { ArrowRight, ArrowUp, CloudSlash, Paperclip, WifiHigh } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { api } from "./api";
 import { AgentWorkspace } from "./components/AgentWorkspace";
 import { ModelSelector } from "./components/ModelSelector";
 import { ProjectSidebar } from "./components/ProjectSidebar";
 import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "./types";
-import { readModelSelection, writeModelSelection } from "./storage";
+import { readModelSelection, readNumberSetting, writeModelSelection, writeNumberSetting } from "./storage";
 
 const fallbackModels: CodexModel[] = [
   ["gpt-5.6-terra", "GPT-5.6 Terra", "均衡的质量与速度"], ["gpt-5.6-sol", "GPT-5.6 Sol", "复杂创作与高质量推理"], ["gpt-5.6-luna", "GPT-5.6 Luna", "快速迭代"],
@@ -17,6 +17,9 @@ function savedSelection(): ModelSelection {
 
 const startIntroKey = "yingya-start-intro-seen";
 const startCopyKey = "yingya-start-copy";
+const sidebarWidthKey = "yingya-sidebar-width";
+const sidebarMinWidth = 190;
+const sidebarMaxWidth = 360;
 const startCopies = [
   { kicker: "素材集合处", title: ["素材请就座，", "创作会马上开始。"], description: "主题、链接和文件都能入席。内容结构与视觉方向确认后，制作流程正式开场。" },
   { kicker: "非正式片场", title: ["把跑偏留给花絮。"], description: "提供主题或参考素材，先校准内容与风格。生成、配音和剪辑会沿着确认过的方向进行。" },
@@ -52,6 +55,7 @@ export function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection);
   const saveSelection = (next: ModelSelection) => { setSelection(next); writeModelSelection(next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
+  const updateActiveProject = useCallback((detail: ProjectDetail) => { setActive(detail); setProjects(current => current.map(project => project.id === detail.id ? detail : project)); }, []);
   useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(value.data)).catch(() => undefined); }, [refreshProjects]);
   async function open(id: string) { setLoading(true); setOpenError(""); try { const detail = await api.getProject(id); setActive(detail); saveSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); setOffline(false); } catch (reason) { setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } finally { setLoading(false); } }
   async function deleteProject(project: ProjectRecord) {
@@ -65,12 +69,13 @@ export function App() {
     setActive(current => current?.id === id ? { ...current, ...updated } : current);
   }
   if (offline && !active) return <div className="state-screen"><CloudSlash/><h1>本地服务未连接</h1><p>项目仍保存在电脑上。服务恢复后可继续。</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
-  if (active) return <AgentWorkspace key={active.id} project={active} projects={projects} models={models} selection={selection} onSelection={saveSelection} onProject={setActive} onOpen={open} onRename={renameProject} onDelete={deleteProject} onNew={() => { setActive(null); void refreshProjects(); }}/>;
+  if (active) return <AgentWorkspace key={active.id} project={active} projects={projects} models={models} selection={selection} onSelection={saveSelection} onProject={updateActiveProject} onOpen={open} onRename={renameProject} onDelete={deleteProject} onNew={() => { setActive(null); void refreshProjects(); }}/>;
   return <StartScreen projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} onOpen={open} onDelete={deleteProject} onCreated={project => { setActive(project); void refreshProjects(); }}/>;
 }
 
 function StartScreen({ projects, loading, openError, models, selection, onSelection, onOpen, onDelete, onCreated }: { projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onCreated: (value: ProjectDetail) => void }) {
   const [prompt, setPrompt] = useState(""); const [aspectRatio, setAspectRatio] = useState("9:16"); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, readNumberSetting(sidebarWidthKey, 270))));
   const [{ index: copyIndex, copy }] = useState(randomStartCopy);
   const [playIntro] = useState(() => {
     try { return sessionStorage.getItem(startIntroKey) !== "true"; }
@@ -88,9 +93,27 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
     try { const project = await api.createProject({ prompt: prompt.trim(), aspectRatio, ...selection }); const uploaded: string[] = []; for (const file of files) uploaded.push((await api.uploadAsset(project.id, file)).path); await api.sendTurn(project.id, { text: prompt.trim(), attachments: uploaded, ...selection }); onCreated(await api.getProject(project.id)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "无法创建视频任务"); } finally { setBusy(false); }
   }
+  function dragSidebar(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) setSidebarWidth(Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, event.clientX)));
+  }
+  function finishSidebarResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    writeNumberSetting(sidebarWidthKey, sidebarWidth);
+  }
+  function resizeSidebarWithKeyboard(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const direction = event.key === "ArrowLeft" ? -1 : 1;
+    setSidebarWidth(current => {
+      const next = Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, current + direction * (event.shiftKey ? 24 : 8)));
+      writeNumberSetting(sidebarWidthKey, next);
+      return next;
+    });
+  }
   const starters = ["网站转产品宣传片", "知识解释动画", "品牌发布短片"];
-  return <div className="start-layout">
+  return <div className="start-layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
     <ProjectSidebar projects={projects} loading={loading} onOpen={onOpen} onDelete={onDelete}/>
+    <div className="workspace-splitter workspace-splitter--sidebar" role="separator" aria-label="调整项目栏宽度" aria-orientation="vertical" aria-valuemin={sidebarMinWidth} aria-valuemax={sidebarMaxWidth} aria-valuenow={sidebarWidth} tabIndex={0} onKeyDown={resizeSidebarWithKeyboard} onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragSidebar} onPointerUp={finishSidebarResize} onPointerCancel={finishSidebarResize}/>
     <main className="start-main">
       <header className="topbar"><span>VIDEO CREATION</span><div className="topbar-status"><WifiHigh/>本地服务已连接</div></header>
       {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { codexModelSchema, eventPageSchema, projectDetailSchema, projectRecordSchema, turnAcceptedSchema } from "./schemas";
+import { codexModelSchema, eventPageSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
@@ -42,6 +42,7 @@ export const api = {
   resume: (id: string) => requestVoid(`/api/agent-projects/${id}/resume`, { method: "POST", body: "{}" }),
   removeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}`, { method: "DELETE" }),
   confirmCheckpoint: (id: string) => request(`/api/agent-projects/${id}/checkpoint`, turnAcceptedSchema, { method: "POST", body: "{}" }),
+  renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k"; fps: 30 | 60 }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
   respondToRequest: (id: string, requestId: unknown, result: unknown) => requestVoid(`/api/agent-projects/${id}/requests/respond`, { method: "POST", body: JSON.stringify({ id: requestId, result }) }),
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),
   uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
