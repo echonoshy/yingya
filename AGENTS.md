@@ -1,5 +1,20 @@
 # Yingya repository instructions
 
+## Development service process management
+
+- Do not use `systemd`, `systemctl`, user services, or transient systemd units
+  to start, stop, restart, or supervise Yingya development services.
+- Run development services in named `tmux` sessions so their environment,
+  output, and lifecycle remain visible and controllable from the workspace.
+- Before starting a service, use `tmux has-session` or `tmux list-sessions` to
+  check whether its session already exists. Reuse or deliberately replace that
+  specific session instead of starting a duplicate process.
+- Start backend and frontend processes from the repository working directory
+  and preserve the invoking shell's required environment, including proxy
+  variables. Inspect logs with `tmux capture-pane`.
+- When reporting service status, include the tmux session name and the listening
+  port. Do not treat a systemd unit as the source of truth for this repository.
+
 ## UI design source of truth
 
 - Any work that creates or changes user-facing UI must read and follow
