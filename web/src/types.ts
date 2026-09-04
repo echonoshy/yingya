@@ -1,6 +1,6 @@
 export type {
   AgentEvent, AgentEventPage, AgentManifest, AgentMessage, Artifact, Checkpoint,
-  CodexModel, DraftVersion, ImageLibraryAsset, ProjectDetail, ProjectRecord, QueuedTurn, RenderJob, TurnAccepted, UploadedVoice, VoiceList,
+  AgentMedia, CodexModel, DraftVersion, ImageLibraryAsset, MediaAsset, MediaScene, ProjectDetail, ProjectRecord, QueuedTurn, RenderJob, TurnAccepted, UploadedVoice, VoiceList,
 } from "./schemas";
 
 export interface ModelSelection { model: string; reasoningEffort: string }

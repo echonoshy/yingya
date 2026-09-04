@@ -9,7 +9,7 @@ const voiceIdeas = [
   ["活力推广", "明亮有活力的年轻女声，节奏轻快但不夸张，适合短视频推广"],
 ] as const;
 
-export function VoiceStudio({ value, onChange }: { value: string; onChange: (voiceId: string) => void }) {
+export function VoiceStudio({ value, onChange, compact = false }: { value: string; onChange: (voiceId: string) => void; compact?: boolean }) {
   const [voices, setVoices] = useState<string[]>(["default"]);
   const [uploaded, setUploaded] = useState<UploadedVoice[]>([]);
   const [mode, setMode] = useState<"design" | "clone">("design");
@@ -47,31 +47,30 @@ export function VoiceStudio({ value, onChange }: { value: string; onChange: (voi
       const created = mode === "design"
         ? await api.designVoice({ name: name.trim(), description: description.trim() })
         : await api.cloneVoice({ name: name.trim(), description: description.trim(), refText: refText.trim(), audio: audio!, authorized });
-      onChange(created.name); setName(""); setRefText(""); setAudio(null); setAuthorized(false); await load();
+      setName(""); setRefText(""); setAudio(null); setAuthorized(false); await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "音色创建失败"); }
     finally { setWorking(""); }
   }
 
-  return <div className="asset-studio-grid voice-studio">
+  return <div className={`asset-studio-grid voice-studio ${compact ? "voice-studio--compact" : ""}`}>
     <section className="asset-creator">
-      <header><small>VOICE BUILDER</small><h2>固化一个可复用的声音</h2><p>先生成或克隆声音样本。选中后，它会成为新建视频的默认旁白音色。</p></header>
+      <header><h2>创建音色</h2></header>
       <div className="asset-mode-tabs" role="tablist" aria-label="音色创建方式"><button role="tab" aria-selected={mode === "design"} className={mode === "design" ? "active" : ""} onClick={() => setMode("design")}><MagicWand/>描述生成</button><button role="tab" aria-selected={mode === "clone"} className={mode === "clone" ? "active" : ""} onClick={() => setMode("clone")}><UploadSimple/>上传克隆</button></div>
       <label><span>音色名称</span><input value={name} maxLength={32} onChange={event => setName(event.target.value)} placeholder="例如：品牌讲述者"/></label>
       {mode === "design" ? <>
         <label><span>声音描述</span><textarea value={description} maxLength={200} onChange={event => setDescription(event.target.value)} placeholder="年龄、音色、语速、情绪与适用场景"/></label>
         <div className="voice-ideas">{voiceIdeas.map(([label, idea]) => <button key={label} type="button" onClick={() => setDescription(idea)}>{label}</button>)}</div>
-        <p className="field-help">生成过程会先创建固定参考样本，再将它保存为稳定音色。</p>
       </> : <>
         <label><span>参考音频</span><input type="file" accept="audio/*" onChange={event => setAudio(event.target.files?.[0] ?? null)}/><small>建议 1–30 秒、清晰单人声音</small></label>
         <label><span>参考音频原文</span><textarea value={refText} maxLength={500} onChange={event => setRefText(event.target.value)} placeholder="逐字填写音频里说出的内容"/></label>
         <label><span>音色说明（可选）</span><input value={description} maxLength={200} onChange={event => setDescription(event.target.value)}/></label>
         <label className="voice-consent"><input type="checkbox" checked={authorized} onChange={event => setAuthorized(event.target.checked)}/><span>我确认已获得声音所有者授权，并同意将此声音用于合成。</span></label>
       </>}
-      <button className="asset-primary" type="button" disabled={!name.trim() || (mode === "design" ? description.trim().length < 4 : !refText.trim() || !audio || !authorized) || Boolean(working)} onClick={() => void create()}>{working ? <CircleNotch className="spin"/> : mode === "design" ? <MagicWand/> : <UploadSimple/>}{working ? "正在固化音色…" : "创建并设为默认"}</button>
+      <button className="asset-primary" type="button" disabled={!name.trim() || (mode === "design" ? description.trim().length < 4 : !refText.trim() || !audio || !authorized) || Boolean(working)} onClick={() => void create()}>{working ? <CircleNotch className="spin"/> : mode === "design" ? <MagicWand/> : <UploadSimple/>}{working ? "正在创建" : "创建音色"}</button>
       {error ? <p className="asset-error" role="alert">{error}</p> : null}
     </section>
     <section className="asset-library">
-      <header><div><small>VOICE LIBRARY</small><h2>音色库</h2></div><span>{voices.length} 个音色</span></header>
+      <header><div><h2>音色</h2></div><span>{voices.length}</span></header>
       <label className="preview-copy"><span>试听文案</span><input value={previewText} onChange={event => setPreviewText(event.target.value)} maxLength={120}/></label>
       <div className="studio-voice-list">{voices.map(voice => {
         const detail = metadata.get(voice.toLocaleLowerCase()); const label = voice === "default" ? "默认音色" : detail?.name ?? voice; const selected = value.toLocaleLowerCase() === voice.toLocaleLowerCase();

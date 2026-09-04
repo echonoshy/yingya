@@ -58,6 +58,7 @@ async function installApiMock(page, seed = detail) {
   let projects = [seed];
   let current = structuredClone(seed);
   let libraryImages = [{ id: "image-1", url: "/brand/invideo-favicon-white.ico", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
+  const media = { scenes: [], assets: [] };
   await page.route("**/mock-hyperframes-storyboard*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body style='margin:0;background:#1d1d1f;color:white;font:16px sans-serif;display:grid;place-items:center;height:100vh'><main><b>HyperFrames 实时画面</b><p>Agent 正在更新 Composition</p></main></body></html>" }));
   await page.route("**/api/**", async route => {
     const request = route.request();
@@ -94,6 +95,7 @@ async function installApiMock(page, seed = detail) {
     }
     const projectMatch = pathname.match(/^\/api\/agent-projects\/([^/]+)$/);
     if (projectMatch && method === "GET") return json(route, current.id === projectMatch[1] ? current : seed);
+    if (pathname.endsWith("/media") && method === "GET") return json(route, media);
     if (pathname.endsWith("/turns") && method === "POST") return json(route, { turnId: "turn-new", status: "queued", queueDepth: 1 });
     if (pathname.endsWith("/resume") && method === "POST") {
       current = { ...current, queuePaused: false, status: "queued", statusLabel: "已排队" };
@@ -150,10 +152,10 @@ async function assertLiveHyperFramesPreview(browser) {
   await mobile.goto(baseUrl);
   await mobile.getByRole("button", { name: /^秋季新品短片/ }).click();
   await mobile.setViewportSize({ width: 390, height: 844 });
-  const liveButton = mobile.getByRole("button", { name: "实时", exact: true });
+  const liveButton = mobile.getByRole("button", { name: "预览", exact: true });
   await liveButton.click();
   await mobile.locator(".artifact-canvas").waitFor({ state: "visible" });
-  if (!(await liveButton.getAttribute("class"))?.includes("active")) throw new Error("Mobile live preview tab did not become active");
+  if (!(await liveButton.getAttribute("class"))?.includes("active")) throw new Error("Mobile preview tab did not become active");
   await mobile.waitForFunction(() => {
     const canvas = document.querySelector(".artifact-canvas");
     if (!canvas) return false;
@@ -183,18 +185,19 @@ async function assertAssetWorkshop(browser) {
   await installApiMock(page);
   await page.goto(baseUrl);
   await page.getByRole("button", { name: "素材工坊" }).click();
-  await page.getByRole("heading", { name: "先把画面准备好" }).waitFor();
-  await page.getByText("深色背景中的发光新芽，电影级侧光", { exact: true }).waitFor();
-  const prompt = page.getByPlaceholder(/一颗半透明的新芽/);
+  await page.getByLabel("搜索素材").waitFor();
+  await page.getByRole("button", { name: /深色背景中的发光新芽，电影级侧光 AI 生成/ }).waitFor();
+  await page.getByRole("button", { name: /创建素材/ }).click();
+  const prompt = page.getByPlaceholder("主体、场景、构图、光线和画幅要求");
   await prompt.fill("极简桌面上的透明智能设备，冷色轮廓光，16:9");
   const requestPromise = page.waitForRequest(request => request.url().endsWith("/api/codex/threads/image-thread-1/images") && request.method() === "POST");
   await page.getByRole("button", { name: "生成图片" }).click();
   const payload = (await requestPromise).postDataJSON();
   if (payload.prompt !== "极简桌面上的透明智能设备，冷色轮廓光，16:9") throw new Error(`Unexpected image prompt: ${JSON.stringify(payload)}`);
-  await page.getByText(payload.prompt, { exact: true }).waitFor();
+  await page.locator(".asset-image-grid b").getByText(payload.prompt, { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-images.png", fullPage: true });
   await page.getByRole("button", { name: "音色" }).click();
-  await page.getByRole("heading", { name: "音色库" }).waitFor();
+  await page.getByRole("heading", { name: "音色", exact: true }).waitFor();
   await page.getByText("映芽讲解", { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-voices.png", fullPage: true });
   if (errors.length) throw new Error(`Asset workshop errors:\n${errors.join("\n")}`);
@@ -204,7 +207,7 @@ async function assertAssetWorkshop(browser) {
   await installApiMock(mobile);
   await mobile.goto(baseUrl);
   await mobile.getByRole("button", { name: "素材工坊" }).click();
-  await mobile.getByRole("heading", { name: "先把画面准备好" }).waitFor();
+  await mobile.getByLabel("搜索素材").waitFor();
   await mobile.screenshot({ path: "/tmp/yingya-ui-asset-mobile.png", fullPage: true });
   await mobile.close();
 }
@@ -341,7 +344,14 @@ async function assertDesktop(browser) {
   await installApiMock(page, { ...structuredClone(detail), queueDepth: 0, queuePaused: false, queue: [] });
   await page.goto(baseUrl);
   if (page.url() !== `${baseUrl}/` || await page.title() !== "映芽 | 视频创作工作台") throw new Error("Unexpected page identity");
-  await page.getByRole("heading", { name: "项目" }).waitFor();
+  await page.getByRole("heading", { name: "视频项目", exact: true }).waitFor();
+  await page.screenshot({ path: "/tmp/yingya-ui-home-desktop.png", fullPage: true });
+  await page.getByRole("tab", { name: "待确认" }).click();
+  await page.getByRole("button", { name: /^秋季新品短片/ }).waitFor();
+  await page.getByRole("tab", { name: "全部" }).click();
+  await page.getByRole("button", { name: "项目操作 秋季新品短片" }).click();
+  await page.getByRole("button", { name: "打开项目" }).waitFor();
+  await page.getByRole("button", { name: "项目操作 秋季新品短片" }).click();
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.locator(".checkpoint-card").waitFor();
   if (await page.getByRole("dialog").count()) throw new Error("Plan confirmation should stay inside the conversation");
@@ -364,6 +374,13 @@ async function assertDesktop(browser) {
   await voiceDialog.getByPlaceholder("例如：温暖女声").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-voice-design.png", fullPage: true });
   await voiceDialog.getByRole("button", { name: "关闭音色库" }).click();
+  await page.getByRole("button", { name: "选择素材" }).click();
+  const materialPicker = page.getByLabel("选择创作素材");
+  await materialPicker.getByText("深色背景中的发光新芽，电影级侧光", { exact: true }).click();
+  await page.getByLabel("已选择素材").getByText("用于剧本与分镜", { exact: true }).waitFor();
+  await page.screenshot({ path: "/tmp/yingya-ui-project-assets.png", fullPage: true });
+  await page.getByRole("button", { name: "移除素材 深色背景中的发光新芽，电影级侧光" }).click();
+  await materialPicker.getByRole("button", { name: "关闭素材选择" }).click();
   await page.locator(".activity-item").getByText("修改文件", { exact: true }).waitFor();
   if (await page.getByText("检查 HyperFrames", { exact: true }).count()) throw new Error("Older tool operations should be hidden");
   await page.getByRole("button", { name: /直接渲染/ }).click();
@@ -455,7 +472,7 @@ try {
   await assertWaitingInputPrompt(browser);
   await assertCreateAndMobile(browser);
   console.log("UI QA passed: asset workshop, HyperFrames live preview, waiting-input prompt, plan/draft checkpoints, failed/incomplete workflow recovery, desktop project flow, and 360px create/message flow");
-  console.log("Screenshots: /tmp/yingya-ui-hyperframes-live.png, /tmp/yingya-ui-hyperframes-live-mobile.png, /tmp/yingya-ui-hyperframes-live-320.png, /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-mobile.png");
+  console.log("Screenshots: /tmp/yingya-ui-home-desktop.png, /tmp/yingya-ui-hyperframes-live.png, /tmp/yingya-ui-hyperframes-live-mobile.png, /tmp/yingya-ui-hyperframes-live-320.png, /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-mobile.png");
 } finally {
   await browser?.close();
   preview.kill("SIGTERM");

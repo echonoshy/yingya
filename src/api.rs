@@ -2089,6 +2089,7 @@ async fn upload_agent_asset(
             continue;
         }
         let original = field.file_name().unwrap_or("asset.bin").to_owned();
+        let mime_type = field.content_type().map(str::to_owned);
         let extension = FilePath::new(&original)
             .extension()
             .and_then(|value| value.to_str())
@@ -2108,6 +2109,33 @@ async fn upload_agent_asset(
             bytes,
         )
         .await?;
+        if mime_type.as_deref().is_some_and(|value| {
+            value.starts_with("image/")
+                || value.starts_with("video/")
+                || value.starts_with("audio/")
+        }) {
+            state
+                .agent_projects
+                .append_media_asset(
+                    &project_id,
+                    MediaAsset {
+                        id: Uuid::new_v4().to_string(),
+                        name: original.clone(),
+                        url: format!("/api/agent-projects/{project_id}/files/{relative}"),
+                        hyperframes_path: relative.clone(),
+                        kind: extension.to_owned(),
+                        source: "conversation".to_owned(),
+                        media_type: mime_type.clone(),
+                        duration_seconds: None,
+                        provider_id: None,
+                        description: Some("从创作对话加入".to_owned()),
+                        created_at: agent_projects::now_millis(),
+                    },
+                )
+                .await
+                .map_err(ApiError::Project)?;
+            emit_agent_state_event(&state, &project_id, None, "media/updated").await;
+        }
         return Ok(Json(AgentUploadResponse {
             path: relative,
             name: original,

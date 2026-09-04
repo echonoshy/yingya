@@ -45,6 +45,14 @@ export const imageLibraryAssetSchema = z.object({
   sourceName: optionalString, kind: z.enum(["generated", "uploaded"]), createdAt: z.number(),
 });
 export const imageLibrarySchema = z.object({ images: z.array(imageLibraryAssetSchema) });
+export const mediaSceneSchema = z.object({
+  id: z.string(), order: z.number().default(0), narrativeRole: z.string().default(""), assetIds: z.array(z.string()).default([]),
+}).passthrough();
+export const mediaAssetSchema = z.object({
+  id: z.string(), name: z.string(), url: z.string(), hyperframesPath: z.string(), kind: z.string(), source: z.string(),
+  mediaType: optionalString, durationSeconds: z.number().optional(), providerId: optionalString, description: optionalString, createdAt: z.number(),
+});
+export const agentMediaSchema = z.object({ scenes: z.array(mediaSceneSchema), assets: z.array(mediaAssetSchema) });
 export const imageTurnSchema = z.object({
   threadId: z.string(), turnId: z.string(), status: z.string(), text: z.string(),
   images: z.array(z.object({ id: z.string(), url: z.string(), hyperframesPath: z.string(), mimeType: z.string(), revisedPrompt: optionalString })),
@@ -66,3 +74,6 @@ export type AgentEventPage = z.infer<typeof eventPageSchema>;
 export type UploadedVoice = z.infer<typeof uploadedVoiceSchema>;
 export type VoiceList = z.infer<typeof voiceListSchema>;
 export type ImageLibraryAsset = z.infer<typeof imageLibraryAssetSchema>;
+export type MediaScene = z.infer<typeof mediaSceneSchema>;
+export type MediaAsset = z.infer<typeof mediaAssetSchema>;
+export type AgentMedia = z.infer<typeof agentMediaSchema>;
