@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentMediaSchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, mediaSceneSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
+import { agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, mediaSceneSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
@@ -75,6 +75,11 @@ export const api = {
   },
   previewVoice: (voiceId: string, text?: string) => requestBlob("/api/voices/preview", { method: "POST", body: JSON.stringify({ voiceId, ...(text ? { text } : {}) }) }),
   listImages: () => request("/api/assets/images", imageLibrarySchema),
+  listAssetLibrary: () => request("/api/assets/library", assetLibrarySchema),
+  uploadLibraryAsset: async (file: File, folderId?: string) => { const body = new FormData(); body.append("file", file); if (folderId) body.append("folderId", folderId); return request("/api/assets/library", assetLibraryItemSchema, { method: "POST", body }); },
+  moveLibraryAsset: (id: string, folderId?: string) => requestVoid(`/api/assets/library/${id}`, { method: "PATCH", body: JSON.stringify({ folderId }) }),
+  listAssetFolders: () => request("/api/assets/folders", z.array(assetFolderSchema)),
+  createAssetFolder: (name: string) => request("/api/assets/folders", assetFolderSchema, { method: "POST", body: JSON.stringify({ name }) }),
   uploadImage: async (file: File) => { const body = new FormData(); body.append("file", file); return request("/api/assets/images", imageUploadSchema, { method: "POST", body }); },
   startImageThread: () => request("/api/codex/threads", threadStartedSchema, { method: "POST", body: "{}" }),
   generateImage: (threadId: string, input: { prompt: string; referenceImages: string[]; model: string; reasoningEffort: string }) => request(`/api/codex/threads/${threadId}/images`, imageTurnSchema, { method: "POST", body: JSON.stringify(input) }),

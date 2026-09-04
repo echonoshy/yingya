@@ -45,7 +45,7 @@ export function App() {
   const showCreate = () => { setSection("create"); setActive(null); void refreshProjects(); };
   const showAssets = () => { setSection("assets"); setActive(null); };
   if (active) return <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showCreate}/>;
-  if (section === "assets") return <AssetStudio projects={projects} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate} onOpen={open} onDelete={deleteProject}/>;
+  if (section === "assets") return <AssetStudio projects={projects} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate} onOpen={open}/>;
   return <StartScreen projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); void refreshProjects(); }}/>;
 }
 

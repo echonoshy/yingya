@@ -159,6 +159,10 @@ struct ImageLibraryMetadata {
     source_name: Option<String>,
     kind: String,
     created_at: u64,
+    #[serde(default)]
+    folder_id: Option<String>,
+    #[serde(default)]
+    mime_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -177,6 +181,45 @@ struct ImageLibraryAsset {
 #[derive(Debug, Serialize)]
 struct ImageLibraryResponse {
     images: Vec<ImageLibraryAsset>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetLibraryItem {
+    id: String,
+    url: String,
+    hyperframes_path: String,
+    mime_type: String,
+    category: String,
+    prompt: Option<String>,
+    source_name: Option<String>,
+    kind: String,
+    folder_id: Option<String>,
+    created_at: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct AssetLibraryResponse {
+    assets: Vec<AssetLibraryItem>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssetFolder {
+    id: String,
+    name: String,
+    created_at: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateAssetFolderRequest {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MoveAssetRequest {
+    folder_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -349,6 +392,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             post(generate_image),
         )
         .route("/api/assets/images", get(list_images).post(upload_image))
+        .route(
+            "/api/assets/library",
+            get(list_library_assets).post(upload_library_asset),
+        )
+        .route("/api/assets/library/{asset_id}", patch(move_library_asset))
+        .route(
+            "/api/assets/folders",
+            get(list_asset_folders).post(create_asset_folder),
+        )
         .route("/api/heygen/audio", get(search_heygen_audio))
         .route("/api/voices", get(list_voices).post(clone_voice))
         .route("/api/voices/design", post(design_voice))
@@ -2442,6 +2494,7 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
     {
         "mp4" => "video/mp4",
         "webm" => "video/webm",
+        "mov" => "video/quicktime",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
@@ -2452,6 +2505,19 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
         "js" | "mjs" => "text/javascript; charset=utf-8",
         "wav" => "audio/wav",
         "mp3" => "audio/mpeg",
+        "ogg" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "aac" => "audio/aac",
+        "flac" => "audio/flac",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain; charset=utf-8",
+        "csv" => "text/csv; charset=utf-8",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         _ => "application/octet-stream",
     }
 }
@@ -3243,6 +3309,8 @@ async fn upload_image(
                     source_name,
                     kind: "uploaded".to_owned(),
                     created_at: unix_millis(SystemTime::now()),
+                    folder_id: None,
+                    mime_type: Some(image_mime(extension).to_owned()),
                 },
             )
             .await?;
@@ -3263,6 +3331,120 @@ async fn list_images(
     Ok(Json(ImageLibraryResponse {
         images: state.assets.list_images().await?,
     }))
+}
+
+async fn list_library_assets(
+    State(state): State<AppState>,
+) -> Result<Json<AssetLibraryResponse>, ApiError> {
+    Ok(Json(AssetLibraryResponse {
+        assets: state.assets.list_library().await?,
+    }))
+}
+
+async fn upload_library_asset(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<AssetLibraryItem>, ApiError> {
+    let mut folder_id = None;
+    let mut uploaded = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?
+    {
+        match field.name() {
+            Some("folderId") => {
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|error| ApiError::BadRequest(error.to_string()))?;
+                folder_id = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+            }
+            Some("file") => {
+                let source_name = field
+                    .file_name()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| "未命名文件".to_owned());
+                let supplied_mime = field.content_type().map(str::to_owned);
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|error| ApiError::BadRequest(error.to_string()))?;
+                uploaded = Some((source_name, supplied_mime, bytes));
+            }
+            _ => {}
+        }
+    }
+    let (source_name, supplied_mime, bytes) = uploaded
+        .ok_or_else(|| ApiError::BadRequest("multipart field `file` is required".to_owned()))?;
+    if bytes.is_empty() {
+        return Err(ApiError::BadRequest("uploaded file is empty".to_owned()));
+    }
+    if let Some(folder_id) = folder_id.as_deref() {
+        if !state.assets.folder_exists(folder_id).await? {
+            return Err(ApiError::Validation("所选文件夹不存在".to_owned()));
+        }
+    }
+    let stored_extension = safe_library_extension(&source_name);
+    let id = Uuid::new_v4().to_string();
+    let relative = format!("uploads/{id}.{stored_extension}");
+    let destination = state.assets.root.join(&relative);
+    let mime_type = supplied_mime
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| content_type_for_path(FilePath::new(&source_name)).to_owned());
+    let metadata = ImageLibraryMetadata {
+        id: id.clone(),
+        prompt: None,
+        source_name: Some(source_name.clone()),
+        kind: "uploaded".to_owned(),
+        created_at: unix_millis(SystemTime::now()),
+        folder_id: folder_id.clone(),
+        mime_type: Some(mime_type.clone()),
+    };
+    fs::write(&destination, bytes).await?;
+    state.assets.write_metadata(&destination, &metadata).await?;
+    Ok(Json(AssetLibraryItem {
+        id,
+        url: format!("/assets/{relative}"),
+        hyperframes_path: format!("assets/{relative}"),
+        category: library_category(&mime_type, &source_name).to_owned(),
+        mime_type,
+        prompt: None,
+        source_name: Some(source_name),
+        kind: "uploaded".to_owned(),
+        folder_id,
+        created_at: metadata.created_at,
+    }))
+}
+
+async fn list_asset_folders(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<AssetFolder>>, ApiError> {
+    Ok(Json(state.assets.list_folders().await?))
+}
+
+async fn create_asset_folder(
+    State(state): State<AppState>,
+    Json(request): Json<CreateAssetFolderRequest>,
+) -> Result<Json<AssetFolder>, ApiError> {
+    Ok(Json(state.assets.create_folder(&request.name).await?))
+}
+
+async fn move_library_asset(
+    State(state): State<AppState>,
+    Path(asset_id): Path<String>,
+    Json(request): Json<MoveAssetRequest>,
+) -> Result<StatusCode, ApiError> {
+    if let Some(folder_id) = request.folder_id.as_deref() {
+        if !state.assets.folder_exists(folder_id).await? {
+            return Err(ApiError::Validation("所选文件夹不存在".to_owned()));
+        }
+    }
+    state
+        .assets
+        .move_to_folder(&asset_id, request.folder_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn search_heygen_audio(
@@ -3329,6 +3511,49 @@ impl AssetStore {
         })
     }
 
+    async fn list_folders(&self) -> Result<Vec<AssetFolder>, ApiError> {
+        let path = self.root.join("folders.json");
+        match fs::read(path).await {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|error| ApiError::External(format!("素材文件夹读取失败: {error}"))),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(ApiError::Io(error)),
+        }
+    }
+
+    async fn folder_exists(&self, folder_id: &str) -> Result<bool, ApiError> {
+        Ok(self
+            .list_folders()
+            .await?
+            .iter()
+            .any(|folder| folder.id == folder_id))
+    }
+
+    async fn create_folder(&self, name: &str) -> Result<AssetFolder, ApiError> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 40 {
+            return Err(ApiError::Validation(
+                "文件夹名称需要包含 1–40 个字符".to_owned(),
+            ));
+        }
+        let mut folders = self.list_folders().await?;
+        if folders
+            .iter()
+            .any(|folder| folder.name.eq_ignore_ascii_case(name))
+        {
+            return Err(ApiError::Conflict("已存在同名素材文件夹".to_owned()));
+        }
+        let folder = AssetFolder {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_owned(),
+            created_at: unix_millis(SystemTime::now()),
+        };
+        folders.push(folder.clone());
+        let bytes = serde_json::to_vec_pretty(&folders).map_err(std::io::Error::other)?;
+        fs::write(self.root.join("folders.json"), bytes).await?;
+        Ok(folder)
+    }
+
     async fn resolve(&self, public_path: &str) -> Result<PathBuf, ApiError> {
         let relative = public_path
             .strip_prefix("/assets/")
@@ -3378,6 +3603,8 @@ impl AssetStore {
                     source_name: None,
                     kind: "generated".to_owned(),
                     created_at: unix_millis(SystemTime::now()),
+                    folder_id: None,
+                    mime_type: Some(image_mime(extension).to_owned()),
                 },
             )
             .await?;
@@ -3408,6 +3635,120 @@ impl AssetStore {
         let bytes = serde_json::to_vec_pretty(metadata).map_err(std::io::Error::other)?;
         fs::write(metadata_path, bytes).await?;
         Ok(())
+    }
+
+    async fn list_library(&self) -> Result<Vec<AssetLibraryItem>, ApiError> {
+        let mut assets = Vec::new();
+        for location in ["generated", "uploads"] {
+            let mut entries = fs::read_dir(self.root.join(location)).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                if !entry.file_type().await?.is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                let filename = entry.file_name().to_string_lossy().into_owned();
+                if filename.ends_with(".metadata.json") {
+                    continue;
+                }
+                let extension = path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("bin")
+                    .to_ascii_lowercase();
+                let metadata_path = path.with_extension(format!("{extension}.metadata.json"));
+                let metadata = match fs::read(metadata_path).await {
+                    Ok(bytes) => serde_json::from_slice::<ImageLibraryMetadata>(&bytes).ok(),
+                    Err(_) => None,
+                };
+                let fallback_created_at = entry
+                    .metadata()
+                    .await?
+                    .modified()
+                    .map(unix_millis)
+                    .unwrap_or_default();
+                let source_name = metadata
+                    .as_ref()
+                    .and_then(|value| value.source_name.clone());
+                let mime_type = metadata
+                    .as_ref()
+                    .and_then(|value| value.mime_type.clone())
+                    .unwrap_or_else(|| content_type_for_path(&path).to_owned());
+                let relative = format!("{location}/{filename}");
+                assets.push(AssetLibraryItem {
+                    id: metadata
+                        .as_ref()
+                        .map(|value| value.id.clone())
+                        .unwrap_or_else(|| filename.clone()),
+                    url: format!("/assets/{relative}"),
+                    hyperframes_path: format!("assets/{relative}"),
+                    category: library_category(
+                        &mime_type,
+                        source_name.as_deref().unwrap_or(&filename),
+                    )
+                    .to_owned(),
+                    mime_type,
+                    prompt: metadata.as_ref().and_then(|value| value.prompt.clone()),
+                    source_name,
+                    kind: metadata
+                        .as_ref()
+                        .map(|value| value.kind.clone())
+                        .unwrap_or_else(|| {
+                            if location == "generated" {
+                                "generated"
+                            } else {
+                                "uploaded"
+                            }
+                            .to_owned()
+                        }),
+                    folder_id: metadata.as_ref().and_then(|value| value.folder_id.clone()),
+                    created_at: metadata
+                        .as_ref()
+                        .map(|value| value.created_at)
+                        .unwrap_or(fallback_created_at),
+                });
+            }
+        }
+        assets.sort_by_key(|asset| std::cmp::Reverse(asset.created_at));
+        Ok(assets)
+    }
+
+    async fn move_to_folder(
+        &self,
+        asset_id: &str,
+        folder_id: Option<String>,
+    ) -> Result<(), ApiError> {
+        for location in ["generated", "uploads"] {
+            let mut entries = fs::read_dir(self.root.join(location)).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                if !entry.file_type().await?.is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                let filename = entry.file_name().to_string_lossy().into_owned();
+                if filename.ends_with(".metadata.json") {
+                    continue;
+                }
+                let extension = path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("bin");
+                let metadata_path = path.with_extension(format!("{extension}.metadata.json"));
+                let Ok(bytes) = fs::read(&metadata_path).await else {
+                    continue;
+                };
+                let Ok(mut metadata) = serde_json::from_slice::<ImageLibraryMetadata>(&bytes)
+                else {
+                    continue;
+                };
+                if metadata.id != asset_id {
+                    continue;
+                }
+                metadata.folder_id = folder_id;
+                self.write_metadata(&path, &metadata).await?;
+                return Ok(());
+            }
+        }
+        Err(ApiError::NotFound("素材不存在".to_owned()))
     }
 
     async fn list_images(&self) -> Result<Vec<ImageLibraryAsset>, ApiError> {
@@ -3474,6 +3815,84 @@ impl AssetStore {
         }
         images.sort_by_key(|image| std::cmp::Reverse(image.created_at));
         Ok(images)
+    }
+}
+
+fn safe_library_extension(source_name: &str) -> String {
+    let extension = FilePath::new(source_name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if matches!(
+        extension.as_str(),
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "webp"
+            | "gif"
+            | "avif"
+            | "mp4"
+            | "webm"
+            | "mov"
+            | "mp3"
+            | "wav"
+            | "ogg"
+            | "m4a"
+            | "aac"
+            | "flac"
+            | "pdf"
+            | "txt"
+            | "md"
+            | "csv"
+            | "json"
+            | "doc"
+            | "docx"
+            | "ppt"
+            | "pptx"
+            | "xls"
+            | "xlsx"
+    ) {
+        extension
+    } else {
+        "bin".to_owned()
+    }
+}
+
+fn library_category(mime_type: &str, source_name: &str) -> &'static str {
+    if mime_type.starts_with("image/") {
+        "image"
+    } else if mime_type.starts_with("video/") {
+        "video"
+    } else if mime_type.starts_with("audio/") {
+        "audio"
+    } else {
+        let extension = FilePath::new(source_name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if mime_type.starts_with("text/")
+            || mime_type == "application/pdf"
+            || matches!(
+                extension.as_str(),
+                "pdf"
+                    | "txt"
+                    | "md"
+                    | "csv"
+                    | "json"
+                    | "doc"
+                    | "docx"
+                    | "ppt"
+                    | "pptx"
+                    | "xls"
+                    | "xlsx"
+            )
+        {
+            "document"
+        } else {
+            "file"
+        }
     }
 }
 
@@ -3784,6 +4203,21 @@ mod tests {
         assert_eq!(audio_extension(b"OggSrest of an ogg file"), Some("ogg"));
         assert_eq!(audio_extension(b"0000ftyprest of an m4a file"), Some("m4a"));
         assert_eq!(audio_extension(b"not audio"), None);
+    }
+
+    #[test]
+    fn classifies_library_assets_and_sanitizes_extensions() {
+        assert_eq!(safe_library_extension("产品主图.PNG"), "png");
+        assert_eq!(safe_library_extension("采访素材.MOV"), "mov");
+        assert_eq!(safe_library_extension("需求说明.pdf"), "pdf");
+        assert_eq!(safe_library_extension("page.html"), "bin");
+        assert_eq!(library_category("video/quicktime", "clip.mov"), "video");
+        assert_eq!(library_category("audio/mpeg", "music.mp3"), "audio");
+        assert_eq!(library_category("application/pdf", "brief.pdf"), "document");
+        assert_eq!(
+            library_category("application/octet-stream", "archive.zip"),
+            "file"
+        );
     }
 
     fn workflow_evidence() -> WorkflowEvidence {

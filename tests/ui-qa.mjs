@@ -58,8 +58,20 @@ async function installApiMock(page, seed = detail) {
   let projects = [seed];
   let current = structuredClone(seed);
   let libraryImages = [{ id: "image-1", url: "/brand/invideo-favicon-white.ico", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
+  let assetFolders = [{ id: "folder-brand", name: "品牌素材", createdAt: now }];
+  let libraryAssets = [
+    { ...libraryImages[0], category: "image", folderId: "folder-brand" },
+    { id: "video-1", url: "/assets/uploads/product.mp4", hyperframesPath: "assets/uploads/product.mp4", mimeType: "video/mp4", category: "video", prompt: null, sourceName: "产品定格镜头.mp4", kind: "uploaded", folderId: "folder-brand", createdAt: now - 1 },
+    { id: "audio-1", url: "/assets/uploads/music.mp3", hyperframesPath: "assets/uploads/music.mp3", mimeType: "audio/mpeg", category: "audio", prompt: null, sourceName: "秋日背景音乐.mp3", kind: "uploaded", folderId: null, createdAt: now - 2 },
+    { id: "document-1", url: "/assets/uploads/brief.pdf", hyperframesPath: "assets/uploads/brief.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "品牌创作说明.pdf", kind: "uploaded", folderId: null, createdAt: now - 3 },
+  ];
   const media = { scenes: [], assets: [] };
   await page.route("**/mock-hyperframes-storyboard*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body style='margin:0;background:#1d1d1f;color:white;font:16px sans-serif;display:grid;place-items:center;height:100vh'><main><b>HyperFrames 实时画面</b><p>Agent 正在更新 Composition</p></main></body></html>" }));
+  await page.route("**/assets/uploads/**", route => {
+    const pathname = new URL(route.request().url()).pathname;
+    const contentType = pathname.endsWith(".mp4") ? "video/mp4" : pathname.endsWith(".mp3") ? "audio/mpeg" : "application/octet-stream";
+    return route.fulfill({ status: 200, contentType, body: Buffer.alloc(0) });
+  });
   await page.route("**/api/**", async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -71,10 +83,30 @@ async function installApiMock(page, seed = detail) {
     if (pathname === "/api/codex/threads/image-thread-1/images" && method === "POST") {
       const input = request.postDataJSON();
       libraryImages = [{ id: "image-2", url: "/brand/invideo-favicon-white.ico", hyperframesPath: "assets/generated/image-2.png", mimeType: "image/png", prompt: input.prompt, sourceName: null, kind: "generated", createdAt: now + 1 }, ...libraryImages];
+      libraryAssets = [{ ...libraryImages[0], category: "image", folderId: null }, ...libraryAssets];
       return json(route, { threadId: "image-thread-1", turnId: "image-turn-1", status: "completed", text: "", images: [{ id: "image-2", url: libraryImages[0].url, hyperframesPath: libraryImages[0].hyperframesPath, mimeType: "image/png", revisedPrompt: input.prompt }] });
     }
     if (pathname === "/api/assets/images" && method === "GET") return json(route, { images: libraryImages });
     if (pathname === "/api/assets/images" && method === "POST") return json(route, { url: "/assets/uploads/reference.png", hyperframesPath: "assets/uploads/reference.png" });
+    if (pathname === "/api/assets/library" && method === "GET") return json(route, { assets: libraryAssets });
+    if (pathname === "/api/assets/library" && method === "POST") {
+      const created = { id: `upload-${libraryAssets.length}`, url: "/assets/uploads/uploaded.pdf", hyperframesPath: "assets/uploads/uploaded.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "活动执行方案.pdf", kind: "uploaded", folderId: assetFolders.at(-1)?.id ?? null, createdAt: now + 2 };
+      libraryAssets = [created, ...libraryAssets];
+      return json(route, created);
+    }
+    const libraryAssetMatch = pathname.match(/^\/api\/assets\/library\/([^/]+)$/);
+    if (libraryAssetMatch && method === "PATCH") {
+      const { folderId } = request.postDataJSON();
+      libraryAssets = libraryAssets.map(asset => asset.id === libraryAssetMatch[1] ? { ...asset, folderId: folderId ?? null } : asset);
+      return route.fulfill({ status: 204, body: "" });
+    }
+    if (pathname === "/api/assets/folders" && method === "GET") return json(route, assetFolders);
+    if (pathname === "/api/assets/folders" && method === "POST") {
+      const input = request.postDataJSON();
+      const folder = { id: `folder-${assetFolders.length + 1}`, name: input.name, createdAt: now + 2 };
+      assetFolders = [...assetFolders, folder];
+      return json(route, folder);
+    }
     if (pathname === "/api/voices" && method === "GET") return json(route, { voices: ["default", "映芽讲解"], uploaded_voices: [{ name: "映芽讲解", consent: "generated-by-voxcpm2", created_at: now, file_size: 2048, mime_type: "audio/wav", ref_text: "参考文字", speaker_description: "沉稳清晰的青年男声" }] });
     if (pathname.endsWith("/events")) return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": ready\n\n" });
     if (pathname.endsWith("/event-log")) return json(route, {
@@ -184,19 +216,41 @@ async function assertAssetWorkshop(browser) {
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page);
   await page.goto(baseUrl);
-  await page.getByRole("button", { name: "素材工坊" }).click();
+  await page.getByRole("button", { name: "素材工坊", exact: true }).click();
   await page.getByLabel("搜索素材").waitFor();
-  await page.getByRole("button", { name: /深色背景中的发光新芽，电影级侧光 AI 生成/ }).waitFor();
+  await page.getByRole("heading", { name: "素材工坊", exact: true }).waitFor();
+  if (await page.getByText("最近项目", { exact: true }).count()) throw new Error("Asset workshop should not show video projects in its navigation");
+  const mediaTabs = page.getByRole("navigation", { name: "素材类型" });
+  await mediaTabs.getByRole("button", { name: /^视频/ }).waitFor();
+  await mediaTabs.getByRole("button", { name: /^音频/ }).waitFor();
+  await mediaTabs.getByRole("button", { name: /^文档/ }).waitFor();
+  await page.getByRole("button", { name: "新建文件夹" }).click();
+  await page.getByPlaceholder("文件夹名称").fill("活动素材");
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await page.getByRole("button", { name: /活动素材/ }).waitFor();
+  const uploadRequest = page.waitForRequest(request => request.url().endsWith("/api/assets/library") && request.method() === "POST");
+  await page.locator('.asset-library-header input[type="file"]').setInputFiles({ name: "活动执行方案.pdf", mimeType: "application/pdf", buffer: Buffer.from("pdf-test") });
+  await uploadRequest;
+  await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).waitFor();
+  await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
+  const folderSelect = page.locator('select[aria-label="素材文件夹"]');
+  await folderSelect.selectOption("");
+  await folderSelect.selectOption({ label: "活动素材" });
+  await page.getByRole("button", { name: /全部素材/ }).click();
+  await page.getByRole("button", { name: "AI 生成", exact: true }).click();
+  await page.getByRole("button", { name: /深色背景中的发光新芽，电影级侧光.*AI 生成/ }).waitFor();
+  await page.getByRole("button", { name: "全部来源" }).click();
   await page.getByRole("button", { name: /创建素材/ }).click();
+  await page.getByRole("button", { name: "生成图片" }).click();
   const prompt = page.getByPlaceholder("主体、场景、构图、光线和画幅要求");
   await prompt.fill("极简桌面上的透明智能设备，冷色轮廓光，16:9");
   const requestPromise = page.waitForRequest(request => request.url().endsWith("/api/codex/threads/image-thread-1/images") && request.method() === "POST");
   await page.getByRole("button", { name: "生成图片" }).click();
   const payload = (await requestPromise).postDataJSON();
   if (payload.prompt !== "极简桌面上的透明智能设备，冷色轮廓光，16:9") throw new Error(`Unexpected image prompt: ${JSON.stringify(payload)}`);
-  await page.locator(".asset-image-grid b").getByText(payload.prompt, { exact: true }).waitFor();
+  await page.locator(".asset-mixed-grid b").getByText(payload.prompt, { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-images.png", fullPage: true });
-  await page.getByRole("button", { name: "音色" }).click();
+  await page.getByRole("button", { name: /^音色/ }).click();
   await page.getByRole("heading", { name: "音色", exact: true }).waitFor();
   await page.getByText("映芽讲解", { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-voices.png", fullPage: true });
@@ -206,8 +260,11 @@ async function assertAssetWorkshop(browser) {
   const mobile = await browser.newPage({ viewport: { width: 360, height: 800 }, reducedMotion: "reduce" });
   await installApiMock(mobile);
   await mobile.goto(baseUrl);
-  await mobile.getByRole("button", { name: "素材工坊" }).click();
+  await mobile.getByRole("button", { name: "素材工坊", exact: true }).click();
   await mobile.getByLabel("搜索素材").waitFor();
+  await mobile.locator(".asset-mixed-grid").waitFor();
+  const mobileDocumentWidth = await mobile.evaluate(() => document.documentElement.scrollWidth);
+  if (mobileDocumentWidth > 360) throw new Error(`360px asset workshop overflows horizontally: ${mobileDocumentWidth}px`);
   await mobile.screenshot({ path: "/tmp/yingya-ui-asset-mobile.png", fullPage: true });
   await mobile.close();
 }

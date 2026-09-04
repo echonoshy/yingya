@@ -45,6 +45,11 @@ export const imageLibraryAssetSchema = z.object({
   sourceName: optionalString, kind: z.enum(["generated", "uploaded"]), createdAt: z.number(),
 });
 export const imageLibrarySchema = z.object({ images: z.array(imageLibraryAssetSchema) });
+export const assetLibraryItemSchema = imageLibraryAssetSchema.extend({
+  category: z.enum(["image", "video", "audio", "document", "file"]), folderId: optionalString,
+});
+export const assetLibrarySchema = z.object({ assets: z.array(assetLibraryItemSchema) });
+export const assetFolderSchema = z.object({ id: z.string(), name: z.string(), createdAt: z.number() });
 export const mediaSceneSchema = z.object({
   id: z.string(), order: z.number().default(0), narrativeRole: z.string().default(""), assetIds: z.array(z.string()).default([]),
 }).passthrough();
@@ -74,6 +79,8 @@ export type AgentEventPage = z.infer<typeof eventPageSchema>;
 export type UploadedVoice = z.infer<typeof uploadedVoiceSchema>;
 export type VoiceList = z.infer<typeof voiceListSchema>;
 export type ImageLibraryAsset = z.infer<typeof imageLibraryAssetSchema>;
+export type AssetLibraryItem = z.infer<typeof assetLibraryItemSchema>;
+export type AssetFolder = z.infer<typeof assetFolderSchema>;
 export type MediaScene = z.infer<typeof mediaSceneSchema>;
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 export type AgentMedia = z.infer<typeof agentMediaSchema>;
