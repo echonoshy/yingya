@@ -1,12 +1,13 @@
-import { ArrowClockwise, ArrowLeft, ArrowRight, ArrowUp, CaretLeft, Check, CheckCircle, CircleNotch, Code, DownloadSimple, Eye, File, FilmSlate, Images, Paperclip, PencilSimple, Plus, Queue, SquaresFour, Stop, Terminal, Warning, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowLeft, ArrowRight, ArrowUp, CaretLeft, Check, CheckCircle, CircleNotch, Code, DownloadSimple, Eye, File, FileAudio, FileText, FilmSlate, FolderSimple, Images, Paperclip, PencilSimple, Plus, Queue, SquaresFour, Stop, Terminal, VideoCamera, Warning, X } from "@phosphor-icons/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { api } from "../api";
-import type { AgentEvent, AgentMedia, AgentMessage, Artifact, CodexModel, ImageLibraryAsset, MediaScene, ModelSelection, ProjectDetail } from "../types";
+import type { AgentEvent, AgentMedia, AgentMessage, Artifact, AssetFolder, AssetLibraryItem, CodexModel, MediaScene, ModelSelection, ProjectDetail } from "../types";
 import { buildTimeline, type TimelineActivity } from "./eventTimeline";
 import { ModelSelector } from "./ModelSelector";
 import { VoiceSelector } from "./VoiceSelector";
 import { useAgentEvents } from "../hooks/useAgentEvents";
-import { readNumberSetting, writeNumberSetting } from "../storage";
+import { readNumberSetting, readStringSetting, writeNumberSetting, writeStringSetting } from "../storage";
+import type { AgentConnectionState } from "../hooks/useAgentEvents";
 import { LiveHyperFramesPreview as ManagedLiveHyperFramesPreview, RenderPanel as PersistentRenderPanel } from "./HyperFramesWorkspace";
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
@@ -14,19 +15,29 @@ type ConversationEntry = { kind: "message"; item: AgentMessage; createdAt: numbe
 type CanvasTab = "preview" | "storyboard" | "assets" | "artifacts";
 
 export function AgentWorkspace({ project, models, selection, onSelection, onVoice, onProject, onRename, onBack }: { project: ProjectDetail; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onVoice: (voiceId: string) => void | Promise<void>; onProject: (value: ProjectDetail) => void; onRename: (id: string, title: string) => Promise<void>; onBack: () => void }) {
-  const [text, setText] = useState(""); const [files, setFiles] = useState<File[]>([]); const [contexts, setContexts] = useState<string[]>([]); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<CanvasTab>("preview"); const fileRef = useRef<HTMLInputElement>(null); const composerRef = useRef<HTMLTextAreaElement>(null); const timelineRef = useRef<HTMLElement>(null);
+  const [text, setText] = useState(""); const [files, setFiles] = useState<File[]>([]); const [contexts, setContexts] = useState<string[]>([]); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<CanvasTab>(() => savedCanvasTab(project.id)); const fileRef = useRef<HTMLInputElement>(null); const composerRef = useRef<HTMLTextAreaElement>(null); const timelineRef = useRef<HTMLElement>(null);
   const [artifactPreview, setArtifactPreview] = useState<{ artifact: Artifact; content: string; loading: boolean; error: string } | null>(null);
   const [threadWidth, setThreadWidth] = useState(() => savedWidth("yingya-thread-width", 468));
-  const [libraryAssets, setLibraryAssets] = useState<ImageLibraryAsset[]>([]);
-  const [selectedAssets, setSelectedAssets] = useState<ImageLibraryAsset[]>([]);
+  const [libraryAssets, setLibraryAssets] = useState<AssetLibraryItem[]>([]);
+  const [libraryFolders, setLibraryFolders] = useState<AssetFolder[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<AssetLibraryItem[]>([]);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [media, setMedia] = useState<AgentMedia>({ scenes: [], assets: [] });
   const [editingTitle, setEditingTitle] = useState(false); const [titleDraft, setTitleDraft] = useState(""); const [renaming, setRenaming] = useState(false); const [titleError, setTitleError] = useState("");
   const [dismissedCheckpoint, setDismissedCheckpoint] = useState("");
+  const refreshGeneration = useRef(0);
   const running = Boolean(project.activeTurnId);
   const refreshMedia = useCallback(async () => { try { setMedia(await api.getProjectMedia(project.id)); } catch { /* media is optional for older projects */ } }, [project.id]);
-  const refresh = useCallback(async () => { try { const [detail] = await Promise.all([api.getProject(project.id), refreshMedia()]); onProject(detail); } catch { /* retain last stable project */ } }, [onProject, project.id, refreshMedia]);
-  const { events } = useAgentEvents(project.id, refresh);
+  const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    try {
+      const [detail, latestMedia] = await Promise.all([api.getProject(project.id), api.getProjectMedia(project.id).catch(() => undefined)]);
+      if (generation !== refreshGeneration.current) return;
+      if (latestMedia) setMedia(latestMedia);
+      onProject(detail);
+    } catch { /* retain last stable project */ }
+  }, [onProject, project.id]);
+  const { events, connectionState, stalled, resync } = useAgentEvents(project.id, refresh, running);
   const assistantTexts = useMemo(() => new Set(project.messages.filter(message => message.role === "assistant").map(message => message.text.trim())), [project.messages]);
   const activities = useMemo(() => buildTimeline(events, assistantTexts), [events, assistantTexts]);
   const conversation = useMemo<ConversationEntry[]>(() => [
@@ -38,7 +49,13 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     : undefined, [project.messages, project.status]);
   const waitingInputChoices = useMemo(() => extractInputChoices(waitingInputMessage?.text ?? ""), [waitingInputMessage?.text]);
   useEffect(() => { const timeline = timelineRef.current; if (timeline) timeline.scrollTop = timeline.scrollHeight; }, [project.messages.length, activities.length]);
-  useEffect(() => { void refreshMedia(); void api.listImages().then(value => setLibraryAssets(value.images)).catch(() => undefined); }, [refreshMedia]);
+  useEffect(() => {
+    void refreshMedia();
+    void Promise.all([api.listAssetLibrary(), api.listAssetFolders()])
+      .then(([library, folders]) => { setLibraryAssets(library.assets); setLibraryFolders(folders); })
+      .catch(() => undefined);
+  }, [refreshMedia]);
+  function selectCanvasTab(tab: CanvasTab) { setCanvasTab(tab); writeStringSetting(`yingya-canvas-tab:${project.id}`, tab); }
 
   async function send(event: FormEvent) {
     event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length) || busy) return; setBusy(true); setError("");
@@ -47,7 +64,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
         ...files.map(file => api.uploadAsset(project.id, file)),
         ...selectedAssets.map(asset => uploadLibraryAsset(project.id, asset)),
       ]);
-      const assetContexts = selectedAssets.map(asset => `创作素材 · ${imageAssetName(asset)}`);
+      const assetContexts = selectedAssets.map(asset => `创作参考 · ${assetName(asset)}`);
       await api.sendTurn(project.id, { text: text.trim() || "请结合所选素材继续创作。", attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], interrupt, ...selection });
       if (project.manifest.checkpoint?.id) setDismissedCheckpoint(project.manifest.checkpoint.id); setText(""); setFiles([]); setSelectedAssets([]); setContexts([]); setInterrupt(false); await refresh();
     }
@@ -61,7 +78,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       await api.confirmCheckpoint(project.id);
       if (checkpointId) setDismissedCheckpoint(checkpointId);
       setArtifactPreview(null);
-      if (checkpointKind === "plan") { setCanvasTab("preview"); setMobilePanel("canvas"); }
+      if (checkpointKind === "plan") { selectCanvasTab("preview"); setMobilePanel("canvas"); }
       await refresh();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "确认失败"); }
     finally { setBusy(false); }
@@ -91,7 +108,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   }
   async function previewArtifact(artifact: Artifact) {
     setMobilePanel("canvas");
-    if (artifact.kind.includes("video")) { setArtifactPreview(null); setCanvasTab("preview"); return; }
+    if (artifact.kind.includes("video")) { setArtifactPreview(null); selectCanvasTab("preview"); return; }
     setArtifactPreview({ artifact, content: "", loading: true, error: "" });
     try {
       let content = await api.readProjectFile(project.id, artifact.path);
@@ -126,13 +143,20 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     setValue(next);
     writeNumberSetting(key, next);
   }
+  function selectReferenceAssets(assets: AssetLibraryItem[]) {
+    setSelectedAssets(items => {
+      const selectedIds = new Set(items.map(item => item.id));
+      return [...items, ...assets.filter(asset => !selectedIds.has(asset.id))];
+    });
+  }
   return <div className={`workspace workspace--canvas workspace-mobile--${mobilePanel}`} style={workspaceStyle}>
-    <header className="project-header"><div className="project-header-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div><button className="project-back" onClick={onBack}><CaretLeft/>所有项目</button><div className="project-heading">{editingTitle ? <form className="thread-title-editor" onSubmit={saveTitle}><input aria-label="项目标题" autoFocus maxLength={48} value={titleDraft} onChange={event => setTitleDraft(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setEditingTitle(false); setTitleError(""); } }}/><button aria-label="保存项目标题" disabled={!titleDraft.trim() || renaming}><Check/></button><button type="button" aria-label="取消修改标题" onClick={() => { setEditingTitle(false); setTitleError(""); }}><X/></button></form> : <button className="thread-title-button" aria-label={`修改项目标题：${project.title}`} title="修改项目标题" onClick={() => { setTitleDraft(project.title); setTitleError(""); setEditingTitle(true); }}><h1>{project.title}</h1><PencilSimple/></button>}<span className={`project-state project-state--${project.status}`}>{project.statusLabel}</span></div><div className="project-header-actions"><span className="spec-chip">{project.aspectRatio}</span><button className="export-button" onClick={() => { setCanvasTab("preview"); setMobilePanel("canvas"); }}><DownloadSimple/>导出</button></div></header>
+    <header className="project-header"><div className="project-header-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div><button className="project-back" onClick={onBack}><CaretLeft/>所有项目</button><div className="project-heading">{editingTitle ? <form className="thread-title-editor" onSubmit={saveTitle}><input aria-label="项目标题" autoFocus maxLength={48} value={titleDraft} onChange={event => setTitleDraft(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setEditingTitle(false); setTitleError(""); } }}/><button aria-label="保存项目标题" disabled={!titleDraft.trim() || renaming}><Check/></button><button type="button" aria-label="取消修改标题" onClick={() => { setEditingTitle(false); setTitleError(""); }}><X/></button></form> : <button className="thread-title-button" aria-label={`修改项目标题：${project.title}`} title="修改项目标题" onClick={() => { setTitleDraft(project.title); setTitleError(""); setEditingTitle(true); }}><h1>{project.title}</h1><PencilSimple/></button>}<span className={`project-state project-state--${project.status}`}>{project.statusLabel}</span></div><div className="project-header-actions"><ConnectionBadge state={connectionState}/><span className="spec-chip">{project.aspectRatio}</span><button className="export-button" onClick={() => { selectCanvasTab("preview"); setMobilePanel("canvas"); }}><DownloadSimple/>导出</button></div></header>
     <div className="workspace-splitter workspace-splitter--thread" role="separator" aria-label="调整创作对话宽度" aria-orientation="vertical" aria-valuemin={380} aria-valuemax={620} aria-valuenow={threadWidth} tabIndex={0} onKeyDown={event => resizeWithKeyboard(event, threadWidth, setThreadWidth, "yingya-thread-width", 380, 620, 1)} onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragThread} onPointerUp={event => finishResize(event, "yingya-thread-width", threadWidth)} onPointerCancel={event => finishResize(event, "yingya-thread-width", threadWidth)}/>
-    <nav className="workspace-tabs" aria-label="工作区视图"><button className={mobilePanel === "thread" ? "active" : ""} onClick={() => setMobilePanel("thread")}>对话</button>{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button key={tab} className={mobilePanel === "canvas" && canvasTab === tab ? "active" : ""} onClick={() => { setMobilePanel("canvas"); setCanvasTab(tab); }}>{canvasTabLabel(tab)}</button>)}</nav>
+    <nav className="workspace-tabs" aria-label="工作区视图"><button className={mobilePanel === "thread" ? "active" : ""} onClick={() => setMobilePanel("thread")}>对话</button>{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button key={tab} className={mobilePanel === "canvas" && canvasTab === tab ? "active" : ""} onClick={() => { setMobilePanel("canvas"); selectCanvasTab(tab); }}>{canvasTabLabel(tab)}</button>)}</nav>
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "与创作助手继续完善视频"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
       <section className="timeline" ref={timelineRef}><div className="timeline-inner">
+        {stalled || connectionState === "disconnected" ? <ConnectionNotice stalled={stalled} onRetry={() => void resync()}/> : null}
         <ConversationFeed entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
         {(project.status === "failed" || project.status === "incomplete") && project.manifest.dirty ? <WorkflowRecoveryCard briefing={project.manifest.phase === "briefing"} incomplete={project.status === "incomplete"} statusLabel={project.statusLabel} onRecover={selectQuickReply}/> : null}
@@ -141,17 +165,27 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       </div></section>
       <footer className="thread-footer">
         {assetPickerOpen ? <ComposerAssetPicker assets={libraryAssets} selected={selectedAssets} onClose={() => setAssetPickerOpen(false)} onToggle={asset => setSelectedAssets(items => items.some(item => item.id === asset.id) ? items.filter(item => item.id !== asset.id) : [...items, asset])}/> : null}
-        {selectedAssets.length ? <div className="selected-asset-chips" aria-label="已选择素材">{selectedAssets.map(asset => <span key={asset.id}><img src={asset.url} alt=""/><span><b>{imageAssetName(asset)}</b><small>用于剧本与分镜</small></span><button aria-label={`移除素材 ${imageAssetName(asset)}`} onClick={() => setSelectedAssets(items => items.filter(item => item.id !== asset.id))}><X/></button></span>)}</div> : null}
+        {selectedAssets.length ? <div className="selected-asset-chips" aria-label="已选择素材">{selectedAssets.map(asset => <span key={asset.id}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · 创作参考</small></span><button aria-label={`移除素材 ${assetName(asset)}`} onClick={() => setSelectedAssets(items => items.filter(item => item.id !== asset.id))}><X/></button></span>)}</div> : null}
         {contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}
         <form className="composer" onSubmit={send}><textarea ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述修改，或继续推进视频…"}/><div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div><div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><button className={`asset-picker-trigger ${selectedAssets.length ? "active" : ""}`} type="button" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(open => !open)}><Images/>选择素材{selectedAssets.length ? <span>{selectedAssets.length}</span> : null}</button><VoiceSelector value={project.voiceId} onChange={onVoice} disabled={running}/><ModelSelector models={models} value={selection} onChange={onSelection}/>{running ? <label className="interrupt-toggle"><input type="checkbox" checked={interrupt} onChange={event => setInterrupt(event.target.checked)}/><span>{interrupt ? "立即应用" : "排队"}</span></label> : null}</div><div>{running ? <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "正在停止" : "停止当前任务"}</button> : null}<button className="send-button" aria-label="发送消息" disabled={(!text.trim() && !files.length && !selectedAssets.length) || busy}><ArrowUp weight="bold"/></button></div></div></form>{error ? <p className="form-error">{error}</p> : null}
       </footer>
     </main>
-    <ArtifactCanvas project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={setCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAsset={asset => { setSelectedAssets(items => items.some(item => item.id === asset.id) ? items : [...items, asset]); setMobilePanel("thread"); requestAnimationFrame(() => composerRef.current?.focus()); }} onTimedFeedback={addTimedFeedback} onRefresh={refresh}/>
+    <ArtifactCanvas project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onTimedFeedback={addTimedFeedback} onRefresh={refresh}/>
   </div>;
 }
 
-function ComposerAssetPicker({ assets, selected, onToggle, onClose }: { assets: ImageLibraryAsset[]; selected: ImageLibraryAsset[]; onToggle: (asset: ImageLibraryAsset) => void; onClose: () => void }) {
-  return <section className="composer-asset-picker" aria-label="选择创作素材"><header><div><b>选择素材</b><span>选择后会随对话关联到剧本与分镜</span></div><button type="button" aria-label="关闭素材选择" onClick={onClose}><X/></button></header>{assets.length ? <div>{assets.map(asset => { const active = selected.some(item => item.id === asset.id); return <button type="button" className={active ? "selected" : ""} aria-pressed={active} key={asset.id} onClick={() => onToggle(asset)}><img src={asset.url} alt=""/><span><b>{imageAssetName(asset)}</b><small>{asset.kind === "generated" ? "AI 生成" : "已上传"}</small></span>{active ? <Check/> : <Plus/>}</button>; })}</div> : <p>素材库暂时为空，可先在项目外的素材工坊创建。</p>}</section>;
+function ConnectionBadge({ state }: { state: AgentConnectionState }) {
+  if (state === "connected") return null;
+  const label = state === "connecting" ? "正在连接" : state === "recovering" ? "正在恢复连接" : "连接已中断";
+  return <span className={`connection-badge connection-badge--${state}`} role="status"><i/>{label}</span>;
+}
+
+function ConnectionNotice({ stalled, onRetry }: { stalled: boolean; onRetry: () => void }) {
+  return <section className="connection-notice" role="status"><Warning/><div><b>{stalled ? "任务长时间没有新进度" : "实时连接已中断"}</b><p>{stalled ? "映芽仍会保留任务和队列，你可以重新同步最新状态。" : "当前内容不会丢失，重新连接后会补齐期间的进度。"}</p></div><button type="button" onClick={onRetry}><ArrowClockwise/>重新同步</button></section>;
+}
+
+function ComposerAssetPicker({ assets, selected, onToggle, onClose }: { assets: AssetLibraryItem[]; selected: AssetLibraryItem[]; onToggle: (asset: AssetLibraryItem) => void; onClose: () => void }) {
+  return <section className="composer-asset-picker" aria-label="选择创作素材"><header><div><b>选择参考文件</b><span>图片、视频、音频和文档都可随对话进入创作</span></div><button type="button" aria-label="关闭素材选择" onClick={onClose}><X/></button></header>{assets.length ? <div>{assets.map(asset => { const active = selected.some(item => item.id === asset.id); return <button type="button" className={active ? "selected" : ""} aria-pressed={active} key={asset.id} onClick={() => onToggle(asset)}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · {asset.kind === "generated" ? "AI 生成" : "已上传"}</small></span>{active ? <Check/> : <Plus/>}</button>; })}</div> : <p>素材库暂时为空，可先在项目外的素材工坊上传文件。</p>}</section>;
 }
 
 function ConversationFeed({ entries, onQuickReply }: { entries: ConversationEntry[]; onQuickReply: (value: string) => void }) {
@@ -224,8 +258,9 @@ function ActivityFeed({ activities }: { activities: TimelineActivity[] }) {
 function ActivityRow({ activity }: { activity: TimelineActivity }) {
   if (activity.kind === "assistant") return <article className="agent-update"><p>{activity.summary}</p>{activity.status === "running" ? <CircleNotch className="spin"/> : null}</article>;
   if (activity.kind === "request" && activity.event) return <section className="activity-request"><header><Warning/><b>{activity.title}</b></header><RequestControls event={activity.event}/></section>;
-  const icon = activity.kind === "command" ? <Terminal/> : activity.kind === "file" ? <File/> : activity.kind === "plan" ? <Check/> : <Code/>;
-  return <div className={`activity-item activity-item--${activity.status}`}><div className="activity-item-content"><span className="activity-icon">{activity.status === "running" ? <CircleNotch className="spin"/> : activity.status === "failed" ? <Warning/> : icon}</span><b>{activity.status === "failed" ? `${activity.title}失败` : activity.title}</b>{activity.summary ? <em>{activity.summary}</em> : null}<small>{activity.status === "running" ? "进行中" : activity.status === "failed" ? "失败" : activity.status === "interrupted" ? "已中断" : "完成"}</small></div></div>;
+  const icon = activity.kind === "command" ? <Terminal/> : activity.kind === "file" ? <File/> : activity.kind === "plan" ? <Check/> : activity.kind === "system" ? <Warning/> : <Code/>;
+  const statusLabel = activity.status === "running" ? "进行中" : activity.status === "waiting" ? "自动重试中" : activity.status === "failed" ? "失败" : activity.status === "interrupted" ? "已中断" : "完成";
+  return <div className={`activity-item activity-item--${activity.status}`} role={activity.kind === "system" ? "status" : undefined}><div className="activity-item-content"><span className="activity-icon">{activity.status === "running" ? <CircleNotch className="spin"/> : activity.status === "failed" ? <Warning/> : icon}</span><b>{activity.status === "failed" ? `${activity.title}失败` : activity.title}</b>{activity.summary ? <em>{activity.summary}</em> : null}<small>{statusLabel}</small></div></div>;
 }
 
 function RequestControls({ event }: { event: AgentEvent }) {
@@ -251,8 +286,8 @@ function WorkflowRecoveryCard({ briefing, incomplete, statusLabel, onRecover }: 
 }
 type TimeFeedback = { id: number; time: number; description: string };
 
-function ArtifactCanvas({ project, activeTab, preview, media, libraryAssets, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAsset, onTimedFeedback, onRefresh }: { project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: ImageLibraryAsset[]; selectedAssets: ImageLibraryAsset[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAsset: (asset: ImageLibraryAsset) => void; onTimedFeedback: (versionLabel: string, feedback: Array<{ time: number; description: string }>) => void; onRefresh: () => Promise<void> }) {
-  const [versionId, setVersionId] = useState(project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? "");
+function ArtifactCanvas({ project, activeTab, preview, media, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onRefresh }: { project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onTimedFeedback: (versionLabel: string, feedback: Array<{ time: number; description: string }>) => void; onRefresh: () => Promise<void> }) {
+  const [versionId, setVersionId] = useState(() => savedVersionId(project));
   const [timeFeedback, setTimeFeedback] = useState<TimeFeedback[]>([]);
   const nextFeedbackId = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -263,7 +298,10 @@ function ArtifactCanvas({ project, activeTab, preview, media, libraryAssets, sel
   const completedFeedback = timeFeedback.filter(item => item.description.trim());
   const liveAvailable = project.manifest.phase !== "briefing" && project.manifest.phase !== "plan_review";
 
-  useEffect(() => setVersionId(project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? ""), [project.manifest.currentDraft, project.manifest.versions]);
+  useEffect(() => {
+    if (versionId && project.manifest.versions.some(version => version.id === versionId)) return;
+    setVersionId(project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? "");
+  }, [project.manifest.currentDraft, project.manifest.versions, versionId]);
   useEffect(() => setTimeFeedback([]), [project.id, versionId]);
 
   function addTimeFeedback() {
@@ -280,21 +318,21 @@ function ArtifactCanvas({ project, activeTab, preview, media, libraryAssets, sel
   }
 
   return <aside className="artifact-canvas">
-    <header><div className="canvas-version"><span className="canvas-label">当前版本</span>{project.manifest.versions.length ? <select value={versionId} onChange={event => setVersionId(event.target.value)}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" role="tablist" aria-label="项目工作台">{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{project.manifest.dirty ? <span className="dirty-chip">待检查</span> : null}</div></header>
+    <header><div className="canvas-version"><span className="canvas-label">当前版本</span>{project.manifest.versions.length ? <select value={versionId} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" role="tablist" aria-label="项目工作台">{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{project.manifest.dirty ? <span className="dirty-chip">待检查</span> : null}</div></header>
     {preview ? <InlineArtifactPreview preview={preview} onClose={onClosePreview}/> : <>
       <ManagedLiveHyperFramesPreview project={project} active={activeTab === "preview" && !videoPath && liveAvailable} available={liveAvailable}/>
       {activeTab === "preview" && (videoPath || !liveAvailable) ? <section className="preview-panel preview-panel--with-inspector"><div className="preview-main">
         <div className="section-heading"><h3>{videoPath ? "当前成片" : "作品预览"}</h3><span>{project.aspectRatio}</span></div>
         {project.activeTurnId && version ? <div className="preview-version-notice"><CircleNotch className="spin"/><span>正在生成新版，当前预览为 {version.label}</span></div> : null}
-        <div className="preview-stage-shell"><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls/> : <div className="canvas-empty"><FilmSlate/><b>暂无草稿视频</b><span>制作过程中可先在“实时画面”查看 HTML 动效。</span></div>}</div></div>
+        <div className="preview-stage-shell"><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls onLoadedMetadata={event => restoreVideoTime(event.currentTarget, `yingya-video-time:${project.id}:${version?.id ?? "current"}`)} onPause={event => saveVideoTime(event.currentTarget, `yingya-video-time:${project.id}:${version?.id ?? "current"}`)}/> : <div className="canvas-empty"><FilmSlate/><b>暂无草稿视频</b><span>制作过程中可先在“实时画面”查看 HTML 动效。</span></div>}</div></div>
         {videoPath ? <>
           <div className="canvas-actions"><button onClick={addTimeFeedback}><Plus/>添加时间点</button>{version && version.id !== project.manifest.currentDraft ? <button onClick={() => void api.rollbackVersion(project.id, version.id)}><ArrowClockwise/>回退版本</button> : null}</div>
           {timeFeedback.length ? <section className="time-feedback" aria-label="时间点修改"><header><b>时间点修改</b><span>{timeFeedback.length} 条</span></header><div className="time-feedback-list">{timeFeedback.map((item, index) => <div className="time-feedback-row" key={item.id}><time>{formatTimestamp(item.time)}</time><input autoFocus={index === timeFeedback.length - 1} aria-label={`${formatTimestamp(item.time)} 的修改描述`} value={item.description} onChange={event => updateTimeFeedback(item.id, event.target.value)} placeholder="描述这个时间点需要如何修改"/><button aria-label={`删除 ${formatTimestamp(item.time)} 的反馈`} title="删除反馈" onClick={() => setTimeFeedback(items => items.filter(value => value.id !== item.id))}><X/></button></div>)}</div><button className="time-feedback-apply" disabled={!completedFeedback.length} onClick={applyTimeFeedback}><ArrowLeft/>添加到修改描述</button></section> : null}
         </> : null}
         {version ? <PersistentRenderPanel project={project} version={version} onRefresh={onRefresh}/> : null}
-      </div><PreviewAssetInspector media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={onSelectAsset}/></section> : null}
+      </div><PreviewAssetInspector media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])}/></section> : null}
       {activeTab === "storyboard" ? <StoryboardPanel scenes={media.scenes} assets={media.assets} onContext={onContext}/> : null}
-      {activeTab === "assets" ? <ProjectAssetsPanel media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={onSelectAsset}/> : null}
+      {activeTab === "assets" ? <ProjectAssetsPanel media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])} onSelectFolder={onSelectAssets}/> : null}
       {activeTab === "artifacts" ? <section className="artifact-list"><div className="section-heading"><h3>全部产物</h3><span>{project.manifest.artifacts.length}</span></div>{project.manifest.artifacts.map(artifact => <div className="artifact-row" key={artifact.id}><button className="artifact-open" onClick={() => onPreview(artifact)}><span>{artifact.kind.includes("report") ? <Check/> : <File/>}</span><div><b>{artifact.label}</b><small>{artifact.path}</small></div><Eye/></button><button className="artifact-context" aria-label={`加入反馈 ${artifact.label}`} title="加入反馈" onClick={() => onContext(`${version?.label ?? "项目"} · ${artifact.label}`)}>+</button></div>)}{!project.manifest.artifacts.length ? <div className="artifact-empty"><File/><b>还没有项目产物</b><p>生成完成后，视频与检查报告会显示在这里。</p></div> : null}</section> : null}
     </>}
   </aside>;
@@ -305,14 +343,17 @@ function StoryboardPanel({ scenes, assets, onContext }: { scenes: MediaScene[]; 
   return <section className="storyboard-panel"><div className="section-heading"><div><h3>分镜</h3><p>场景、旁白与采用素材在这里保持关联。</p></div><span>{orderedScenes.length} 个场景</span></div>{orderedScenes.length ? <div className="storyboard-list">{orderedScenes.map((scene, index) => { const sceneAssets = scene.assetIds.map(id => assets.find(asset => asset.id === id)).filter((asset): asset is AgentMedia["assets"][number] => Boolean(asset)); return <article key={scene.id}><div className="scene-index">{String(index + 1).padStart(2, "0")}</div><div className="scene-copy"><b>场景 {String(scene.order || index + 1).padStart(2, "0")}</b><span>{scene.narrativeRole || "待补充场景描述"}</span></div><div className="scene-assets">{sceneAssets.slice(0, 3).map(asset => asset.url ? <img src={asset.url} alt={asset.name} key={asset.id}/> : null)}{!sceneAssets.length ? <span>暂无素材</span> : null}</div><button onClick={() => onContext(`场景 ${scene.order || index + 1} · ${scene.narrativeRole || "分镜"}`)}>加入反馈</button></article>; })}</div> : <div className="workbench-empty"><SquaresFour/><b>分镜正在准备</b><p>确认制作方案后，场景结构会显示在这里；聊天中选择的素材会随创作要求一起进入分镜。</p></div>}</section>;
 }
 
-function ProjectAssetsPanel({ media, libraryAssets, selectedAssets, onSelect }: { media: AgentMedia; libraryAssets: ImageLibraryAsset[]; selectedAssets: ImageLibraryAsset[]; onSelect: (asset: ImageLibraryAsset) => void }) {
-  return <section className="project-assets-panel"><div className="section-heading"><div><h3>素材</h3><p>从全局素材库选择内容，直接加入当前创作对话。</p></div><span>{media.assets.length} 项已进入项目</span></div>{media.assets.length ? <section className="project-media-section"><h4>项目中</h4><div>{media.assets.map(asset => <article key={asset.id}>{asset.url ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{asset.name}</b><small>{asset.source === "upload" ? "对话素材" : asset.source}</small></div></article>)}</div></section> : null}<section className="project-library-section"><h4>全局素材库</h4>{libraryAssets.length ? <div>{libraryAssets.map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <article key={asset.id}><img src={asset.url} alt=""/><div><b>{imageAssetName(asset)}</b><small>{asset.kind === "generated" ? "AI 生成" : "已上传"}</small></div><button disabled={selected} onClick={() => onSelect(asset)}>{selected ? <Check/> : <Plus/>}{selected ? "已选择" : "加入提示"}</button></article>; })}</div> : <div className="workbench-empty"><Images/><b>素材库暂时为空</b><p>可回到项目中心的素材工坊创建或上传素材。</p></div>}</section></section>;
+function ProjectAssetsPanel({ media, libraryAssets, libraryFolders, selectedAssets, onSelect, onSelectFolder }: { media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onSelect: (asset: AssetLibraryItem) => void; onSelectFolder: (assets: AssetLibraryItem[]) => void }) {
+  const [folderId, setFolderId] = useState("*");
+  const visibleAssets = folderId === "*" ? libraryAssets : libraryAssets.filter(asset => (asset.folderId ?? "") === folderId);
+  const selectableAssets = visibleAssets.filter(asset => !selectedAssets.some(item => item.id === asset.id));
+  return <section className="project-assets-panel"><div className="section-heading"><div><h3>参考文件</h3><p>图片、视频、音频、文档及其他文件都可加入当前创作对话。</p></div><span>{media.assets.length} 项已进入项目</span></div>{media.assets.length ? <section className="project-media-section"><h4>项目中</h4><div>{media.assets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.source === "upload" ? "对话参考" : asset.source}</small></div></article>)}</div></section> : null}<section className="project-library-section"><div className="project-library-heading"><div><h4>全局素材库</h4><span>{visibleAssets.length} 个文件</span></div><div className="project-library-controls"><label><FolderSimple/><select aria-label="筛选素材文件夹" value={folderId} onChange={event => setFolderId(event.target.value)}><option value="*">全部文件夹</option><option value="">未整理</option>{libraryFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>{folderId !== "*" && visibleAssets.length ? <button type="button" disabled={!selectableAssets.length} onClick={() => onSelectFolder(selectableAssets)}><FolderSimple/>{selectableAssets.length ? "选择此文件夹" : "文件夹已选择"}</button> : null}</div></div>{visibleAssets.length ? <div className="project-library-grid">{visibleAssets.map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <article key={asset.id}><AssetReferenceThumb asset={asset}/><div><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · {asset.kind === "generated" ? "AI 生成" : "已上传"}</small></div><button disabled={selected} aria-label={`${selected ? "已选择" : "选择参考文件"} ${assetName(asset)}`} onClick={() => onSelect(asset)}>{selected ? <Check/> : <Plus/>}{selected ? "已选择" : "加入提示"}</button></article>; })}</div> : <div className="workbench-empty"><File/><b>这个文件夹暂无素材</b><p>可前往素材工坊上传任意类型的参考文件。</p></div>}</section></section>;
 }
 
-function PreviewAssetInspector({ media, libraryAssets, selectedAssets, onSelect }: { media: AgentMedia; libraryAssets: ImageLibraryAsset[]; selectedAssets: ImageLibraryAsset[]; onSelect: (asset: ImageLibraryAsset) => void }) {
+function PreviewAssetInspector({ media, libraryAssets, selectedAssets, onSelect }: { media: AgentMedia; libraryAssets: AssetLibraryItem[]; selectedAssets: AssetLibraryItem[]; onSelect: (asset: AssetLibraryItem) => void }) {
   const scene = [...media.scenes].sort((left, right) => left.order - right.order)[0];
   const sceneAssets = scene ? scene.assetIds.map(id => media.assets.find(asset => asset.id === id)).filter((asset): asset is AgentMedia["assets"][number] => Boolean(asset)) : media.assets.slice(0, 4);
-  return <aside className="preview-asset-inspector"><header><div><b>{scene ? `场景 ${String(scene.order || 1).padStart(2, "0")}` : "创作素材"}</b><span>{scene?.narrativeRole || "当前项目上下文"}</span></div><span>{sceneAssets.length}</span></header><section><h4>已使用素材</h4>{sceneAssets.length ? <div className="preview-used-assets">{sceneAssets.map(asset => <article key={asset.id}>{asset.url ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{asset.name}</b><small>{asset.description || asset.source}</small></div></article>)}</div> : <p>聊天中选择的素材会在发送后进入当前项目。</p>}</section><section><div className="inspector-section-title"><h4>全局素材库</h4><span>{libraryAssets.length}</span></div><div className="preview-library-strip">{libraryAssets.slice(0, 6).map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <button key={asset.id} disabled={selected} aria-label={`${selected ? "已选择" : "加入提示"} ${imageAssetName(asset)}`} onClick={() => onSelect(asset)}><img src={asset.url} alt=""/><span>{selected ? <Check/> : <Plus/>}</span></button>; })}</div></section><p className="preview-inspector-hint">选择素材后可在左侧对话中补充用途，并随剧本、分镜一起创作。</p></aside>;
+  return <aside className="preview-asset-inspector"><header><div><b>{scene ? `场景 ${String(scene.order || 1).padStart(2, "0")}` : "创作参考"}</b><span>{scene?.narrativeRole || "当前项目上下文"}</span></div><span>{sceneAssets.length}</span></header><section><h4>已使用素材</h4>{sceneAssets.length ? <div className="preview-used-assets">{sceneAssets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.description || asset.source}</small></div></article>)}</div> : <p>聊天中选择的参考文件会在发送后进入当前项目。</p>}</section><section><div className="inspector-section-title"><h4>全局素材库</h4><span>{libraryAssets.length}</span></div><div className="preview-library-strip">{libraryAssets.slice(0, 6).map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <button key={asset.id} disabled={selected} aria-label={`${selected ? "已选择" : "加入提示"} ${assetName(asset)}`} onClick={() => onSelect(asset)}><AssetReferenceThumb asset={asset}/><span>{selected ? <Check/> : <Plus/>}</span></button>; })}</div></section><p className="preview-inspector-hint">选择任意参考文件后可在左侧对话中补充用途，并随剧本、分镜一起创作。</p></aside>;
 }
 
 function InlineArtifactPreview({ preview, onClose }: { preview: { artifact: Artifact; content: string; loading: boolean; error: string }; onClose: () => void }) {
@@ -323,16 +364,31 @@ function InlineArtifactPreview({ preview, onClose }: { preview: { artifact: Arti
 
 function formatTimestamp(seconds: number) { const minutes = Math.floor(seconds / 60); return `${String(minutes).padStart(2, "0")}:${(seconds % 60).toFixed(1).padStart(4, "0")}`; }
 function canvasTabLabel(tab: CanvasTab) { return ({ preview: "预览", storyboard: "分镜", assets: "素材", artifacts: "产物" } as const)[tab]; }
-function imageAssetName(asset: ImageLibraryAsset) { return asset.prompt?.trim() || asset.sourceName?.trim() || "未命名素材"; }
-function imageAssetFileName(asset: ImageLibraryAsset) {
-  const extension = asset.mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
-  return `${(asset.sourceName || asset.prompt || asset.id).replace(/[\\/:*?"<>|]/g, "-").slice(0, 48)}.${extension}`;
+function savedCanvasTab(projectId: string): CanvasTab { const value = readStringSetting(`yingya-canvas-tab:${projectId}`, "preview"); return value === "storyboard" || value === "assets" || value === "artifacts" ? value : "preview"; }
+function savedVersionId(project: ProjectDetail) { const fallback = project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? ""; const saved = readStringSetting(`yingya-version:${project.id}`, fallback); return project.manifest.versions.some(version => version.id === saved) ? saved : fallback; }
+function restoreVideoTime(video: HTMLVideoElement, key: string) { const saved = readNumberSetting(key, 0); if (saved > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(saved, Math.max(0, video.duration - .1)); }
+function saveVideoTime(video: HTMLVideoElement, key: string) { if (Number.isFinite(video.currentTime) && video.currentTime > 0) writeNumberSetting(key, video.currentTime); }
+function assetName(asset: AssetLibraryItem) { return asset.sourceName?.trim() || asset.prompt?.trim() || "未命名素材"; }
+function displayFileName(name: string) { return name.replace(/(\.[a-z0-9]{1,10})\1$/i, "$1"); }
+function assetTypeLabel(asset: AssetLibraryItem) { return ({ image: "图片", video: "视频", audio: "音频", document: "文档", file: "文件" } as const)[asset.category]; }
+function assetFileName(asset: AssetLibraryItem) {
+  const safeName = (asset.sourceName || asset.prompt || asset.id).replace(/[\\/:*?"<>|]/g, "-").slice(0, 64);
+  if (/\.[a-z0-9]{1,10}$/i.test(safeName)) return safeName;
+  const extension = asset.mimeType.split("/")[1]?.replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "bin";
+  return `${safeName}.${extension}`;
 }
-async function uploadLibraryAsset(projectId: string, asset: ImageLibraryAsset) {
+function AssetReferenceThumb({ asset }: { asset: AssetLibraryItem }) {
+  if (asset.category === "image") return <span className="asset-reference-thumb"><img src={asset.url} alt=""/></span>;
+  if (asset.category === "video") return <span className="asset-reference-thumb"><VideoCamera/></span>;
+  if (asset.category === "audio") return <span className="asset-reference-thumb"><FileAudio/></span>;
+  if (asset.category === "document") return <span className="asset-reference-thumb"><FileText/></span>;
+  return <span className="asset-reference-thumb"><File/></span>;
+}
+async function uploadLibraryAsset(projectId: string, asset: AssetLibraryItem) {
   const response = await fetch(asset.url);
-  if (!response.ok) throw new Error(`无法读取素材：${imageAssetName(asset)}`);
+  if (!response.ok) throw new Error(`无法读取素材：${assetName(asset)}`);
   const blob = await response.blob();
-  return api.uploadAsset(projectId, new window.File([blob], imageAssetFileName(asset), { type: asset.mimeType }));
+  return api.uploadAsset(projectId, new window.File([blob], assetFileName(asset), { type: asset.mimeType }));
 }
 function normalizeLocalUrl(value: string) {
   const url = new URL(value, window.location.href);

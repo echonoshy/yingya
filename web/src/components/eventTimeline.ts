@@ -1,6 +1,6 @@
 import type { AgentEvent } from "../types";
 
-type ActivityKind = "assistant" | "command" | "file" | "plan" | "tool" | "request";
+type ActivityKind = "assistant" | "command" | "file" | "plan" | "tool" | "request" | "system";
 export interface TimelineActivity {
   id: string;
   kind: ActivityKind;
@@ -44,6 +44,17 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
     const params = asObject(payload.params);
     const item = asObject(params.item);
     const itemId = stringValue(params.itemId) || stringValue(item.id);
+
+    if (event.method === "error" || event.method === "warning") {
+      const error = asObject(params.error);
+      const retrying = params.willRetry === true;
+      const row = activity(`system-${event.turnId ?? "current"}`, "system", event, retrying ? "等待网络恢复" : "创作服务连接异常");
+      row.summary = retrying
+        ? "暂时无法连接创作服务，正在自动重试。"
+        : stringValue(error.message) || stringValue(params.message) || "暂时无法连接创作服务。";
+      row.status = retrying ? "waiting" : "failed";
+      continue;
+    }
 
     if (isRequest(event, payload)) {
       activities.push({ id: `request-${event.seq}`, kind: "request", title: requestTitle(event.method), summary: stringValue(params.reason) || stringValue(params.message), output: "", status: "waiting", firstSeq: event.seq, lastSeq: event.seq, createdAt: event.createdAt, event });

@@ -237,6 +237,25 @@ impl CodexClient {
         cwd: &Path,
         model: Option<&str>,
     ) -> Result<ThreadStarted, CodexError> {
+        self.start_thread_at_with_persistence(cwd, model, true)
+            .await
+    }
+
+    pub async fn start_ephemeral_thread_at(
+        &self,
+        cwd: &Path,
+        model: Option<&str>,
+    ) -> Result<ThreadStarted, CodexError> {
+        self.start_thread_at_with_persistence(cwd, model, false)
+            .await
+    }
+
+    async fn start_thread_at_with_persistence(
+        &self,
+        cwd: &Path,
+        model: Option<&str>,
+        persist: bool,
+    ) -> Result<ThreadStarted, CodexError> {
         let model = model.unwrap_or(&self.config.model);
         let result = self
             .request(
@@ -246,7 +265,7 @@ impl CodexClient {
                     "cwd": cwd,
                     "approvalPolicy": "on-request",
                     "sandbox": "workspace-write",
-                    "ephemeral": false,
+                    "ephemeral": !persist,
                     "serviceName": "yingya"
                 }),
             )

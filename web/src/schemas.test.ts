@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectDetailSchema } from "./schemas";
+import { eventPageSchema, projectDetailSchema } from "./schemas";
 
 describe("projectDetailSchema", () => {
   it("normalizes nullable Rust option fields and does not require events", () => {
@@ -25,5 +25,12 @@ describe("projectDetailSchema", () => {
       manifest: { schemaVersion: 1, phase: "draft_review", dirty: false, checkpoint: null, outputSpec: {}, artifacts: [], versions: [], currentDraft: null, studioEntry: "" },
     });
     expect(parsed.renderJobs[0]).toMatchObject({ id: "job", status: "running", progress: 44 });
+  });
+});
+
+describe("eventPageSchema", () => {
+  it("normalizes the null cursor emitted by Rust when there are no older events", () => {
+    const parsed = eventPageSchema.parse({ items: [], nextBefore: null, latestSeq: 9, hasMore: false });
+    expect(parsed.nextBefore).toBeUndefined();
   });
 });

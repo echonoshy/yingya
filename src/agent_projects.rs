@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Component, Path, PathBuf},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -21,12 +21,15 @@ pub struct AgentProjectStore {
     root: Arc<PathBuf>,
     locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     sequences: Arc<Mutex<HashMap<String, u64>>>,
+    creation_gate: Arc<Mutex<()>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAgentProjectRequest {
     pub prompt: String,
+    #[serde(default)]
+    pub client_request_id: Option<String>,
     pub title: Option<String>,
     #[serde(default = "default_aspect")]
     pub aspect_ratio: String,
@@ -42,6 +45,8 @@ pub struct CreateAgentProjectRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProjectRecord {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_request_id: Option<String>,
     pub title: String,
     pub status: String,
     pub status_label: String,
@@ -65,6 +70,8 @@ pub struct AgentMessage {
     pub id: String,
     #[serde(default)]
     pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_request_id: Option<String>,
     pub role: String,
     pub text: String,
     #[serde(default)]
@@ -89,6 +96,8 @@ pub struct AppendAgentMessage {
 pub struct AgentTurnRequest {
     pub text: String,
     #[serde(default)]
+    pub client_request_id: Option<String>,
+    #[serde(default)]
     pub attachments: Vec<String>,
     #[serde(default)]
     pub context: Vec<String>,
@@ -104,6 +113,8 @@ pub struct AgentTurnRequest {
 #[serde(rename_all = "camelCase")]
 pub struct QueuedTurn {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_request_id: Option<String>,
     pub text: String,
     pub attachments: Vec<String>,
     pub context: Vec<String>,
@@ -130,6 +141,26 @@ pub struct AgentEventPage {
     pub next_before: Option<u64>,
     pub latest_seq: u64,
     pub has_more: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmittedTurn {
+    pub turn: QueuedTurn,
+    pub deduplicated: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct CreatedProject {
+    pub project: AgentProjectRecord,
+    pub deduplicated: bool,
+}
+
+impl std::ops::Deref for CreatedProject {
+    type Target = AgentProjectRecord;
+
+    fn deref(&self) -> &Self::Target {
+        &self.project
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -267,6 +298,7 @@ impl AgentProjectStore {
             root: Arc::new(root),
             locks: Arc::new(Mutex::new(HashMap::new())),
             sequences: Arc::new(Mutex::new(HashMap::new())),
+            creation_gate: Arc::new(Mutex::new(())),
         };
         store
             .migrate_legacy_titles()
@@ -351,13 +383,25 @@ impl AgentProjectStore {
     pub async fn create(
         &self,
         request: &CreateAgentProjectRequest,
-    ) -> Result<AgentProjectRecord, String> {
+    ) -> Result<CreatedProject, String> {
         let prompt = request.prompt.trim();
         if prompt.is_empty() {
             return Err("prompt cannot be empty".to_owned());
         }
         if !matches!(request.aspect_ratio.as_str(), "9:16" | "16:9" | "1:1") {
             return Err("aspectRatio must be 9:16, 16:9, or 1:1".to_owned());
+        }
+        let _creation_guard = self.creation_gate.lock().await;
+        if let Some(client_request_id) = request.client_request_id.as_deref()
+            && let Some(project) =
+                self.list().await?.into_iter().find(|project| {
+                    project.creation_request_id.as_deref() == Some(client_request_id)
+                })
+        {
+            return Ok(CreatedProject {
+                project,
+                deduplicated: true,
+            });
         }
         let id = Uuid::new_v4().to_string();
         let directory = self.project_dir(&id)?;
@@ -376,6 +420,7 @@ impl AgentProjectStore {
         let created_at = now_millis();
         let project = AgentProjectRecord {
             id: id.clone(),
+            creation_request_id: request.client_request_id.clone(),
             title: request
                 .title
                 .as_ref()
@@ -425,7 +470,10 @@ impl AgentProjectStore {
         fs::write(directory.join("events.jsonl"), [])
             .await
             .map_err(|error| error.to_string())?;
-        Ok(project)
+        Ok(CreatedProject {
+            project,
+            deduplicated: false,
+        })
     }
 
     pub async fn list(&self) -> Result<Vec<AgentProjectRecord>, String> {
@@ -527,21 +575,16 @@ impl AgentProjectStore {
     pub async fn manifest(&self, id: &str) -> Result<AgentManifest, String> {
         let mut manifest: AgentManifest =
             read_json_or_default(&self.project_dir(id)?.join(".yingya/manifest.json")).await?;
-        for version in &mut manifest.versions {
-            if version.label.trim().is_empty() {
-                version.label = version.id.clone();
-            }
-            if version.source_path.trim().is_empty() {
-                version.source_path = format!(".yingya/versions/{}", version.id);
-            }
-        }
+        sanitize_manifest(&mut manifest);
         Ok(manifest)
     }
 
     pub async fn write_manifest(&self, id: &str, manifest: &AgentManifest) -> Result<(), String> {
+        let mut manifest = manifest.clone();
+        sanitize_manifest(&mut manifest);
         write_json(
             &self.project_dir(id)?.join(".yingya/manifest.json"),
-            manifest,
+            &manifest,
         )
         .await
     }
@@ -559,6 +602,7 @@ impl AgentProjectStore {
         let message = AgentMessage {
             id: Uuid::new_v4().to_string(),
             turn_id: input.turn_id,
+            client_request_id: None,
             role: input.role,
             text: input.text.trim().to_owned(),
             attachments: input.attachments,
@@ -576,7 +620,7 @@ impl AgentProjectStore {
         project_id: &str,
         request: AgentTurnRequest,
         priority: bool,
-    ) -> Result<QueuedTurn, String> {
+    ) -> Result<SubmittedTurn, String> {
         let lock = self.project_lock(project_id).await?;
         let _guard = lock.lock().await;
         let directory = self.project_dir(project_id)?;
@@ -586,8 +630,34 @@ impl AgentProjectStore {
         let mut queue: Vec<QueuedTurn> = read_json_or_default(&queue_path).await?;
         let mut messages: Vec<AgentMessage> = read_json_or_default(&message_path).await?;
         let mut project: AgentProjectRecord = read_json(&project_path).await?;
+        if let Some(client_request_id) = request.client_request_id.as_deref()
+            && let Some(existing) = messages
+                .iter()
+                .find(|message| message.client_request_id.as_deref() == Some(client_request_id))
+            && let Some(turn_id) = existing.turn_id.as_deref()
+        {
+            let turn = queue
+                .iter()
+                .find(|turn| turn.id == turn_id)
+                .cloned()
+                .unwrap_or_else(|| QueuedTurn {
+                    id: turn_id.to_owned(),
+                    client_request_id: Some(client_request_id.to_owned()),
+                    text: existing.text.clone(),
+                    attachments: existing.attachments.clone(),
+                    context: existing.context.clone(),
+                    model: None,
+                    reasoning_effort: None,
+                    created_at: existing.created_at,
+                });
+            return Ok(SubmittedTurn {
+                turn,
+                deduplicated: true,
+            });
+        }
         let turn = QueuedTurn {
             id: Uuid::new_v4().to_string(),
+            client_request_id: request.client_request_id,
             text: request.text.trim().to_owned(),
             attachments: request.attachments,
             context: request.context,
@@ -598,6 +668,7 @@ impl AgentProjectStore {
         let message = AgentMessage {
             id: Uuid::new_v4().to_string(),
             turn_id: Some(turn.id.clone()),
+            client_request_id: turn.client_request_id.clone(),
             role: "user".to_owned(),
             text: turn.text.clone(),
             attachments: turn.attachments.clone(),
@@ -617,7 +688,10 @@ impl AgentProjectStore {
         write_json(&queue_path, &queue).await?;
         write_json(&message_path, &messages).await?;
         write_json(&project_path, &project).await?;
-        Ok(turn)
+        Ok(SubmittedTurn {
+            turn,
+            deduplicated: false,
+        })
     }
 
     pub async fn claim_next(&self, project_id: &str) -> Result<Option<QueuedTurn>, String> {
@@ -1092,6 +1166,97 @@ impl Default for AgentManifest {
     }
 }
 
+fn is_safe_manifest_path(value: &str) -> bool {
+    let path = Path::new(value.trim());
+    !value.trim().is_empty()
+        && !path.is_absolute()
+        && path
+            .components()
+            .all(|part| matches!(part, Component::Normal(_)))
+}
+
+fn sanitize_manifest(manifest: &mut AgentManifest) {
+    let mut repaired = false;
+    if manifest.schema_version == 0 {
+        manifest.schema_version = 1;
+        repaired = true;
+    }
+    if manifest.phase.trim().is_empty() {
+        manifest.phase = "briefing".to_owned();
+        repaired = true;
+    }
+    if !manifest.output_spec.is_object() {
+        manifest.output_spec = Value::Object(Default::default());
+        repaired = true;
+    }
+    let artifact_count = manifest.artifacts.len();
+    let mut artifact_ids = HashSet::new();
+    manifest.artifacts.retain_mut(|artifact| {
+        let valid = !artifact.id.trim().is_empty()
+            && !artifact.kind.trim().is_empty()
+            && !artifact.label.trim().is_empty()
+            && is_safe_manifest_path(&artifact.path)
+            && artifact_ids.insert(artifact.id.clone());
+        if valid && !artifact.metadata.is_object() {
+            artifact.metadata = Value::Object(Default::default());
+            repaired = true;
+        }
+        valid
+    });
+    repaired |= manifest.artifacts.len() != artifact_count;
+
+    let version_count = manifest.versions.len();
+    let mut version_ids = HashSet::new();
+    manifest.versions.retain_mut(|version| {
+        if version.label.trim().is_empty() {
+            version.label = version.id.clone();
+            repaired = true;
+        }
+        if version.source_path.trim().is_empty() {
+            version.source_path = format!(".yingya/versions/{}", version.id);
+            repaired = true;
+        }
+        if version
+            .report_path
+            .as_deref()
+            .is_some_and(|path| !is_safe_manifest_path(path))
+        {
+            version.report_path = None;
+            repaired = true;
+        }
+        !version.id.trim().is_empty()
+            && is_safe_manifest_path(&version.source_path)
+            && is_safe_manifest_path(&version.video_path)
+            && version_ids.insert(version.id.clone())
+    });
+    repaired |= manifest.versions.len() != version_count;
+
+    let requested_draft = manifest.current_draft.as_deref();
+    if requested_draft.is_some_and(|id| !version_ids.contains(id)) {
+        manifest.current_draft = manifest.versions.last().map(|version| version.id.clone());
+        repaired = true;
+    }
+    if let Some(checkpoint) = &mut manifest.checkpoint {
+        let previous = checkpoint.artifact_ids.len();
+        checkpoint
+            .artifact_ids
+            .retain(|id| artifact_ids.contains(id));
+        repaired |= checkpoint.artifact_ids.len() != previous;
+        if checkpoint.id.trim().is_empty()
+            || checkpoint.kind.trim().is_empty()
+            || checkpoint.title.trim().is_empty()
+        {
+            manifest.checkpoint = None;
+            repaired = true;
+        }
+    }
+    if !is_safe_manifest_path(&manifest.studio_entry) {
+        manifest.studio_entry = default_studio_entry();
+        repaired = true;
+    }
+    manifest.dirty |= repaired;
+}
+
 fn default_aspect() -> String {
     "9:16".to_owned()
 }
@@ -1336,6 +1501,7 @@ mod tests {
     fn request() -> CreateAgentProjectRequest {
         CreateAgentProjectRequest {
             prompt: "测试删除项目".to_owned(),
+            client_request_id: None,
             title: None,
             aspect_ratio: "16:9".to_owned(),
             model: "gpt-5.6-terra".to_owned(),
@@ -1347,12 +1513,73 @@ mod tests {
     fn turn(text: &str) -> AgentTurnRequest {
         AgentTurnRequest {
             text: text.to_owned(),
+            client_request_id: None,
             attachments: vec![],
             context: vec![],
             model: None,
             reasoning_effort: None,
             interrupt: false,
         }
+    }
+
+    #[tokio::test]
+    async fn duplicate_creation_request_reuses_the_project() {
+        let root =
+            std::env::temp_dir().join(format!("yingya-create-idempotency-test-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone())
+            .await
+            .expect("create store");
+        let mut input = request();
+        input.client_request_id = Some(Uuid::new_v4().to_string());
+
+        let first = store.create(&input).await.expect("first create");
+        let second = store.create(&input).await.expect("duplicate create");
+
+        assert!(!first.deduplicated);
+        assert!(second.deduplicated);
+        assert_eq!(first.id, second.id);
+        assert_eq!(store.list().await.expect("list projects").len(), 1);
+        fs::remove_dir_all(root).await.expect("clean create store");
+    }
+
+    #[test]
+    fn repairs_unsafe_manifest_references_before_exposing_them() {
+        let mut manifest: AgentManifest = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 0,
+            "phase": "",
+            "dirty": false,
+            "outputSpec": "invalid",
+            "artifacts": [
+                { "id": "script", "kind": "script", "label": "脚本", "path": "artifacts/script.md", "metadata": "invalid" },
+                { "id": "escape", "kind": "report", "label": "越界", "path": "../outside.md" }
+            ],
+            "versions": [
+                { "id": "v1", "label": "", "sourcePath": "", "videoPath": "renders/v1.mp4", "reportPath": "../report.md", "createdAt": 1 },
+                { "id": "bad", "label": "坏版本", "sourcePath": "versions/bad", "videoPath": "/tmp/bad.mp4", "createdAt": 2 }
+            ],
+            "currentDraft": "missing",
+            "checkpoint": { "id": "review", "kind": "plan", "title": "确认", "artifactIds": ["script", "escape"] },
+            "studioEntry": "../index.html"
+        })).expect("parse manifest");
+
+        sanitize_manifest(&mut manifest);
+
+        assert!(manifest.dirty);
+        assert_eq!(manifest.schema_version, 1);
+        assert_eq!(manifest.phase, "briefing");
+        assert!(manifest.output_spec.is_object());
+        assert_eq!(manifest.artifacts.len(), 1);
+        assert!(manifest.artifacts[0].metadata.is_object());
+        assert_eq!(manifest.versions.len(), 1);
+        assert_eq!(manifest.versions[0].label, "v1");
+        assert_eq!(manifest.versions[0].source_path, ".yingya/versions/v1");
+        assert!(manifest.versions[0].report_path.is_none());
+        assert_eq!(manifest.current_draft.as_deref(), Some("v1"));
+        assert_eq!(
+            manifest.checkpoint.expect("checkpoint").artifact_ids,
+            vec!["script"]
+        );
+        assert_eq!(manifest.studio_entry, "index.html");
     }
 
     #[tokio::test]
@@ -1389,8 +1616,40 @@ mod tests {
                 .expect("claim")
                 .expect("turn")
                 .id,
-            priority.id
+            priority.turn.id
         );
+        fs::remove_dir_all(root).await.expect("clean queue store");
+    }
+
+    #[tokio::test]
+    async fn duplicate_client_request_reuses_the_original_turn() {
+        let root = std::env::temp_dir().join(format!("yingya-idempotency-test-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone())
+            .await
+            .expect("create store");
+        let project = store.create(&request()).await.expect("create project");
+        let client_request_id = Uuid::new_v4().to_string();
+        let mut first_request = turn("只创建一次");
+        first_request.client_request_id = Some(client_request_id.clone());
+        let first = store
+            .submit_turn(&project.id, first_request, false)
+            .await
+            .expect("first submit");
+
+        let mut retry_request = turn("重试时即使正文变化也不能重复创建");
+        retry_request.client_request_id = Some(client_request_id);
+        let retry = store
+            .submit_turn(&project.id, retry_request, false)
+            .await
+            .expect("retry submit");
+
+        let detail = store.get(&project.id).await.expect("project detail");
+        assert!(!first.deduplicated);
+        assert!(retry.deduplicated);
+        assert_eq!(retry.turn.id, first.turn.id);
+        assert_eq!(detail.queue.len(), 1);
+        assert_eq!(detail.messages.len(), 1);
+        assert_eq!(detail.messages[0].text, "只创建一次");
         fs::remove_dir_all(root).await.expect("clean queue store");
     }
 
@@ -1519,7 +1778,7 @@ mod tests {
                 .expect("first claim")
                 .expect("first item")
                 .id,
-            first.id
+            first.turn.id
         );
         store
             .update_project(&project.id, |record| record.active_turn_id = None)
@@ -1532,7 +1791,7 @@ mod tests {
                 .expect("second claim")
                 .expect("second item")
                 .id,
-            second.id
+            second.turn.id
         );
         fs::remove_dir_all(root)
             .await

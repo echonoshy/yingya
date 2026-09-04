@@ -1,11 +1,12 @@
 import {
-  ArrowRight, CaretDown, Check, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
+  ArrowRight, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
   FilmSlate, FolderOpen, FolderSimple, Folders, Image as ImageIcon, Images,
   MagnifyingGlass, MusicNotes, Paperclip, Plus, Sparkle, SpeakerHigh, UploadSimple,
   VideoCamera, Waveform, X,
 } from "@phosphor-icons/react";
-import { useCallback, useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api } from "../api";
+import { createClientRequestId } from "../requestId";
 import type { AssetFolder, AssetLibraryItem, ModelSelection, ProjectRecord } from "../types";
 import { ModelSelector } from "./ModelSelector";
 import { VoiceStudio } from "./VoiceStudio";
@@ -57,6 +58,11 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   const [folders, setFolders] = useState<AssetFolder[]>([]);
   const [activeFolder, setActiveFolder] = useState("all");
   const [selectedId, setSelectedId] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
+  const [batchTargetFolderId, setBatchTargetFolderId] = useState("");
+  const [movingBatch, setMovingBatch] = useState(false);
+  const [batchStatus, setBatchStatus] = useState("");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -86,6 +92,7 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
       setAssets(library.assets);
       setFolders(folderList);
       setSelectedId(current => library.assets.some(item => item.id === current) ? current : library.assets[0]?.id ?? "");
+      setBatchSelectedIds(current => current.filter(id => library.assets.some(item => item.id === id)));
       setError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "素材库读取失败"); }
     finally { setLoading(false); }
@@ -102,6 +109,8 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
     return tab !== "voice" && matchesQuery && matchesType && matchesSource && matchesFolder;
   });
   const selected = assets.find(asset => asset.id === selectedId) ?? null;
+  const batchSelectedSet = useMemo(() => new Set(batchSelectedIds), [batchSelectedIds]);
+  const allFilteredSelected = filtered.length > 0 && filtered.every(asset => batchSelectedSet.has(asset.id));
   const selectedUsage = selected ? usage[selected.id] ?? [] : [];
   const showInspector = inspectorOpen && Boolean(selected);
 
@@ -138,9 +147,41 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
     } catch (reason) { setError(reason instanceof Error ? reason.message : "文件夹更新失败"); }
   }
 
+  function toggleBatchSelection(id: string) {
+    setBatchSelectedIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
+    setBatchStatus("");
+  }
+
+  function closeSelectionMode() {
+    setSelectionMode(false);
+    setBatchSelectedIds([]);
+  }
+
+  async function moveBatch() {
+    if (!batchSelectedIds.length || movingBatch) return;
+    const requestedIds = [...batchSelectedIds];
+    setMovingBatch(true); setError(""); setBatchStatus("");
+    const results = await Promise.allSettled(requestedIds.map(id => api.moveLibraryAsset(id, batchTargetFolderId || undefined)));
+    const movedIds = requestedIds.filter((_, index) => results[index].status === "fulfilled");
+    const failedIds = requestedIds.filter((_, index) => results[index].status === "rejected");
+    if (movedIds.length) {
+      const movedSet = new Set(movedIds);
+      setAssets(current => current.map(asset => movedSet.has(asset.id) ? { ...asset, folderId: batchTargetFolderId || undefined } : asset));
+    }
+    if (failedIds.length) {
+      setBatchSelectedIds(failedIds);
+      setError(`${failedIds.length} 项素材移动失败，请重试。`);
+    } else {
+      const folderName = folders.find(folder => folder.id === batchTargetFolderId)?.name ?? "未整理";
+      setBatchStatus(`已将 ${movedIds.length} 项素材移动到“${folderName}”`);
+      closeSelectionMode();
+    }
+    setMovingBatch(false);
+  }
+
   async function generate(event: FormEvent) {
     event.preventDefault(); if (!prompt.trim() || busy) return;
-    const job: GenerationJob = { id: crypto.randomUUID(), prompt: prompt.trim(), state: "running", createdAt: Date.now() };
+    const job: GenerationJob = { id: createClientRequestId(), prompt: prompt.trim(), state: "running", createdAt: Date.now() };
     setJobs(current => [job, ...current].slice(0, 3)); setBusy(true); setError("");
     try {
       const referenceImages = await Promise.all(references.map(async file => (await api.uploadImage(file)).url));
@@ -193,11 +234,12 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
       <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/><div className="asset-create-control"><button className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div></header>
       <nav className="asset-media-tabs" aria-label="素材类型">{typeTabs.map(item => { const Icon = item.icon; const count = item.id === "all" ? assets.length : item.id === "voice" ? undefined : assets.filter(asset => asset.category === item.id).length; return <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => chooseTab(item.id)}><Icon/>{item.label}{count !== undefined ? <small>{count}</small> : null}</button>; })}</nav>
       {tab === "voice" ? <div className="asset-voice-content"><VoiceStudio value={voiceId} onChange={onVoice}/></div> : <>
-        <div className="asset-library-controls"><nav aria-label="素材来源">{([ ["all", "全部来源"], ["uploaded", "已上传"], ["generated", "AI 生成"] ] as const).map(([id, label]) => <button key={id} className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)}>{id === "uploaded" ? <UploadSimple/> : id === "generated" ? <Sparkle/> : <Folders/>}{label}</button>)}</nav><span>{filtered.length} 项素材</span></div>
+        <div className={`asset-library-controls ${selectionMode ? "asset-library-controls--selecting" : ""}`}><nav aria-label="素材来源">{([ ["all", "全部来源"], ["uploaded", "已上传"], ["generated", "AI 生成"] ] as const).map(([id, label]) => <button key={id} className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)}>{id === "uploaded" ? <UploadSimple/> : id === "generated" ? <Sparkle/> : <Folders/>}{label}</button>)}</nav>{selectionMode ? <div className="asset-bulk-actions" role="toolbar" aria-label="批量整理素材"><strong>{batchSelectedIds.length} 项已选</strong><button type="button" aria-pressed={allFilteredSelected} onClick={() => setBatchSelectedIds(allFilteredSelected ? [] : filtered.map(asset => asset.id))}>{allFilteredSelected ? "取消全选" : "全选当前"}</button><select aria-label="批量移动到文件夹" value={batchTargetFolderId} onChange={event => setBatchTargetFolderId(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button className="asset-bulk-move" type="button" disabled={!batchSelectedIds.length || movingBatch} onClick={() => void moveBatch()}>{movingBatch ? <CircleNotch className="spin"/> : <FolderOpen/>}{movingBatch ? "正在移动" : "移动"}</button><button className="asset-bulk-cancel" type="button" onClick={closeSelectionMode}>取消</button></div> : <div className="asset-library-summary"><span>{filtered.length} 项素材</span><button type="button" onClick={() => { setSelectionMode(true); setBatchStatus(""); }}><Checks/>批量整理</button></div>}</div>
         <div className={`asset-browser asset-browser--mixed ${showInspector ? "has-inspector" : ""}`}>
           <div className="asset-catalog">
             {error ? <p className="asset-page-error" role="alert">{error}</p> : null}
-            {filtered.length ? <div className="asset-mixed-grid">{filtered.map(asset => <AssetCard key={asset.id} asset={asset} folder={folders.find(folder => folder.id === asset.folderId)} selected={asset.id === selectedId} used={Boolean(usage[asset.id]?.length)} onSelect={() => { setSelectedId(asset.id); setInspectorOpen(true); }}/>)}</div> : null}
+            {batchStatus ? <p className="asset-batch-status" role="status"><Check/>{batchStatus}</p> : null}
+            {filtered.length ? <div className="asset-mixed-grid">{filtered.map(asset => <AssetCard key={asset.id} asset={asset} folder={folders.find(folder => folder.id === asset.folderId)} inspected={asset.id === selectedId} checked={batchSelectedSet.has(asset.id)} selectionMode={selectionMode} used={Boolean(usage[asset.id]?.length)} onOpen={() => { setSelectedId(asset.id); setInspectorOpen(true); }} onToggle={() => toggleBatchSelection(asset.id)}/>)}</div> : null}
             {!loading && !filtered.length ? <div className="asset-empty-state"><Folders/><h2>{query ? "没有匹配的素材" : "这个分类还没有素材"}</h2><p>{query ? "尝试更换关键词或筛选条件。" : "上传文件，或通过创建素材生成图片与音色。"}</p><button onClick={() => query ? setQuery("") : uploadRef.current?.click()}>{query ? "清除搜索" : "上传素材"}</button></div> : null}
             {loading ? <p className="asset-loading"><CircleNotch className="spin"/>正在读取素材…</p> : null}
           </div>
@@ -217,8 +259,9 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   </div>;
 }
 
-function AssetCard({ asset, folder, selected, used, onSelect }: { asset: AssetLibraryItem; folder?: AssetFolder; selected: boolean; used: boolean; onSelect: () => void }) {
-  return <button className={selected ? "selected" : ""} onClick={onSelect}><AssetThumb asset={asset}/><b title={assetName(asset)}>{assetName(asset)}</b><small><span className={`asset-source asset-source--${asset.kind}`}>{asset.kind === "generated" ? <Sparkle/> : <UploadSimple/>}{asset.kind === "generated" ? "AI 生成" : "已上传"}</span> · {formatDate(asset.createdAt)}</small><em><FolderSimple/>{folder?.name ?? "未整理"}{used ? " · 项目中" : ""}</em></button>;
+function AssetCard({ asset, folder, inspected, checked, selectionMode, used, onOpen, onToggle }: { asset: AssetLibraryItem; folder?: AssetFolder; inspected: boolean; checked: boolean; selectionMode: boolean; used: boolean; onOpen: () => void; onToggle: () => void }) {
+  const name = assetName(asset);
+  return <article className={`asset-card-item ${inspected ? "inspected" : ""} ${checked ? "batch-selected" : ""}`}><button className="asset-card-open" aria-pressed={selectionMode ? checked : undefined} aria-label={selectionMode ? `${checked ? "取消选择" : "选择"}素材 ${name}` : undefined} onClick={selectionMode ? onToggle : onOpen}><AssetThumb asset={asset}/><b title={name}>{name}</b><small><span className={`asset-source asset-source--${asset.kind}`}>{asset.kind === "generated" ? <Sparkle/> : <UploadSimple/>}{asset.kind === "generated" ? "AI 生成" : "已上传"}</span> · {formatDate(asset.createdAt)}</small><em><FolderSimple/>{folder?.name ?? "未整理"}{used ? " · 项目中" : ""}</em></button>{selectionMode ? <span className="asset-card-check" aria-hidden="true">{checked ? <Check weight="bold"/> : null}</span> : null}</article>;
 }
 
 function AssetThumb({ asset }: { asset: AssetLibraryItem }) {

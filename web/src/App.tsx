@@ -4,9 +4,11 @@ import { api } from "./api";
 import { AgentWorkspace } from "./components/AgentWorkspace";
 import { AssetStudio } from "./components/AssetStudio";
 import { ModelSelector } from "./components/ModelSelector";
+import { ProjectCreationPendingView, type ProjectCreationStage } from "./components/ProjectCreationPendingView";
 import { VoiceSelector } from "./components/VoiceSelector";
 import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "./types";
 import { readModelSelection, readStringSetting, writeModelSelection, writeStringSetting } from "./storage";
+import { createClientRequestId } from "./requestId";
 
 const fallbackModels: CodexModel[] = [
   ["gpt-5.6-terra", "GPT-5.6 Terra", "均衡的质量与速度"], ["gpt-5.6-sol", "GPT-5.6 Sol", "复杂创作与高质量推理"], ["gpt-5.6-luna", "GPT-5.6 Luna", "快速迭代"],
@@ -50,7 +52,8 @@ export function App() {
 }
 
 function StartScreen({ projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
-  const [prompt, setPrompt] = useState(""); const [aspectRatio, setAspectRatio] = useState("9:16"); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
+  const [prompt, setPrompt] = useState(""); const [aspectRatio, setAspectRatio] = useState("9:16"); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
+  const creationAttemptRef = useRef<{ signature: string; creationRequestId: string; turnRequestId: string; uploadedPaths: Map<string, string> } | null>(null);
   const [filter, setFilter] = useState<ProjectFilter>("all");
   const [openMenu, setOpenMenu] = useState("");
   const [covers, setCovers] = useState<Record<string, string>>({});
@@ -70,8 +73,34 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
     return () => { cancelled = true; };
   }, [projects]);
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!prompt.trim() || busy) return; setBusy(true); setError("");
-    try { const project = await api.createProject({ prompt: prompt.trim(), aspectRatio, voiceId, ...selection }); const uploaded: string[] = []; for (const file of files) uploaded.push((await api.uploadAsset(project.id, file)).path); await api.sendTurn(project.id, { text: prompt.trim(), attachments: uploaded, ...selection }); onCreated(await api.getProject(project.id)); }
+    event.preventDefault(); if (!prompt.trim() || busy) return;
+    const normalizedPrompt = prompt.trim();
+    const fileKeys = files.map((file, index) => `${index}:${file.name}:${file.size}:${file.lastModified}:${file.type}`);
+    const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId, selection, fileKeys });
+    let attempt = creationAttemptRef.current;
+    if (!attempt || attempt.signature !== signature) {
+      attempt = { signature, creationRequestId: createClientRequestId(), turnRequestId: createClientRequestId(), uploadedPaths: new Map() };
+      creationAttemptRef.current = attempt;
+    }
+    setCreationStage("creating"); setBusy(true); setError("");
+    try {
+      const project = await api.createProject({ prompt: normalizedPrompt, clientRequestId: attempt.creationRequestId, aspectRatio, voiceId, ...selection });
+      setCreationStage("uploading");
+      const uploadedPaths = await Promise.all(files.map(async (file, index) => {
+        const key = fileKeys[index];
+        const cached = attempt.uploadedPaths.get(key);
+        if (cached) return cached;
+        const uploaded = await api.uploadAsset(project.id, file);
+        attempt.uploadedPaths.set(key, uploaded.path);
+        return uploaded.path;
+      }));
+      setCreationStage("starting");
+      await api.sendTurn(project.id, { text: normalizedPrompt, clientRequestId: attempt.turnRequestId, attachments: uploadedPaths, ...selection });
+      setCreationStage("opening");
+      const detail = await api.getProject(project.id);
+      creationAttemptRef.current = null;
+      onCreated(detail);
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "无法创建视频任务"); } finally { setBusy(false); }
   }
   function startCreating() {
@@ -83,6 +112,7 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
     if (!window.confirm(`确定删除“${project.title}”吗？\n项目文件和生成内容将被永久删除。`)) return;
     await onDelete(project);
   }
+  if (busy) return <ProjectCreationPendingView prompt={prompt.trim()} fileCount={files.length} stage={creationStage}/>;
   return <div className="home-layout">
     <aside className="home-nav">
       <div className="home-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div>

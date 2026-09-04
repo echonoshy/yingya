@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, mediaSceneSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
+import { createClientRequestId } from "./requestId";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
 
@@ -13,6 +14,14 @@ async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit
   const response = await fetch(path, { ...init, headers: init?.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new Error(await parseError(response));
   return schema.parse(await response.json());
+}
+
+async function requestWithNetworkRetry<T>(path: string, schema: z.ZodType<T>, init: RequestInit): Promise<T> {
+  try { return await request(path, schema, init); }
+  catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    return request(path, schema, init);
+  }
 }
 
 async function requestVoid(path: string, init?: RequestInit): Promise<void> {
@@ -47,8 +56,14 @@ export const api = {
   setProjectVoice: (id: string, voiceId: string) => request(`/api/agent-projects/${id}`, projectRecordSchema, { method: "PATCH", body: JSON.stringify({ voiceId }) }),
   deleteProject: (id: string) => requestVoid(`/api/agent-projects/${id}`, { method: "DELETE" }),
   listModels: () => request("/api/codex/models", modelListSchema),
-  createProject: (input: CreateProjectInput) => request("/api/agent-projects", projectDetailSchema, { method: "POST", body: JSON.stringify(input) }),
-  sendTurn: (id: string, input: TurnInput) => request(`/api/agent-projects/${id}/turns`, turnAcceptedSchema, { method: "POST", body: JSON.stringify(input) }),
+  createProject: (input: CreateProjectInput) => {
+    const stableInput = { ...input, clientRequestId: input.clientRequestId ?? createClientRequestId() };
+    return requestWithNetworkRetry("/api/agent-projects", projectDetailSchema, { method: "POST", body: JSON.stringify(stableInput) });
+  },
+  sendTurn: (id: string, input: TurnInput) => {
+    const stableInput = { ...input, clientRequestId: input.clientRequestId ?? createClientRequestId() };
+    return requestWithNetworkRetry(`/api/agent-projects/${id}/turns`, turnAcceptedSchema, { method: "POST", body: JSON.stringify(stableInput) });
+  },
   interrupt: (id: string) => requestVoid(`/api/agent-projects/${id}/interrupt`, { method: "POST", body: "{}" }),
   resume: (id: string) => requestVoid(`/api/agent-projects/${id}/resume`, { method: "POST", body: "{}" }),
   removeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}`, { method: "DELETE" }),

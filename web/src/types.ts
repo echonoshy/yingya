@@ -5,5 +5,5 @@ export type {
 
 export interface ModelSelection { model: string; reasoningEffort: string }
 export interface ReasoningEffortOption { reasoningEffort: string; description: string }
-export interface CreateProjectInput extends ModelSelection { title?: string; prompt: string; aspectRatio: string; voiceId: string }
-export interface TurnInput extends Partial<ModelSelection> { text: string; attachments?: string[]; context?: string[]; interrupt?: boolean }
+export interface CreateProjectInput extends ModelSelection { title?: string; prompt: string; clientRequestId?: string; aspectRatio: string; voiceId: string }
+export interface TurnInput extends Partial<ModelSelection> { text: string; clientRequestId?: string; attachments?: string[]; context?: string[]; interrupt?: boolean }

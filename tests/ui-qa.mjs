@@ -54,7 +54,7 @@ function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
 
-async function installApiMock(page, seed = detail) {
+async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {}) {
   let projects = [seed];
   let current = structuredClone(seed);
   let libraryImages = [{ id: "image-1", url: "/brand/invideo-favicon-white.ico", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
@@ -116,11 +116,12 @@ async function installApiMock(page, seed = detail) {
         { seq: 3, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "update-1", type: "agentMessage", text: "画面结构已经确认，接下来整理制作文件。" } } }, createdAt: now + 4 },
         { seq: 4, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "file-1", type: "fileChange", status: "completed", changes: [{ path: "plans/production.md" }] } } }, createdAt: now + 6 },
       ],
-      latestSeq: 4, hasMore: false,
+      nextBefore: null, latestSeq: 4, hasMore: false,
     });
     if (pathname.endsWith("/files/plans/production.md")) return route.fulfill({ status: 200, contentType: "text/markdown", body: "# 制作方案\n\n三幕结构与视觉方向。" });
     if (pathname === "/api/agent-projects" && method === "GET") return json(route, projects);
     if (pathname === "/api/agent-projects" && method === "POST") {
+      if (creationDelayMs) await new Promise(resolve => setTimeout(resolve, creationDelayMs));
       current = { ...structuredClone(detail), id: "22222222-2222-4222-8222-222222222222", title: "网站产品宣传片", status: "idle", statusLabel: "准备就绪", queueDepth: 0, queuePaused: false, queue: [], messages: [], manifest: { ...manifest, checkpoint: null, artifacts: [] }, eventCursor: 0 };
       projects = [current, ...projects];
       return json(route, current);
@@ -224,6 +225,21 @@ async function assertAssetWorkshop(browser) {
   await mediaTabs.getByRole("button", { name: /^视频/ }).waitFor();
   await mediaTabs.getByRole("button", { name: /^音频/ }).waitFor();
   await mediaTabs.getByRole("button", { name: /^文档/ }).waitFor();
+  await page.getByRole("button", { name: "批量整理" }).click();
+  await page.getByRole("button", { name: "选择素材 产品定格镜头.mp4" }).click();
+  await page.getByRole("button", { name: "选择素材 秋日背景音乐.mp3" }).click();
+  const bulkToolbar = page.getByRole("toolbar", { name: "批量整理素材" });
+  await bulkToolbar.getByText("2 项已选", { exact: true }).waitFor();
+  await bulkToolbar.getByLabel("批量移动到文件夹").selectOption("folder-brand");
+  await page.screenshot({ path: "/tmp/yingya-ui-asset-bulk-select.png", fullPage: true });
+  const moveRequests = [];
+  page.on("request", request => { if (/\/api\/assets\/library\/[^/]+$/.test(request.url()) && request.method() === "PATCH") moveRequests.push(request); });
+  await bulkToolbar.getByRole("button", { name: "移动", exact: true }).click();
+  await page.getByText("已将 2 项素材移动到“品牌素材”", { exact: true }).waitFor();
+  await page.locator(".asset-card-item.batch-selected").first().waitFor({ state: "detached" });
+  if (moveRequests.length !== 2 || moveRequests.some(request => request.postDataJSON().folderId !== "folder-brand")) throw new Error(`Unexpected batch move requests: ${moveRequests.length}`);
+  await page.locator(".asset-card-item", { hasText: "秋日背景音乐.mp3" }).getByText("品牌素材", { exact: true }).waitFor();
+  await page.screenshot({ path: "/tmp/yingya-ui-asset-bulk-moved.png", fullPage: true });
   await page.getByRole("button", { name: "新建文件夹" }).click();
   await page.getByPlaceholder("文件夹名称").fill("活动素材");
   await page.getByRole("button", { name: "创建", exact: true }).click();
@@ -263,9 +279,12 @@ async function assertAssetWorkshop(browser) {
   await mobile.getByRole("button", { name: "素材工坊", exact: true }).click();
   await mobile.getByLabel("搜索素材").waitFor();
   await mobile.locator(".asset-mixed-grid").waitFor();
+  await mobile.getByRole("button", { name: "批量整理" }).click();
+  await mobile.getByRole("button", { name: "选择素材 产品定格镜头.mp4" }).click();
+  await mobile.getByRole("toolbar", { name: "批量整理素材" }).getByText("1 项已选", { exact: true }).waitFor();
   const mobileDocumentWidth = await mobile.evaluate(() => document.documentElement.scrollWidth);
   if (mobileDocumentWidth > 360) throw new Error(`360px asset workshop overflows horizontally: ${mobileDocumentWidth}px`);
-  await mobile.screenshot({ path: "/tmp/yingya-ui-asset-mobile.png", fullPage: true });
+  await mobile.screenshot({ path: "/tmp/yingya-ui-asset-bulk-mobile.png", fullPage: true });
   await mobile.close();
 }
 
@@ -411,6 +430,8 @@ async function assertDesktop(browser) {
   await page.getByRole("button", { name: "项目操作 秋季新品短片" }).click();
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.locator(".checkpoint-card").waitFor();
+  const userBubbleBackground = await page.locator(".message--user .message-body").first().evaluate(element => getComputedStyle(element).backgroundColor);
+  if (["rgb(0, 0, 0)", "rgb(29, 29, 31)"].includes(userBubbleBackground)) throw new Error(`User message bubble should not be black: ${userBubbleBackground}`);
   if (await page.getByRole("dialog").count()) throw new Error("Plan confirmation should stay inside the conversation");
   await page.screenshot({ path: "/tmp/yingya-ui-checkpoint.png", fullPage: true });
   const finalReply = page.getByText("预览已完成，请选择下一步：", { exact: false });
@@ -431,12 +452,34 @@ async function assertDesktop(browser) {
   await voiceDialog.getByPlaceholder("例如：温暖女声").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-voice-design.png", fullPage: true });
   await voiceDialog.getByRole("button", { name: "关闭音色库" }).click();
+  await page.locator(".canvas-tabs").getByRole("tab", { name: "素材", exact: true }).click();
+  await page.getByRole("heading", { name: "参考文件", exact: true }).waitFor();
+  await page.getByText("产品定格镜头.mp4", { exact: true }).waitFor();
+  await page.getByText("秋日背景音乐.mp3", { exact: true }).waitFor();
+  await page.getByText("品牌创作说明.pdf", { exact: true }).waitFor();
+  const projectFolderFilter = page.getByLabel("筛选素材文件夹");
+  await projectFolderFilter.selectOption("folder-brand");
+  if (await page.getByText("品牌创作说明.pdf", { exact: true }).count()) throw new Error("Project asset folder filter did not hide unfiled documents");
+  await page.getByRole("button", { name: "选择此文件夹" }).click();
+  await page.getByLabel("已选择素材").getByText("图片 · 创作参考", { exact: true }).waitFor();
+  await page.getByLabel("已选择素材").getByText("视频 · 创作参考", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "文件夹已选择" }).waitFor();
+  await page.screenshot({ path: "/tmp/yingya-ui-project-reference-folder.png", fullPage: true });
+  await page.getByRole("button", { name: "移除素材 深色背景中的发光新芽，电影级侧光" }).click();
+  await page.getByRole("button", { name: "移除素材 产品定格镜头.mp4" }).click();
+  await projectFolderFilter.selectOption("*");
+  await page.getByRole("button", { name: "选择参考文件 品牌创作说明.pdf" }).click();
+  await page.getByLabel("已选择素材").getByText("文档 · 创作参考", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "移除素材 品牌创作说明.pdf" }).click();
   await page.getByRole("button", { name: "选择素材" }).click();
   const materialPicker = page.getByLabel("选择创作素材");
   await materialPicker.getByText("深色背景中的发光新芽，电影级侧光", { exact: true }).click();
-  await page.getByLabel("已选择素材").getByText("用于剧本与分镜", { exact: true }).waitFor();
+  await materialPicker.getByText("秋日背景音乐.mp3", { exact: true }).click();
+  await page.getByLabel("已选择素材").getByText("图片 · 创作参考", { exact: true }).waitFor();
+  await page.getByLabel("已选择素材").getByText("音频 · 创作参考", { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-project-assets.png", fullPage: true });
   await page.getByRole("button", { name: "移除素材 深色背景中的发光新芽，电影级侧光" }).click();
+  await page.getByRole("button", { name: "移除素材 秋日背景音乐.mp3" }).click();
   await materialPicker.getByRole("button", { name: "关闭素材选择" }).click();
   await page.locator(".activity-item").getByText("修改文件", { exact: true }).waitFor();
   if (await page.getByText("检查 HyperFrames", { exact: true }).count()) throw new Error("Older tool operations should be hidden");
@@ -462,8 +505,10 @@ async function assertSupersededCheckpoint(browser) {
   };
   await installApiMock(page, revising);
   await page.goto(baseUrl);
+  const eventStreamRequest = page.waitForRequest(request => request.url().includes("/events?after="));
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.getByRole("heading", { name: "秋季新品短片" }).waitFor();
+  await eventStreamRequest;
   if (await page.locator(".checkpoint-card").count()) throw new Error("A checkpoint superseded by a running revision should be hidden");
   await page.close();
 }
@@ -483,10 +528,11 @@ async function assertCheckpointHiddenAfterRevision(browser) {
 
 async function assertCreateAndMobile(browser) {
   const page = await browser.newPage({ viewport: { width: 360, height: 800 }, reducedMotion: "reduce" });
+  await page.addInitScript(() => { Object.defineProperty(Crypto.prototype, "randomUUID", { configurable: true, value: undefined }); });
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
-  await installApiMock(page);
+  await installApiMock(page, detail, { creationDelayMs: 700 });
   await page.goto(baseUrl);
   await page.getByTitle("旁白音色：默认音色").click();
   const voiceDialog = page.getByRole("dialog", { name: "项目旁白音色" });
@@ -497,7 +543,19 @@ async function assertCreateAndMobile(browser) {
   await voiceDialog.getByRole("button", { name: "关闭音色库" }).click();
   const prompt = page.getByPlaceholder("描述视频主题、风格、时长，或直接粘贴网页链接…");
   await prompt.fill("网站产品宣传片");
+  const createRequest = page.waitForRequest(request => request.url().endsWith("/api/agent-projects") && request.method() === "POST");
+  const turnRequest = page.waitForRequest(request => request.url().endsWith("/turns") && request.method() === "POST");
   await page.getByRole("button", { name: "创建视频任务" }).click();
+  await page.getByRole("heading", { name: "正在准备你的创作空间" }).waitFor();
+  await page.locator(".creation-pending-card").waitFor();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".creation-pending-card")).opacity === "1");
+  const pendingWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  if (pendingWidth > 360) throw new Error(`Mobile creation transition overflows horizontally: ${pendingWidth}px`);
+  await page.screenshot({ path: "/tmp/yingya-ui-creation-pending-mobile.png", fullPage: true });
+  const createPayload = (await createRequest).postDataJSON();
+  if (!/^[0-9a-f-]{36}$/i.test(createPayload.clientRequestId ?? "")) throw new Error("Create request is missing a stable clientRequestId");
+  const turnPayload = (await turnRequest).postDataJSON();
+  if (!/^[0-9a-f-]{36}$/i.test(turnPayload.clientRequestId ?? "")) throw new Error("Turn request is missing a stable clientRequestId");
   await page.getByRole("heading", { name: "网站产品宣传片" }).waitFor();
   const composer = page.getByPlaceholder("描述修改，或继续推进视频…");
   await composer.fill("加入品牌结尾");
@@ -528,8 +586,8 @@ try {
   await assertIncompleteWorkflowRecovery(browser);
   await assertWaitingInputPrompt(browser);
   await assertCreateAndMobile(browser);
-  console.log("UI QA passed: asset workshop, HyperFrames live preview, waiting-input prompt, plan/draft checkpoints, failed/incomplete workflow recovery, desktop project flow, and 360px create/message flow");
-  console.log("Screenshots: /tmp/yingya-ui-home-desktop.png, /tmp/yingya-ui-hyperframes-live.png, /tmp/yingya-ui-hyperframes-live-mobile.png, /tmp/yingya-ui-hyperframes-live-320.png, /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-mobile.png");
+  console.log("UI QA passed: asset workshop batch move, HyperFrames live preview, waiting-input prompt, plan/draft checkpoints, failed/incomplete workflow recovery, desktop project flow, and 360px creation/message flow");
+  console.log("Screenshots: /tmp/yingya-ui-asset-bulk-select.png, /tmp/yingya-ui-asset-bulk-moved.png, /tmp/yingya-ui-asset-bulk-mobile.png, /tmp/yingya-ui-home-desktop.png, /tmp/yingya-ui-hyperframes-live.png, /tmp/yingya-ui-hyperframes-live-mobile.png, /tmp/yingya-ui-hyperframes-live-320.png, /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-creation-pending-mobile.png, /tmp/yingya-ui-mobile.png");
 } finally {
   await browser?.close();
   preview.kill("SIGTERM");

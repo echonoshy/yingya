@@ -12,9 +12,9 @@ export const projectRecordSchema = z.object({
   queueDepth: z.number(), queuePaused: z.boolean().default(false), model: z.string(), reasoningEffort: z.string(), aspectRatio: z.string(), voiceId: z.string().default("default"), createdAt: z.number(), updatedAt: z.number(),
 });
 export const agentMessageSchema = z.object({
-  id: z.string(), turnId: optionalString, role: z.enum(["user", "assistant"]), text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), status: z.string(), createdAt: z.number(),
+  id: z.string(), turnId: optionalString, clientRequestId: optionalString, role: z.enum(["user", "assistant"]), text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), status: z.string(), createdAt: z.number(),
 });
-export const queuedTurnSchema = z.object({ id: z.string(), text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), model: optionalString, reasoningEffort: optionalString, createdAt: z.number() });
+export const queuedTurnSchema = z.object({ id: z.string(), clientRequestId: optionalString, text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), model: optionalString, reasoningEffort: optionalString, createdAt: z.number() });
 export const agentEventSchema = z.object({ seq: z.number(), projectId: z.string(), turnId: optionalString, method: z.string(), payload: z.unknown(), createdAt: z.number() });
 export const checkpointSchema = z.object({ id: z.string(), kind: z.string(), title: z.string(), summary: z.string(), artifactIds: z.array(z.string()) });
 export const artifactSchema = z.object({
@@ -34,7 +34,7 @@ export const agentManifestSchema = z.object({
 export const projectDetailSchema = projectRecordSchema.extend({ manifest: agentManifestSchema, messages: z.array(agentMessageSchema), queue: z.array(queuedTurnSchema), eventCursor: z.number(), renderJobs: z.array(renderJobSchema).default([]) });
 export const turnAcceptedSchema = z.object({ turnId: z.string(), status: z.string(), queueDepth: z.number() });
 export const renderVideoResultSchema = z.object({ jobId: z.string(), status: z.literal("rendering"), resolution: z.string(), fps: z.union([z.literal(30), z.literal(60)]) });
-export const eventPageSchema = z.object({ items: z.array(agentEventSchema), nextBefore: z.number().optional(), latestSeq: z.number(), hasMore: z.boolean() });
+export const eventPageSchema = z.object({ items: z.array(agentEventSchema), nextBefore: z.number().nullish().transform(value => value ?? undefined), latestSeq: z.number(), hasMore: z.boolean() });
 export const uploadedVoiceSchema = z.object({
   name: z.string(), consent: z.string().default(""), created_at: z.number().default(0), file_size: z.number().default(0), mime_type: z.string().default(""),
   ref_text: optionalString, speaker_description: optionalString,
