@@ -5,6 +5,9 @@ mod codex;
 mod config;
 mod heygen;
 mod model_settings;
+mod render_jobs;
+mod studio_sessions;
+mod voices;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -16,7 +16,6 @@ runtime dependencies.
 | `deploy/` | Local service operations | Product source | Track |
 | `tests/fixtures/` | Automated test inputs | Test source | Track |
 | `data/` | Yingya and its users | Mutable runtime data | Ignore |
-| `artifacts/` | HyperFrames and export jobs | Reproducible output | Ignore |
 | `.runtime/` | Codex, HyperFrames, models, caches | Machine-local state | Ignore |
 | `target/` | Cargo | Reproducible build output | Ignore |
 | `node_modules/` | npm | Installed dependencies | Ignore |
@@ -41,18 +40,41 @@ state with different cleanup rules:
 Agent-created videos live in `data/video-projects/<project-id>/`. This is the
 only supported project layout. It is mutable user data and stays out of Git.
 
-Each project must remain self-contained:
+Each project remains self-contained. Yingya creates the state files and base
+directories; the Agent adds composition sources and production artifacts as the
+project advances:
 
 ```text
 <project-id>/
-├── index.html
-├── DESIGN.md
-├── hyperframes.json
-├── meta.json
+├── project.json             # project metadata and active task state
+├── messages.json            # durable conversation history
+├── queue.json               # queued user turns
+├── events.jsonl             # incremental Agent event log
+├── index.html               # HyperFrames entry point, once authored
+├── index.motion.json        # animation contract, when required
+├── DESIGN.md                # visual specification, once authored
+├── hyperframes.json         # HyperFrames configuration, once authored
 ├── transcript.json          # when narration or source audio is present
+├── assets/
+│   ├── inbox/
+│   └── generated/
 ├── compositions/
-└── assets/
+├── artifacts/               # project-local review media
+└── .yingya/
+    ├── manifest.json        # UI workflow and version manifest
+    ├── voice.json           # selected project voice
+    ├── render-jobs.json     # bounded render queue and history
+    ├── versions/            # immutable Draft sources
+    ├── reports/render-jobs/ # final-render preflight reports
+    └── exports/             # verified final videos
 ```
+
+Application-managed state lives under `<project-id>/.yingya/`. In particular,
+`versions/draft-N/` contains immutable render sources, `render-jobs.json`
+contains the bounded durable render queue/history, `reports/render-jobs/`
+contains preflight output, and `exports/` contains verified final videos.
+Temporary `.partial.mp4` files are isolated in `exports/.tmp/` and are removed
+after every terminal render state.
 
 Codex should receive that directory—not the repository root—as its workspace.
 This prevents generated compositions from mixing with application source and
@@ -64,9 +86,11 @@ makes a project straightforward to preview, render, export, or delete.
 composition used to verify HyperFrames integration. Its HTML, design contract,
 motion assertions, configuration, and input asset are source files.
 
-Rendered MP4 files and inspection snapshots are outputs. They belong in
-`artifacts/` during a test run and are not committed unless a future visual
-regression test explicitly treats selected snapshots as reviewed baselines.
+Rendered MP4 files and inspection snapshots are outputs. Product projects keep
+them inside their own ignored `data/video-projects/<project-id>/` directory.
+Test runs should use a temporary directory or an ignored project-local output
+directory; do not add generated media to the repository unless a visual
+regression test explicitly defines it as a reviewed baseline.
 
 ## Cleanup policy
 
@@ -78,7 +102,7 @@ Safe to regenerate:
 - `.runtime/huggingface/`
 - `.runtime/models/VoxCPM2/.cache/`
 - `.runtime/codex-home/cache/`, `tmp/`, and copied `generated_images/`
-- HyperFrames renders and inspection snapshots
+- project-local HyperFrames renders and inspection snapshots
 
 Review before removing:
 

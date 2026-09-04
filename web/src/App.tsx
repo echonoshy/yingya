@@ -2,10 +2,12 @@ import { ArrowRight, ArrowUp, CloudSlash, Paperclip, WifiHigh } from "@phosphor-
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { api } from "./api";
 import { AgentWorkspace } from "./components/AgentWorkspace";
+import { AssetStudio } from "./components/AssetStudio";
 import { ModelSelector } from "./components/ModelSelector";
 import { ProjectSidebar } from "./components/ProjectSidebar";
+import { VoiceSelector } from "./components/VoiceSelector";
 import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "./types";
-import { readModelSelection, readNumberSetting, writeModelSelection, writeNumberSetting } from "./storage";
+import { readModelSelection, readNumberSetting, readStringSetting, writeModelSelection, writeNumberSetting, writeStringSetting } from "./storage";
 
 const fallbackModels: CodexModel[] = [
   ["gpt-5.6-terra", "GPT-5.6 Terra", "均衡的质量与速度"], ["gpt-5.6-sol", "GPT-5.6 Sol", "复杂创作与高质量推理"], ["gpt-5.6-luna", "GPT-5.6 Luna", "快速迭代"],
@@ -52,12 +54,14 @@ function AnimatedHeadline({ lines, play }: { lines: string[]; play: boolean }) {
 }
 
 export function App() {
-  const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection);
+  const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection); const [voiceId, setVoiceId] = useState(() => readStringSetting("yingya-voice-id", "default"));
+  const [section, setSection] = useState<"create" | "assets">("create");
   const saveSelection = (next: ModelSelection) => { setSelection(next); writeModelSelection(next); };
+  const saveVoice = (next: string) => { setVoiceId(next); writeStringSetting("yingya-voice-id", next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
   const updateActiveProject = useCallback((detail: ProjectDetail) => { setActive(detail); setProjects(current => current.map(project => project.id === detail.id ? detail : project)); }, []);
   useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(value.data)).catch(() => undefined); }, [refreshProjects]);
-  async function open(id: string) { setLoading(true); setOpenError(""); try { const detail = await api.getProject(id); setActive(detail); saveSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); setOffline(false); } catch (reason) { setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } finally { setLoading(false); } }
+  async function open(id: string) { setLoading(true); setOpenError(""); try { const detail = await api.getProject(id); setSection("create"); setActive(detail); saveSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); saveVoice(detail.voiceId); setOffline(false); } catch (reason) { setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } finally { setLoading(false); } }
   async function deleteProject(project: ProjectRecord) {
     await api.deleteProject(project.id);
     setProjects(current => current.filter(item => item.id !== project.id));
@@ -68,12 +72,21 @@ export function App() {
     setProjects(current => current.map(project => project.id === id ? updated : project));
     setActive(current => current?.id === id ? { ...current, ...updated } : current);
   }
+  async function setProjectVoice(id: string, nextVoiceId: string) {
+    const updated = await api.setProjectVoice(id, nextVoiceId);
+    saveVoice(updated.voiceId);
+    setProjects(current => current.map(project => project.id === id ? updated : project));
+    setActive(current => current?.id === id ? { ...current, ...updated } : current);
+  }
   if (offline && !active) return <div className="state-screen"><CloudSlash/><h1>本地服务未连接</h1><p>项目仍保存在电脑上。服务恢复后可继续。</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
-  if (active) return <AgentWorkspace key={active.id} project={active} projects={projects} models={models} selection={selection} onSelection={saveSelection} onProject={updateActiveProject} onOpen={open} onRename={renameProject} onDelete={deleteProject} onNew={() => { setActive(null); void refreshProjects(); }}/>;
-  return <StartScreen projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} onOpen={open} onDelete={deleteProject} onCreated={project => { setActive(project); void refreshProjects(); }}/>;
+  const showCreate = () => { setSection("create"); setActive(null); void refreshProjects(); };
+  const showAssets = () => { setSection("assets"); setActive(null); };
+  if (active) return <AgentWorkspace key={active.id} project={active} projects={projects} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onOpen={open} onRename={renameProject} onDelete={deleteProject} onNew={showCreate} onAssets={showAssets}/>;
+  if (section === "assets") return <AssetStudio projects={projects} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate} onOpen={open} onDelete={deleteProject}/>;
+  return <StartScreen projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); void refreshProjects(); }}/>;
 }
 
-function StartScreen({ projects, loading, openError, models, selection, onSelection, onOpen, onDelete, onCreated }: { projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onCreated: (value: ProjectDetail) => void }) {
+function StartScreen({ projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
   const [prompt, setPrompt] = useState(""); const [aspectRatio, setAspectRatio] = useState("9:16"); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, readNumberSetting(sidebarWidthKey, 270))));
   const [{ index: copyIndex, copy }] = useState(randomStartCopy);
@@ -90,7 +103,7 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
   }, [copyIndex]);
   async function submit(event: FormEvent) {
     event.preventDefault(); if (!prompt.trim() || busy) return; setBusy(true); setError("");
-    try { const project = await api.createProject({ prompt: prompt.trim(), aspectRatio, ...selection }); const uploaded: string[] = []; for (const file of files) uploaded.push((await api.uploadAsset(project.id, file)).path); await api.sendTurn(project.id, { text: prompt.trim(), attachments: uploaded, ...selection }); onCreated(await api.getProject(project.id)); }
+    try { const project = await api.createProject({ prompt: prompt.trim(), aspectRatio, voiceId, ...selection }); const uploaded: string[] = []; for (const file of files) uploaded.push((await api.uploadAsset(project.id, file)).path); await api.sendTurn(project.id, { text: prompt.trim(), attachments: uploaded, ...selection }); onCreated(await api.getProject(project.id)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "无法创建视频任务"); } finally { setBusy(false); }
   }
   function dragSidebar(event: ReactPointerEvent<HTMLDivElement>) {
@@ -112,10 +125,10 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
   }
   const starters = ["网站转产品宣传片", "知识解释动画", "品牌发布短片"];
   return <div className="start-layout" style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
-    <ProjectSidebar projects={projects} loading={loading} onOpen={onOpen} onDelete={onDelete}/>
+    <ProjectSidebar projects={projects} loading={loading} onCreate={() => undefined} onAssets={onAssets} onOpen={onOpen} onDelete={onDelete}/>
     <div className="workspace-splitter workspace-splitter--sidebar" role="separator" aria-label="调整项目栏宽度" aria-orientation="vertical" aria-valuemin={sidebarMinWidth} aria-valuemax={sidebarMaxWidth} aria-valuenow={sidebarWidth} tabIndex={0} onKeyDown={resizeSidebarWithKeyboard} onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragSidebar} onPointerUp={finishSidebarResize} onPointerCancel={finishSidebarResize}/>
     <main className="start-main">
-      <header className="topbar"><span>VIDEO CREATION</span><div className="topbar-status"><WifiHigh/>本地服务已连接</div></header>
+      <header className="topbar"><span>创作代理</span><div className="topbar-status"><WifiHigh/>本地服务已连接</div></header>
       {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
       <section className={`hero ${playIntro ? "hero--intro" : ""}`}>
         <div className="hero-ambient" aria-hidden="true">
@@ -131,7 +144,7 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
         <form className="composer composer--hero" onSubmit={submit}>
           <textarea autoFocus value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="描述视频主题、风格、时长，或直接粘贴网页链接…"/>
           <div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
-          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option></select><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy} aria-label="创建视频任务"><ArrowUp weight="bold"/></button></div>
+          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy} aria-label="创建视频任务"><ArrowUp weight="bold"/></button></div>
         </form>
         {error ? <p className="form-error">{error}</p> : null}
         <div className="starter-prompts">{starters.map(value => <button key={value} onClick={() => setPrompt(value)}><span>{value}</span><ArrowRight/></button>)}</div>

@@ -14,6 +14,8 @@ use tokio::{
 };
 use uuid::Uuid;
 
+use crate::render_jobs::RenderJob;
+
 #[derive(Clone)]
 pub struct AgentProjectStore {
     root: Arc<PathBuf>,
@@ -32,6 +34,8 @@ pub struct CreateAgentProjectRequest {
     pub model: String,
     #[serde(default = "default_effort")]
     pub reasoning_effort: String,
+    #[serde(default = "default_voice")]
+    pub voice_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,6 +53,8 @@ pub struct AgentProjectRecord {
     pub model: String,
     pub reasoning_effort: String,
     pub aspect_ratio: String,
+    #[serde(default = "default_voice")]
+    pub voice_id: String,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -250,6 +256,8 @@ pub struct AgentProjectDetail {
     pub messages: Vec<AgentMessage>,
     pub queue: Vec<QueuedTurn>,
     pub event_cursor: u64,
+    #[serde(default)]
+    pub render_jobs: Vec<RenderJob>,
 }
 
 impl AgentProjectStore {
@@ -262,6 +270,10 @@ impl AgentProjectStore {
         };
         store
             .migrate_legacy_titles()
+            .await
+            .map_err(std::io::Error::other)?;
+        store
+            .migrate_voice_settings()
             .await
             .map_err(std::io::Error::other)?;
         store
@@ -297,6 +309,27 @@ impl AgentProjectStore {
                 migrated.title = next;
                 write_json(&path, &migrated).await?;
             }
+        }
+        Ok(())
+    }
+
+    async fn migrate_voice_settings(&self) -> Result<(), String> {
+        for project in self.list().await? {
+            let path = self.project_dir(&project.id)?.join(".yingya/voice.json");
+            if fs::try_exists(&path)
+                .await
+                .map_err(|error| error.to_string())?
+            {
+                continue;
+            }
+            write_json(
+                &path,
+                &serde_json::json!({
+                    "provider": "voxcpm2",
+                    "voiceId": project.voice_id,
+                }),
+            )
+            .await?;
         }
         Ok(())
     }
@@ -358,6 +391,7 @@ impl AgentProjectStore {
             model: request.model.clone(),
             reasoning_effort: request.reasoning_effort.clone(),
             aspect_ratio: request.aspect_ratio.clone(),
+            voice_id: request.voice_id.clone(),
             created_at,
             updated_at: created_at,
         };
@@ -373,6 +407,14 @@ impl AgentProjectStore {
             studio_entry: default_studio_entry(),
         };
         write_json(&directory.join("project.json"), &project).await?;
+        write_json(
+            &directory.join(".yingya/voice.json"),
+            &serde_json::json!({
+                "provider": "voxcpm2",
+                "voiceId": request.voice_id,
+            }),
+        )
+        .await?;
         write_json(&directory.join(".yingya/manifest.json"), &manifest).await?;
         write_json(
             &directory.join("messages.json"),
@@ -422,6 +464,7 @@ impl AgentProjectStore {
             messages: read_json_or_default(&directory.join("messages.json")).await?,
             queue: read_json_or_default(&directory.join("queue.json")).await?,
             event_cursor: self.event_cursor(id).await?,
+            render_jobs: vec![],
         })
     }
 
@@ -457,6 +500,27 @@ impl AgentProjectStore {
         update(&mut project);
         project.updated_at = now_millis();
         write_json(&path, &project).await?;
+        Ok(project)
+    }
+
+    pub async fn update_voice(
+        &self,
+        id: &str,
+        voice_id: String,
+    ) -> Result<AgentProjectRecord, String> {
+        let lock = self.project_lock(id).await?;
+        let _guard = lock.lock().await;
+        let directory = self.project_dir(id)?;
+        let project_path = directory.join("project.json");
+        let mut project: AgentProjectRecord = read_json(&project_path).await?;
+        project.voice_id = voice_id.clone();
+        project.updated_at = now_millis();
+        write_json(&project_path, &project).await?;
+        write_json(
+            &directory.join(".yingya/voice.json"),
+            &serde_json::json!({ "provider": "voxcpm2", "voiceId": voice_id }),
+        )
+        .await?;
         Ok(project)
     }
 
@@ -1037,6 +1101,9 @@ fn default_model() -> String {
 fn default_effort() -> String {
     "high".to_owned()
 }
+fn default_voice() -> String {
+    "default".to_owned()
+}
 fn default_studio_entry() -> String {
     "index.html".to_owned()
 }
@@ -1273,6 +1340,7 @@ mod tests {
             aspect_ratio: "16:9".to_owned(),
             model: "gpt-5.6-terra".to_owned(),
             reasoning_effort: "high".to_owned(),
+            voice_id: "default".to_owned(),
         }
     }
 
@@ -1382,6 +1450,36 @@ mod tests {
         fs::remove_dir_all(root)
             .await
             .expect("clean empty event store");
+    }
+
+    #[tokio::test]
+    async fn project_paths_reject_absolute_and_parent_components() {
+        let root = std::env::temp_dir().join(format!("yingya-path-test-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone())
+            .await
+            .expect("create store");
+        let project = store.create(&request()).await.expect("create project");
+
+        assert!(
+            store
+                .resolve_relative(&project.id, "../outside.mp4")
+                .is_err()
+        );
+        assert!(
+            store
+                .resolve_relative(&project.id, "/tmp/outside.mp4")
+                .is_err()
+        );
+        assert_eq!(
+            store
+                .resolve_relative(&project.id, ".yingya/exports/video.mp4")
+                .expect("safe project path"),
+            store
+                .project_dir(&project.id)
+                .expect("project directory")
+                .join(".yingya/exports/video.mp4")
+        );
+        fs::remove_dir_all(root).await.expect("clean path store");
     }
 
     #[tokio::test]
@@ -1576,6 +1674,31 @@ mod tests {
             version.report_path.as_deref(),
             Some(".yingya/quality/draft-1.json")
         );
+    }
+
+    #[tokio::test]
+    async fn project_voice_is_persisted_for_the_video_agent() {
+        let root = std::env::temp_dir().join(format!("yingya-voice-test-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone())
+            .await
+            .expect("create store");
+        let project = store.create(&request()).await.expect("create project");
+        let updated = store
+            .update_voice(&project.id, "warm-narrator".to_owned())
+            .await
+            .expect("update voice");
+        assert_eq!(updated.voice_id, "warm-narrator");
+        let config: Value = read_json(
+            &store
+                .project_dir(&project.id)
+                .expect("project path")
+                .join(".yingya/voice.json"),
+        )
+        .await
+        .expect("read voice config");
+        assert_eq!(config["provider"], "voxcpm2");
+        assert_eq!(config["voiceId"], "warm-narrator");
+        fs::remove_dir_all(root).await.expect("clean voice store");
     }
 
     #[tokio::test]

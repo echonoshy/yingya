@@ -1,10 +1,10 @@
 # yingya
 映芽 · Yingya，通过对话创作视频，让想法长成影像。
 
-## Rust backend
+## Local development
 
-The application backend is implemented in Rust. Node.js is currently used only
-to install a pinned Codex native binary and will also be used by HyperFrames.
+The application backend is implemented in Rust. The browser application uses
+React and Vite; Node.js also provides the pinned Codex and HyperFrames binaries.
 
 ```bash
 npm install
@@ -30,19 +30,28 @@ project creates an isolated HyperFrames workspace under
 `data/video-projects/<project-id>/`; its Codex thread is created lazily when the
 first queued turn starts. The browser uses `/api/agent-projects`, loads recent
 events in pages, follows incremental updates over SSE, and renders artifacts
-from `.yingya/manifest.json`.
+from `.yingya/manifest.json`. Render jobs are persisted before execution in
+`.yingya/render-jobs.json`, so progress, failures, interrupted work, retry
+attempts, and unique completed outputs survive browser and service restarts.
 
 The project-owned `yingya-video-agent` skill enforces a production-plan
 checkpoint before composition work and a draft checkpoint before final render.
 It also requires HyperFrames lint, validate, and inspect gates and durable Draft
 snapshots. Agent projects are the application's single supported project model.
 
-During frontend development, run `npm run web:dev` and open
-`http://127.0.0.1:8798/`. Vite listens on `0.0.0.0`, proxies API and asset
-requests to the Rust server, and applies React changes through HMR. The local
-user service runs the same command with automatic restart; use
-`npm run web:service:status` to inspect it or `npm run web:service:reload` to
-restart it after configuration changes.
+For day-to-day development, keep the backend and frontend in separate terminals:
+
+```bash
+cargo run
+npm run web:dev
+```
+
+Open `http://127.0.0.1:8798/`. Vite listens on `0.0.0.0`, proxies API and asset
+requests to the Rust server, and applies React and CSS changes through HMR. The
+Rust process does not watch source files: after a backend change, stop and rerun
+`cargo run`. The `web:service:*` scripts are convenience commands for machines
+that have a local `yingya-web` user service configured; the repository does not
+install that service.
 
 ## Codex image generation
 
@@ -76,20 +85,33 @@ Each returned image has two paths:
   HyperFrames composition.
 
 Only server-managed `/assets/` paths are accepted as reference images. Generated
+and uploaded images can be browsed by the asset workshop through
+`GET /api/assets/images`; results are ordered newest first and include their
+generation prompt or original upload name when available. Generated
 files are copied rather than moved, so neither the personal Codex installation
 nor its caches are modified. `data/` is runtime state and is not committed.
 
-Runtime settings can be overridden with `YINGYA_ADDR`, `YINGYA_CODEX_BIN`,
-`YINGYA_CODEX_HOME`, `YINGYA_WORKSPACE`, `YINGYA_CODEX_MODEL`, and
-`YINGYA_HYPERFRAMES_BROWSER_PATH`. The assets directory defaults to
-`data/assets/` and can be changed with `YINGYA_ASSETS_DIR`. Codex/HyperFrames
-jobs use a 3600-second inactivity timeout by default, configurable with
-`YINGYA_CODEX_TURN_TIMEOUT_SECS`. Activity from the current turn renews the
-deadline, so this setting does not cap the total production time.
-`YINGYA_CODEX_NETWORK_ACCESS` defaults to `true`, allowing the workspace-write
-sandbox to call local services such as the VoxCPM2 TTS API. Set it to `false` to
-disable network access for Codex turns.
-The new project root can be overridden with `YINGYA_AGENT_PROJECTS_DIR`.
+The main runtime overrides are:
+
+- `YINGYA_ADDR`: HTTP bind address; defaults to `127.0.0.1:8797`.
+- `YINGYA_RESOURCE_DIR`: application resources; defaults to the repository root
+  in debug builds.
+- `YINGYA_APP_DATA_DIR`: mutable application data; defaults to `data/` in debug
+  builds.
+- `YINGYA_RUNTIME_DIR` and `YINGYA_CACHE_DIR`: machine-local runtime and cache
+  roots; both default to `.runtime/` in debug builds.
+- `YINGYA_AGENT_PROJECTS_DIR`, `YINGYA_ASSETS_DIR`, and `YINGYA_CODEX_HOME`:
+  specific overrides derived from the roots above.
+- `YINGYA_CODEX_BIN`, `YINGYA_WORKSPACE`, `YINGYA_CODEX_MODEL`, and
+  `YINGYA_HYPERFRAMES_BROWSER_PATH`: Codex and HyperFrames integration settings.
+- `YINGYA_CODEX_TURN_TIMEOUT_SECS`: inactivity timeout for Codex/HyperFrames
+  work; defaults to 3600 seconds. Activity renews the deadline, so it is not a
+  total production-time limit.
+- `YINGYA_CODEX_NETWORK_ACCESS`: defaults to `true`, allowing workspace-write
+  Codex turns to call local services such as VoxCPM2. Set it to `false` to
+  disable that network access.
+- `YINGYA_VITE_POLLING=1`: makes the Vite development server poll for file
+  changes when native filesystem events are unavailable.
 
 ## HeyGen music and sound effects
 
@@ -147,6 +169,10 @@ npm run hyperframes:skills:install
 The pinned Chrome Headless Shell is stored under
 `.runtime/hyperframes-home/.cache/`. The Rust backend discovers that executable
 at startup and passes it to Codex app-server as `HYPERFRAMES_BROWSER_PATH`.
+Yingya reuses official HyperFrames Studio sessions by their canonical project
+directory, assigns available ports from `8600–8799`, and retires sessions after
+two hours without a workspace heartbeat. Studio remains a direct browser
+connection to `0.0.0.0`; it is not proxied through the Yingya API.
 
 Upgrades are explicit and update the pinned package versions and lockfile:
 
@@ -164,9 +190,15 @@ exposes an OpenAI-compatible Speech API. See
 [`deploy/voxcpm2/README.md`](deploy/voxcpm2/README.md) for lifecycle commands,
 request examples, voice cloning, and streaming output.
 
-The default endpoint is `http://127.0.0.1:8791`. Install the project-local
-Codex integration with `npm run voxcpm2:skill:install`, then invoke
-`$voxcpm2-tts` from Codex.
+The service listens on `0.0.0.0:8791` by default; local clients use
+`http://127.0.0.1:8791`. Install the project-local Codex integration with
+`npm run voxcpm2:skill:install`, then invoke `$voxcpm2-tts` from Codex.
+
+The web composer includes a project voice library. Users can preview the
+default voice, create and save a voice from a natural-language description, or
+clone an authorized 1–30 second reference recording with its exact transcript.
+Each project stores its selected VoxCPM2 voice in `.yingya/voice.json`; every
+narration segment and revision reuses that voice ID for consistent timbre.
 
 ## Repository layout
 
@@ -176,8 +208,7 @@ Codex integration with `npm run voxcpm2:skill:install`, then invoke
 - `scripts/`: development and skill installation utilities.
 - `deploy/`: machine-service lifecycle scripts and operational documentation.
 - `tests/fixtures/`: deterministic test inputs, including the HyperFrames smoke composition.
-- `data/`: local uploads, generated assets, and future video projects; ignored by Git.
-- `artifacts/`: reproducible renders, snapshots, and exported files; ignored by Git.
+- `data/`: local uploads, generated assets, and video projects; ignored by Git.
 - `.runtime/`: credentials, models, tool homes, caches, and local service state; ignored by Git.
 
 See [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) for ownership and

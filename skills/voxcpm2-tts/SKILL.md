@@ -29,6 +29,20 @@ Use the local service at `http://127.0.0.1:8791`. It serves the model name
      --output /absolute/path/to/narration.wav
    ```
 
+   If the current Yingya project contains `.yingya/voice.json`, read it first
+   and pass its `voiceId` on every synthesis call:
+
+   ```bash
+   node "${skill_client}" synthesize \
+     --voice 'saved-voice-id' \
+     --text '欢迎使用映芽语音服务。' \
+     --output /absolute/path/to/narration.wav
+   ```
+
+   Reuse the same saved voice for every scene and later revision. Do not fall
+   back to `default` or design a fresh voice for each audio segment unless the
+   user explicitly changes the project voice.
+
 4. Report the absolute output path. If the user asks to hear it, render the
    local audio file in the response.
 

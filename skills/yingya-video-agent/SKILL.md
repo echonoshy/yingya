@@ -20,6 +20,7 @@ This skill is the authoritative outer workflow for Yingya. If a nested HyperFram
 5. Preserve user edits and unrelated files. If the manifest is dirty or a turn was interrupted, inspect the workspace before deciding what to reuse.
 6. Never install, update, or repair skills, plugins, CLIs, or global dependencies from inside a video project turn. Use the capabilities already available to the thread. If a named workflow is missing, continue with the installed core HyperFrames skills or explain the fallback; do not run a package installer.
 7. A request to “生成视频” authorizes the production-plan phase, not an unreviewed composition. Creating a storyboard, HTML composition, snapshots, or render before the plan checkpoint is a workflow failure.
+8. Read `.yingya/voice.json` before generating narration. When it contains a `voiceId`, every narration segment and revision must use that exact saved VoxCPM2 voice. Never silently substitute `default`, redesign the voice per segment, or mix voice IDs within one project unless the user explicitly changes the project voice.
 
 ## Recovery
 
@@ -53,6 +54,7 @@ Begin only after the user or checkpoint message explicitly confirms the plan.
 
 1. Create or update the visual specification (`DESIGN.md` when appropriate), HyperFrames composition, referenced assets, audio, and captions.
 2. Use available image, voice, music, or website-capture capabilities when appropriate. If a capability is unavailable, state that clearly and choose an honest fallback: programmatic visuals, user-provided media, or recommending an installable plugin.
+   When narration is needed, pass the project `voiceId` to `$voxcpm2-tts` for every segment so separately generated files preserve the same speaker identity.
 3. For a new composition, run the HyperFrames checks in this order: `lint`, `validate`, then `inspect`. Significant animation work also requires an animation map before rendering. Write machine-readable reports to a temporary path, validate the JSON, then rename it into place so recovery never reads a partial report.
 4. Do not mark a failed or skipped gate as passed. Fix issues and rerun the affected checks.
 5. Render a review-quality video only after all required gates pass.

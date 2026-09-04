@@ -1,7 +1,8 @@
 # VoxCPM2 serving
 
 This project runs `openbmb/VoxCPM2` through vLLM-Omni and exposes the
-OpenAI-compatible Speech API at `http://127.0.0.1:8791` by default.
+OpenAI-compatible Speech API on port `8791`. By default, the server listens on
+`0.0.0.0`, while local clients connect through `http://127.0.0.1:8791`.
 
 The machine-specific CUDA 12.8 environment and model weights are installed
 under `.runtime/`, so they stay isolated from the Rust and Node dependencies:
@@ -30,8 +31,9 @@ VOXCPM2_GPU_MEMORY_UTILIZATION=0.75 \
 ./deploy/voxcpm2/start.sh
 ```
 
-Set `VOXCPM2_HOST=0.0.0.0` only when the service must be reachable from other
-machines, and put authentication or a trusted reverse proxy in front of it.
+Override `VOXCPM2_HOST` when the service should bind to a different interface.
+The default `0.0.0.0` binding makes it reachable from other machines, so put
+authentication or a trusted reverse proxy in front of it on untrusted networks.
 
 ## Generate speech
 
@@ -66,6 +68,12 @@ Voice cloning adds `ref_audio`; it may be an HTTP URL, a path visible to the
 server, or a base64 data URI. For highest-fidelity continuation, also pass the
 exact reference transcript as `prompt_text` and select the corresponding clone
 mode supported by the vLLM-Omni Speech API.
+
+Uploaded and generated voice profiles are persisted under
+`.runtime/voxcpm2/speakers/` by the launcher. The Yingya server proxies voice
+listing, preview, description-based creation, and authorized reference-audio
+cloning through `/api/voices`; the browser never needs direct access to port
+`8791`.
 
 For raw streaming audio, send `"stream": true`,
 `"stream_format": "audio"`, and `"response_format": "pcm"`. VoxCPM2 emits

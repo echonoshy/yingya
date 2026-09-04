@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { codexModelSchema, eventPageSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema } from "./schemas";
+import { codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
@@ -26,14 +26,25 @@ async function requestText(path: string): Promise<string> {
   return response.text();
 }
 
+async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const response = await fetch(path, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  if (!response.ok) throw new Error(await parseError(response));
+  return response.blob();
+}
+
 const modelListSchema = z.object({ data: z.array(codexModelSchema) });
 const uploadSchema = z.object({ path: z.string(), name: z.string() });
-const studioSchema = z.object({ storyboardUrl: z.string(), previewUrl: z.string() });
+const studioSchema = z.object({
+  storyboardUrl: z.string(), previewUrl: z.string(), state: z.string(), host: z.string(), port: z.number(), projectName: z.string(), lastSeenAt: z.number(),
+});
+const imageUploadSchema = z.object({ url: z.string(), hyperframesPath: z.string() });
+const threadStartedSchema = z.object({ threadId: z.string() });
 
 export const api = {
   listProjects: () => request("/api/agent-projects", z.array(projectRecordSchema)),
   getProject: (id: string) => request(`/api/agent-projects/${id}`, projectDetailSchema),
   renameProject: (id: string, title: string) => request(`/api/agent-projects/${id}`, projectRecordSchema, { method: "PATCH", body: JSON.stringify({ title }) }),
+  setProjectVoice: (id: string, voiceId: string) => request(`/api/agent-projects/${id}`, projectRecordSchema, { method: "PATCH", body: JSON.stringify({ voiceId }) }),
   deleteProject: (id: string) => requestVoid(`/api/agent-projects/${id}`, { method: "DELETE" }),
   listModels: () => request("/api/codex/models", modelListSchema),
   createProject: (input: CreateProjectInput) => request("/api/agent-projects", projectDetailSchema, { method: "POST", body: JSON.stringify(input) }),
@@ -42,13 +53,27 @@ export const api = {
   resume: (id: string) => requestVoid(`/api/agent-projects/${id}/resume`, { method: "POST", body: "{}" }),
   removeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}`, { method: "DELETE" }),
   confirmCheckpoint: (id: string) => request(`/api/agent-projects/${id}/checkpoint`, turnAcceptedSchema, { method: "POST", body: "{}" }),
-  renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k"; fps: 30 | 60 }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
+  renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k" | "square" | "square-4k"; fps: 30 | 60 }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
   respondToRequest: (id: string, requestId: unknown, result: unknown) => requestVoid(`/api/agent-projects/${id}/requests/respond`, { method: "POST", body: JSON.stringify({ id: requestId, result }) }),
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),
   uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
   studio: (id: string) => request(`/api/agent-projects/${id}/studio`, studioSchema, { method: "POST", body: "{}" }),
+  heartbeatStudio: (id: string) => request(`/api/agent-projects/${id}/studio/heartbeat`, studioSchema, { method: "POST", body: "{}" }),
+  stopStudio: (id: string) => requestVoid(`/api/agent-projects/${id}/studio`, { method: "DELETE" }),
   markStudioDirty: (id: string) => requestVoid(`/api/agent-projects/${id}/studio/dirty`, { method: "POST", body: "{}" }),
   eventLog: (id: string, before?: number, limit = 500) => request(`/api/agent-projects/${id}/event-log?${new URLSearchParams({ ...(before ? { before: String(before) } : {}), limit: String(limit) })}`, eventPageSchema),
   readProjectFile: (id: string, path: string) => requestText(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),
   fileUrl: (id: string, path: string) => `/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`,
+  listVoices: () => request("/api/voices", voiceListSchema),
+  designVoice: (input: { name: string; description: string }) => request("/api/voices/design", uploadedVoiceSchema, { method: "POST", body: JSON.stringify(input) }),
+  cloneVoice: (input: { name: string; description: string; refText: string; audio: File; authorized: boolean }) => {
+    const body = new FormData();
+    body.append("name", input.name); body.append("description", input.description); body.append("refText", input.refText); body.append("authorized", String(input.authorized)); body.append("audio", input.audio);
+    return request("/api/voices", uploadedVoiceSchema, { method: "POST", body });
+  },
+  previewVoice: (voiceId: string, text?: string) => requestBlob("/api/voices/preview", { method: "POST", body: JSON.stringify({ voiceId, ...(text ? { text } : {}) }) }),
+  listImages: () => request("/api/assets/images", imageLibrarySchema),
+  uploadImage: async (file: File) => { const body = new FormData(); body.append("file", file); return request("/api/assets/images", imageUploadSchema, { method: "POST", body }); },
+  startImageThread: () => request("/api/codex/threads", threadStartedSchema, { method: "POST", body: "{}" }),
+  generateImage: (threadId: string, input: { prompt: string; referenceImages: string[]; model: string; reasoningEffort: string }) => request(`/api/codex/threads/${threadId}/images`, imageTurnSchema, { method: "POST", body: JSON.stringify(input) }),
 };

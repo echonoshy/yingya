@@ -16,7 +16,7 @@ if [[ ! -f "${model_root}/config.json" ]]; then
   exit 1
 fi
 
-host="${VOXCPM2_HOST:-127.0.0.1}"
+host="${VOXCPM2_HOST:-0.0.0.0}"
 port="${VOXCPM2_PORT:-8791}"
 gpu="${VOXCPM2_GPU:-1}"
 gpu_memory_utilization="${VOXCPM2_GPU_MEMORY_UTILIZATION:-0.80}"
@@ -25,6 +25,7 @@ export CUDA_VISIBLE_DEVICES="${gpu}"
 export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 export HF_HOME="${HF_HOME:-${project_root}/.runtime/huggingface}"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export SPEAKER_SAMPLES_DIR="${SPEAKER_SAMPLES_DIR:-${project_root}/.runtime/voxcpm2/speakers}"
 export PYTHONPATH="${runtime_root}/src/vllm:${runtime_root}/src/vllm-omni${PYTHONPATH:+:${PYTHONPATH}}"
 
 # The host uses CUDA 12.8/SM89. FlashInfer's published sampler extension is

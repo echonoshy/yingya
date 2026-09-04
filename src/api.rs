@@ -2,11 +2,12 @@ use std::{
     env,
     net::SocketAddr,
     path::{Path as FilePath, PathBuf},
+    process::Stdio,
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use crate::agent_jobs::{ActiveAgentTurn, AgentJobCoordinator};
+use crate::agent_jobs::{ActiveAgentTurn, ActiveRenderJob, AgentJobCoordinator};
 use crate::agent_projects::{
     self, AgentArtifact, AgentEvent, AgentMedia, AgentProjectDetail, AgentProjectRecord,
     AgentProjectStore, AgentTurnRequest, AppendAgentMessage, CreateAgentProjectRequest, MediaAsset,
@@ -19,6 +20,9 @@ use crate::codex::{
 use crate::config::AppPaths;
 use crate::heygen::{HeyGenAudioSearchResponse, HeyGenClient, HeyGenError};
 use crate::model_settings::validate_model_settings;
+use crate::render_jobs::{RenderJob, RenderJobStatus, RenderJobStore};
+use crate::studio_sessions::{StudioSession, StudioSessionManager};
+use crate::voices::{UploadedVoice, VoiceClient, VoiceError, VoiceList};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
@@ -36,12 +40,13 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::{
     fs,
-    io::{AsyncReadExt, AsyncSeekExt},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader},
     net::TcpListener,
     process::Command,
-    sync::{Mutex, broadcast, mpsc},
+    sync::{broadcast, mpsc},
 };
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use tower_http::services::{ServeDir, ServeFile};
@@ -54,12 +59,14 @@ struct AppState {
     codex: Arc<CodexClient>,
     heygen: HeyGenClient,
     assets: AssetStore,
-    studio_lock: Arc<Mutex<()>>,
     root: Arc<PathBuf>,
     hyperframes_home: Arc<PathBuf>,
     agent_projects: AgentProjectStore,
     agent_events: broadcast::Sender<AgentEvent>,
     agent_jobs: AgentJobCoordinator,
+    render_jobs: RenderJobStore,
+    studio_sessions: StudioSessionManager,
+    voices: VoiceClient,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,8 +109,29 @@ struct TurnRequest {
 }
 
 #[derive(Debug, Deserialize)]
-struct RenameAgentProjectRequest {
-    title: String,
+struct UpdateAgentProjectRequest {
+    title: Option<String>,
+    #[serde(rename = "voiceId")]
+    voice_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VoiceDesignRequest {
+    name: String,
+    description: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VoicePreviewRequest {
+    voice_id: String,
+    #[serde(default = "default_voice_preview_text")]
+    text: String,
+}
+
+fn default_voice_preview_text() -> String {
+    "你好，我是映芽为这个项目选定的声音。之后的旁白都会保持这一音色。".to_owned()
 }
 
 #[derive(Clone)]
@@ -119,6 +147,36 @@ struct ImageAsset {
     hyperframes_path: String,
     mime_type: String,
     revised_prompt: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageLibraryMetadata {
+    id: String,
+    #[serde(default)]
+    prompt: Option<String>,
+    #[serde(default)]
+    source_name: Option<String>,
+    kind: String,
+    created_at: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageLibraryAsset {
+    id: String,
+    url: String,
+    hyperframes_path: String,
+    mime_type: String,
+    prompt: Option<String>,
+    source_name: Option<String>,
+    kind: String,
+    created_at: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct ImageLibraryResponse {
+    images: Vec<ImageLibraryAsset>,
 }
 
 #[derive(Debug, Serialize)]
@@ -151,6 +209,11 @@ struct HealthResponse {
 struct StudioResponse {
     storyboard_url: String,
     preview_url: String,
+    state: String,
+    host: String,
+    port: u16,
+    project_name: String,
+    last_seen_at: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -190,8 +253,8 @@ struct RenderAgentVideoRequest {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RenderAgentVideoResponse {
-    path: String,
-    label: String,
+    job_id: String,
+    status: String,
     resolution: String,
     fps: u16,
 }
@@ -239,6 +302,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let codex = CodexClient::spawn(config).await?;
     let heygen = HeyGenClient::new()?;
+    let voices = VoiceClient::from_env()?;
     let assets = AssetStore::new(paths.assets.clone()).await?;
     let agent_projects = AgentProjectStore::new(paths.projects.clone()).await?;
     agent_projects
@@ -249,18 +313,31 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let static_assets = assets.root.as_ref().clone();
     let web_dist = root.join("web-dist");
     let web_index = web_dist.join("index.html");
+    let render_jobs = RenderJobStore::new(paths.projects.clone());
+    let studio_sessions = StudioSessionManager::new(
+        root.join("node_modules/.bin/hyperframes"),
+        paths.hyperframes_home.clone(),
+        paths.projects.clone(),
+    );
     let state = AppState {
         codex,
         heygen,
         assets,
-        studio_lock: Arc::new(Mutex::new(())),
         root: Arc::new(root.clone()),
         hyperframes_home: Arc::new(paths.hyperframes_home.clone()),
         agent_projects,
         agent_events,
         agent_jobs: AgentJobCoordinator::default(),
+        render_jobs,
+        studio_sessions,
+        voices,
     };
     audit_existing_project_workflows(&state).await;
+    reconcile_render_jobs(&state).await;
+    if let Err(error) = state.studio_sessions.adopt_existing().await {
+        warn!(%error, "failed to adopt existing HyperFrames Studio sessions");
+    }
+    spawn_studio_maintenance(state.clone());
     let app = Router::new()
         .route("/health", get(health))
         .route("/api/codex/skills", get(list_skills))
@@ -271,8 +348,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "/api/codex/threads/{thread_id}/images",
             post(generate_image),
         )
-        .route("/api/assets/images", post(upload_image))
+        .route("/api/assets/images", get(list_images).post(upload_image))
         .route("/api/heygen/audio", get(search_heygen_audio))
+        .route("/api/voices", get(list_voices).post(clone_voice))
+        .route("/api/voices/design", post(design_voice))
+        .route("/api/voices/preview", post(preview_voice))
         .route(
             "/api/agent-projects",
             get(list_agent_projects).post(create_agent_project),
@@ -325,7 +405,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route(
             "/api/agent-projects/{project_id}/studio",
-            post(start_agent_studio),
+            post(start_agent_studio).delete(stop_agent_studio),
+        )
+        .route(
+            "/api/agent-projects/{project_id}/studio/heartbeat",
+            post(heartbeat_agent_studio),
         )
         .route(
             "/api/agent-projects/{project_id}/studio/dirty",
@@ -428,6 +512,16 @@ async fn delete_agent_project(
             "项目仍在运行，请先停止任务再删除".to_owned(),
         ));
     }
+    if state.agent_jobs.active_render(&project_id).await.is_some() {
+        return Err(ApiError::Conflict(
+            "项目正在渲染成片，请等待渲染结束后再删除".to_owned(),
+        ));
+    }
+    state
+        .studio_sessions
+        .stop(&project_id)
+        .await
+        .map_err(ApiError::External)?;
     state
         .agent_projects
         .delete(&project_id)
@@ -441,38 +535,180 @@ async fn delete_agent_project(
 async fn rename_agent_project(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
-    Json(request): Json<RenameAgentProjectRequest>,
+    Json(request): Json<UpdateAgentProjectRequest>,
 ) -> Result<Json<AgentProjectRecord>, ApiError> {
-    let title = request.title.trim();
-    if title.is_empty() {
-        return Err(ApiError::BadRequest("项目标题不能为空".to_owned()));
+    if request.title.is_none() && request.voice_id.is_none() {
+        return Err(ApiError::BadRequest("没有需要更新的项目设置".to_owned()));
     }
-    if title.chars().count() > 48 {
-        return Err(ApiError::BadRequest(
-            "项目标题不能超过 48 个字符".to_owned(),
-        ));
+    let mut project = if let Some(title) = request.title {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(ApiError::BadRequest("项目标题不能为空".to_owned()));
+        }
+        if title.chars().count() > 48 {
+            return Err(ApiError::BadRequest(
+                "项目标题不能超过 48 个字符".to_owned(),
+            ));
+        }
+        let title = title.to_owned();
+        state
+            .agent_projects
+            .update_project(&project_id, |record| record.title = title)
+            .await
+            .map_err(ApiError::Project)?
+    } else {
+        state
+            .agent_projects
+            .read_project(&project_id)
+            .await
+            .map_err(ApiError::Project)?
+    };
+    if let Some(voice_id) = request.voice_id {
+        let voice_id = validate_voice_name(&voice_id)?;
+        if voice_id != "default" && !state.voices.exists(&voice_id).await? {
+            return Err(ApiError::Validation(format!(
+                "音色“{voice_id}”不存在或已被删除"
+            )));
+        }
+        project = state
+            .agent_projects
+            .update_voice(&project_id, voice_id)
+            .await
+            .map_err(ApiError::Project)?;
     }
-    let title = title.to_owned();
-    let project = state
-        .agent_projects
-        .update_project(&project_id, |record| record.title = title)
-        .await
-        .map_err(ApiError::Project)?;
     emit_agent_state_event(&state, &project_id, None, "project/updated").await;
     Ok(Json(project))
+}
+
+async fn list_voices(State(state): State<AppState>) -> Result<Json<VoiceList>, ApiError> {
+    Ok(Json(state.voices.list().await?))
+}
+
+async fn design_voice(
+    State(state): State<AppState>,
+    Json(request): Json<VoiceDesignRequest>,
+) -> Result<Json<UploadedVoice>, ApiError> {
+    let name = validate_voice_name(&request.name)?;
+    let description = request.description.trim();
+    if description.chars().count() < 4 || description.chars().count() > 200 {
+        return Err(ApiError::Validation("音色描述需要 4–200 个字符".to_owned()));
+    }
+    if state.voices.exists(&name).await? {
+        return Err(ApiError::Conflict(format!("音色“{name}”已经存在")));
+    }
+    Ok(Json(state.voices.create_design(&name, description).await?))
+}
+
+async fn clone_voice(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<UploadedVoice>, ApiError> {
+    let mut name = None;
+    let mut description = None;
+    let mut ref_text = None;
+    let mut authorized = false;
+    let mut audio = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?
+    {
+        match field.name() {
+            Some("name") => name = Some(field.text().await.map_err(bad_multipart)?),
+            Some("description") => description = Some(field.text().await.map_err(bad_multipart)?),
+            Some("refText") => ref_text = Some(field.text().await.map_err(bad_multipart)?),
+            Some("authorized") => authorized = field.text().await.map_err(bad_multipart)? == "true",
+            Some("audio") => {
+                let filename = field.file_name().unwrap_or("voice.wav").to_owned();
+                let mime_type = field.content_type().unwrap_or("audio/wav").to_owned();
+                let bytes = field.bytes().await.map_err(bad_multipart)?.to_vec();
+                audio = Some((filename, mime_type, bytes));
+            }
+            _ => {}
+        }
+    }
+    if !authorized {
+        return Err(ApiError::Validation(
+            "创建克隆音色前需要确认已获得声音所有者授权".to_owned(),
+        ));
+    }
+    let name = validate_voice_name(name.as_deref().unwrap_or_default())?;
+    if state.voices.exists(&name).await? {
+        return Err(ApiError::Conflict(format!("音色“{name}”已经存在")));
+    }
+    let ref_text = ref_text.unwrap_or_default();
+    if ref_text.trim().is_empty() || ref_text.chars().count() > 500 {
+        return Err(ApiError::Validation(
+            "请填写参考音频的准确文字，最多 500 个字符".to_owned(),
+        ));
+    }
+    let description = description.unwrap_or_default();
+    if description.chars().count() > 200 {
+        return Err(ApiError::Validation(
+            "音色描述不能超过 200 个字符".to_owned(),
+        ));
+    }
+    let (filename, mime_type, bytes) =
+        audio.ok_or_else(|| ApiError::BadRequest("请选择参考音频".to_owned()))?;
+    if bytes.is_empty() || bytes.len() > 10 * 1024 * 1024 {
+        return Err(ApiError::Validation(
+            "参考音频需要是 1–30 秒且不超过 10 MB 的清晰人声".to_owned(),
+        ));
+    }
+    Ok(Json(
+        state
+            .voices
+            .upload(
+                &name,
+                description.trim(),
+                ref_text.trim(),
+                "yingya-user-authorized",
+                &filename,
+                &mime_type,
+                bytes,
+            )
+            .await?,
+    ))
+}
+
+async fn preview_voice(
+    State(state): State<AppState>,
+    Json(request): Json<VoicePreviewRequest>,
+) -> Result<Response, ApiError> {
+    let voice_id = validate_voice_name(&request.voice_id)?;
+    let text = request.text.trim();
+    if text.is_empty() || text.chars().count() > 120 {
+        return Err(ApiError::Validation("试听文字需要 1–120 个字符".to_owned()));
+    }
+    let audio = state.voices.synthesize(&voice_id, text).await?;
+    Ok(([(CONTENT_TYPE, "audio/wav")], audio).into_response())
+}
+
+fn validate_voice_name(value: &str) -> Result<String, ApiError> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.chars().count() > 32
+        || value
+            .chars()
+            .any(|character| matches!(character, '/' | '\\' | '\0'))
+    {
+        return Err(ApiError::Validation(
+            "音色名称需要 1–32 个字符，且不能包含路径符号".to_owned(),
+        ));
+    }
+    Ok(value.to_owned())
+}
+
+fn bad_multipart(error: axum::extract::multipart::MultipartError) -> ApiError {
+    ApiError::BadRequest(error.to_string())
 }
 
 async fn get_agent_project(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
 ) -> Result<Json<AgentProjectDetail>, ApiError> {
-    Ok(Json(
-        state
-            .agent_projects
-            .get(&project_id)
-            .await
-            .map_err(ApiError::Project)?,
-    ))
+    Ok(Json(load_project_detail(&state, &project_id).await?))
 }
 
 async fn create_agent_project(
@@ -481,6 +717,12 @@ async fn create_agent_project(
 ) -> Result<Json<AgentProjectDetail>, ApiError> {
     validate_model_settings(&request.model, &request.reasoning_effort)
         .map_err(ApiError::Validation)?;
+    let voice_id = validate_voice_name(&request.voice_id)?;
+    if voice_id != "default" && !state.voices.exists(&voice_id).await? {
+        return Err(ApiError::Validation(format!(
+            "音色“{voice_id}”不存在或已被删除"
+        )));
+    }
     let project = state
         .agent_projects
         .create(&request)
@@ -494,13 +736,24 @@ async fn create_agent_project(
         })
         .await
         .map_err(ApiError::Project)?;
-    Ok(Json(
-        state
-            .agent_projects
-            .get(&project.id)
-            .await
-            .map_err(ApiError::Project)?,
-    ))
+    Ok(Json(load_project_detail(&state, &project.id).await?))
+}
+
+async fn load_project_detail(
+    state: &AppState,
+    project_id: &str,
+) -> Result<AgentProjectDetail, ApiError> {
+    let mut detail = state
+        .agent_projects
+        .get(project_id)
+        .await
+        .map_err(ApiError::Project)?;
+    detail.render_jobs = state
+        .render_jobs
+        .list(project_id, 10)
+        .await
+        .map_err(ApiError::Project)?;
+    Ok(detail)
 }
 
 async fn post_agent_turn(
@@ -637,6 +890,7 @@ async fn confirm_agent_checkpoint(
         .await
         .map_err(ApiError::Project)?;
     let previous_manifest = manifest.clone();
+    let mut scaffold_files = Vec::new();
     let transitioned = manifest
         .checkpoint
         .as_ref()
@@ -648,11 +902,25 @@ async fn confirm_agent_checkpoint(
         } else {
             "final_render".to_owned()
         };
-        state
+        if checkpoint.kind == "plan" {
+            scaffold_files = ensure_hyperframes_scaffold(
+                &state,
+                &project_id,
+                &detail.project.aspect_ratio,
+                &manifest.output_spec,
+            )
+            .await?;
+        }
+        if let Err(error) = state
             .agent_projects
             .write_manifest(&project_id, &manifest)
             .await
-            .map_err(ApiError::Project)?;
+        {
+            for path in scaffold_files {
+                let _ = fs::remove_file(path).await;
+            }
+            return Err(ApiError::Project(error));
+        }
     }
     let accepted = if let Some(active) = active.filter(|active| {
         active
@@ -700,15 +968,112 @@ async fn confirm_agent_checkpoint(
             .agent_projects
             .write_manifest(&project_id, &previous_manifest)
             .await;
+        for path in scaffold_files {
+            let _ = fs::remove_file(path).await;
+        }
     }
     accepted
+}
+
+async fn ensure_hyperframes_scaffold(
+    state: &AppState,
+    project_id: &str,
+    aspect_ratio: &str,
+    output_spec: &Value,
+) -> Result<Vec<PathBuf>, ApiError> {
+    let project_dir = state
+        .agent_projects
+        .project_dir(project_id)
+        .map_err(ApiError::Project)?;
+    write_hyperframes_scaffold(&project_dir, project_id, aspect_ratio, output_spec).await
+}
+
+async fn write_hyperframes_scaffold(
+    project_dir: &FilePath,
+    project_id: &str,
+    aspect_ratio: &str,
+    output_spec: &Value,
+) -> Result<Vec<PathBuf>, ApiError> {
+    let (width, height) = match aspect_ratio {
+        "9:16" => (1080, 1920),
+        "1:1" => (1080, 1080),
+        _ => (1920, 1080),
+    };
+    let duration = output_spec
+        .get("durationSeconds")
+        .or_else(|| output_spec.get("duration"))
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(10.0);
+    let config = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&json!({
+            "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
+            "paths": {
+                "blocks": "compositions",
+                "components": "compositions/components",
+                "assets": "assets"
+            },
+            "media": { "autoProxy": true }
+        }))
+        .map_err(|error| ApiError::External(error.to_string()))?
+    );
+    let metadata = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&json!({
+            "id": project_id,
+            "name": project_id,
+            "createdAt": unix_millis(SystemTime::now())
+        }))
+        .map_err(|error| ApiError::External(error.to_string()))?
+    );
+    let html = format!(
+        r#"<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width={width}, height={height}" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {{ box-sizing: border-box; }}
+      html, body {{ margin: 0; width: {width}px; height: {height}px; overflow: hidden; background: #000; }}
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="{duration}" data-width="{width}" data-height="{height}"></div>
+    <script>
+      window.__timelines = window.__timelines || {{}};
+      window.__timelines["main"] = gsap.timeline({{ paused: true }});
+    </script>
+  </body>
+</html>
+"#
+    );
+    let mut created = Vec::new();
+    for (name, contents) in [
+        ("hyperframes.json", config),
+        ("meta.json", metadata),
+        ("index.html", html),
+    ] {
+        let path = project_dir.join(name);
+        if fs::metadata(&path).await.is_err() {
+            if let Err(error) = fs::write(&path, contents).await {
+                for created_path in &created {
+                    let _ = fs::remove_file(created_path).await;
+                }
+                return Err(ApiError::Io(error));
+            }
+            created.push(path);
+        }
+    }
+    Ok(created)
 }
 
 async fn render_agent_video(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     Json(request): Json<RenderAgentVideoRequest>,
-) -> Result<Json<RenderAgentVideoResponse>, ApiError> {
+) -> Result<(StatusCode, Json<RenderAgentVideoResponse>), ApiError> {
     let (resolution, resolution_pixels, resolution_label) = match request.resolution.as_str() {
         "landscape" => ("landscape", "1920x1080", "1920 × 1080 p"),
         "landscape-4k" => ("landscape-4k", "3840x2160", "3840 × 2160 p"),
@@ -730,8 +1095,14 @@ async fn render_agent_video(
             "项目仍在制作中，请等待当前任务结束后再渲染成片".to_owned(),
         ));
     }
+    if let Some(render) = state.agent_jobs.active_render(&project_id).await {
+        return Err(ApiError::Conflict(format!(
+            "项目已有渲染任务正在运行：{}",
+            render.id
+        )));
+    }
 
-    let mut manifest = state
+    let manifest = state
         .agent_projects
         .manifest(&project_id)
         .await
@@ -764,36 +1135,493 @@ async fn render_agent_video(
         .agent_projects
         .resolve_relative(&project_id, &version.source_path)
         .map_err(ApiError::Project)?;
-    if fs::metadata(&source)
-        .await
-        .map(|value| !value.is_file())
-        .unwrap_or(true)
-    {
+    if fs::metadata(&source).await.is_err() {
         return Err(ApiError::NotFound("草稿源文件不存在，无法渲染".to_owned()));
     }
-    let source_dir = source
-        .parent()
-        .ok_or_else(|| ApiError::Validation("草稿源文件路径无效".to_owned()))?;
-    let relative_output = format!(
-        ".yingya/exports/{}-{}-{}fps.mp4",
-        version.id, resolution, request.fps
-    );
+    let source_dir = if fs::metadata(&source).await?.is_dir() {
+        source.clone()
+    } else {
+        source
+            .parent()
+            .ok_or_else(|| ApiError::Validation("草稿源文件路径无效".to_owned()))?
+            .to_path_buf()
+    };
+    let project_dir = state
+        .agent_projects
+        .project_dir(&project_id)
+        .map_err(ApiError::Project)?;
+    let canonical_project = fs::canonicalize(&project_dir).await?;
+    let canonical_source = fs::canonicalize(&source_dir).await?;
+    if !canonical_source.starts_with(&canonical_project) {
+        return Err(ApiError::Validation(
+            "草稿源目录不能通过软链接指向项目外部".to_owned(),
+        ));
+    }
+
+    let job_id = Uuid::new_v4().to_string();
+    let relative_output =
+        render_output_relative_path(&version.id, resolution, request.fps, &job_id);
     let output_path = state
         .agent_projects
         .resolve_relative(&project_id, &relative_output)
         .map_err(ApiError::Project)?;
-    if let Some(parent) = output_path.parent() {
+    let temporary_output = project_dir
+        .join(".yingya/exports/.tmp")
+        .join(format!("{job_id}.partial.mp4"));
+    if let Some(parent) = temporary_output.parent() {
         fs::create_dir_all(parent).await?;
     }
+    ensure_render_output_parents(
+        &canonical_project,
+        [output_path.as_path(), temporary_output.as_path()],
+    )
+    .await?;
+    state
+        .agent_jobs
+        .insert_render(project_id.clone(), ActiveRenderJob { id: job_id.clone() })
+        .await
+        .map_err(|active| ApiError::Conflict(format!("项目已有渲染任务正在运行：{}", active.id)))?;
+    let started_at = agent_projects::now_millis();
+    let queued_job = RenderJob::queued(
+        job_id.clone(),
+        version.id.clone(),
+        resolution.to_owned(),
+        request.fps,
+        started_at,
+    );
+    if let Err(error) = state.render_jobs.create(&project_id, queued_job).await {
+        state.agent_jobs.remove_render(&project_id).await;
+        return Err(ApiError::Project(error));
+    }
+    if let Err(error) = state
+        .agent_projects
+        .update_project(&project_id, |record| {
+            record.status = "rendering".to_owned();
+            record.status_label = format!("正在渲染 {} 成片", resolution_label);
+        })
+        .await
+    {
+        state.agent_jobs.remove_render(&project_id).await;
+        return Err(ApiError::Project(error));
+    }
+    if let Err(error) = update_render_job(&state, &project_id, &job_id, "render/started", |job| {
+        job.status = RenderJobStatus::Running;
+        job.progress = 5;
+        job.message = "正在准备渲染环境".to_owned();
+    })
+    .await
+    {
+        state.agent_jobs.remove_render(&project_id).await;
+        return Err(ApiError::Project(error));
+    }
+    emit_agent_state_event(&state, &project_id, None, "project/updated").await;
 
+    let render_state = state.clone();
+    let render_project_id = project_id.clone();
+    let render_job_id = job_id.clone();
+    let render_resolution = resolution.to_owned();
+    let render_resolution_pixels = resolution_pixels.to_owned();
+    let render_resolution_label = resolution_label.to_owned();
+    tokio::spawn(async move {
+        run_render_job(
+            render_state,
+            render_project_id,
+            render_job_id,
+            version,
+            canonical_source,
+            temporary_output,
+            output_path,
+            relative_output,
+            render_resolution,
+            render_resolution_pixels,
+            render_resolution_label,
+            request.fps,
+        )
+        .await;
+    });
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(RenderAgentVideoResponse {
+            job_id,
+            status: "rendering".to_owned(),
+            resolution: resolution_pixels.to_owned(),
+            fps: request.fps,
+        }),
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_render_job(
+    state: AppState,
+    project_id: String,
+    job_id: String,
+    version: agent_projects::DraftVersion,
+    source_dir: PathBuf,
+    temporary_output: PathBuf,
+    output_path: PathBuf,
+    relative_output: String,
+    resolution: String,
+    resolution_pixels: String,
+    resolution_label: String,
+    fps: u16,
+) {
+    let _ = update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
+        job.progress = 8;
+        job.message = "正在检查草稿源文件".to_owned();
+    })
+    .await;
+    let result = async {
+        preflight_render_source(&state, &project_id, &job_id, &version, &source_dir).await?;
+        update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
+            job.progress = 12;
+            job.message = "正在捕获 HyperFrames 画面".to_owned();
+        })
+        .await?;
+        run_render_command(
+            &state,
+            &project_id,
+            &job_id,
+            &source_dir,
+            &temporary_output,
+            &resolution,
+            fps,
+        )
+        .await?;
+        verify_render_output(&temporary_output).await?;
+        fs::rename(&temporary_output, &output_path)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok::<(), String>(())
+    }
+    .await;
+
+    let _gate = state.agent_jobs.lock(&project_id).await;
+    match result {
+        Ok(())
+            if fs::metadata(&output_path)
+                .await
+                .is_ok_and(|value| value.is_file()) =>
+        {
+            let _ = update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
+                job.progress = 96;
+                job.message = "正在登记成片".to_owned();
+            })
+            .await;
+            let completion = async {
+                let original_manifest = state.agent_projects.manifest(&project_id).await?;
+                let mut manifest = original_manifest.clone();
+                let label = format!(
+                    "{} · {} · {} FPS 成片",
+                    version.label, resolution_label, fps
+                );
+                let artifact_id = format!("final-{job_id}");
+                manifest.artifacts.push(AgentArtifact {
+                    id: artifact_id,
+                    kind: "final-video".to_owned(),
+                    label,
+                    path: relative_output.clone(),
+                    version: Some(version.id),
+                    metadata: json!({
+                        "quality": "high",
+                        "frameRate": fps,
+                        "resolution": resolution_pixels,
+                        "renderJobId": job_id,
+                    }),
+                });
+                if let Some(output_spec) = manifest.output_spec.as_object_mut() {
+                    output_spec.insert("finalQuality".to_owned(), Value::String("high".to_owned()));
+                    output_spec.insert("frameRate".to_owned(), Value::from(fps));
+                    output_spec.insert("resolution".to_owned(), Value::String(resolution_pixels));
+                }
+                if !manifest.dirty {
+                    manifest.checkpoint = None;
+                    manifest.phase = "completed".to_owned();
+                }
+                let dirty = manifest.dirty;
+                state
+                    .agent_projects
+                    .write_manifest(&project_id, &manifest)
+                    .await?;
+                if let Err(error) = state
+                    .agent_projects
+                    .update_project(&project_id, |record| {
+                        record.status = if dirty { "draft_review" } else { "completed" }.to_owned();
+                        record.status_label = if dirty {
+                            "成片已生成，工作区修改待检查".to_owned()
+                        } else {
+                            format!("{} 成片已完成", resolution_label)
+                        };
+                    })
+                    .await
+                {
+                    let _ = state
+                        .agent_projects
+                        .write_manifest(&project_id, &original_manifest)
+                        .await;
+                    return Err(error);
+                }
+                Ok::<(), String>(())
+            }
+            .await;
+            match completion {
+                Ok(()) => {
+                    let ended_at = agent_projects::now_millis();
+                    let _ = update_render_job(
+                        &state,
+                        &project_id,
+                        &job_id,
+                        "render/completed",
+                        |job| {
+                            job.status = RenderJobStatus::Completed;
+                            job.progress = 100;
+                            job.message = "成片渲染完成".to_owned();
+                            job.output_path = Some(relative_output.clone());
+                            job.error = None;
+                            job.ended_at = Some(ended_at);
+                        },
+                    )
+                    .await;
+                }
+                Err(error) => {
+                    remove_temporary_render_output(&output_path).await;
+                    finish_failed_render(&state, &project_id, &job_id, &error).await;
+                }
+            }
+        }
+        Ok(()) => {
+            remove_temporary_render_output(&output_path).await;
+            finish_failed_render(
+                &state,
+                &project_id,
+                &job_id,
+                "HyperFrames 未生成预期的视频文件",
+            )
+            .await;
+        }
+        Err(error) => {
+            finish_failed_render(&state, &project_id, &job_id, &error).await;
+        }
+    }
+    remove_temporary_render_output(&temporary_output).await;
+    state.agent_jobs.remove_render(&project_id).await;
+    emit_agent_state_event(&state, &project_id, None, "project/updated").await;
+    if let Err(error) = start_next_agent_turn_locked(state.clone(), project_id.clone()).await {
+        warn!(%project_id, %error, "failed to resume queued agent turn after render");
+    }
+}
+
+fn render_output_relative_path(
+    version_id: &str,
+    resolution: &str,
+    fps: u16,
+    job_id: &str,
+) -> String {
+    format!(".yingya/exports/{version_id}-{resolution}-{fps}fps-{job_id}.mp4")
+}
+
+async fn remove_temporary_render_output(path: &FilePath) {
+    if fs::try_exists(path).await.unwrap_or(false) {
+        let _ = fs::remove_file(path).await;
+    }
+}
+
+async fn ensure_render_output_parents<'a>(
+    canonical_project: &FilePath,
+    paths: impl IntoIterator<Item = &'a FilePath>,
+) -> Result<(), ApiError> {
+    for parent in paths.into_iter().filter_map(FilePath::parent) {
+        let canonical_parent = fs::canonicalize(parent).await?;
+        if !canonical_parent.starts_with(canonical_project) {
+            return Err(ApiError::Validation(
+                "渲染输出目录不能通过软链接指向项目外部".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn finish_failed_render(state: &AppState, project_id: &str, job_id: &str, error: &str) {
+    let message = truncate_status(error, 320);
+    let _ = state
+        .agent_projects
+        .update_project(project_id, |record| {
+            record.status = "draft_review".to_owned();
+            record.status_label = "成片渲染失败，可重试".to_owned();
+        })
+        .await;
+    let ended_at = agent_projects::now_millis();
+    let _ = update_render_job(state, project_id, job_id, "render/failed", |job| {
+        job.status = RenderJobStatus::Failed;
+        job.progress = 0;
+        job.message = "成片渲染失败，可重试".to_owned();
+        job.error = Some(message.clone());
+        job.ended_at = Some(ended_at);
+    })
+    .await;
+}
+
+async fn preflight_render_source(
+    state: &AppState,
+    project_id: &str,
+    job_id: &str,
+    version: &agent_projects::DraftVersion,
+    source_dir: &FilePath,
+) -> Result<(), String> {
+    reject_source_symlinks(source_dir).await?;
+    for name in ["index.html", "hyperframes.json", "meta.json"] {
+        let path = source_dir.join(name);
+        match fs::symlink_metadata(&path).await {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!("草稿源文件不能是软链接：{name}"));
+            }
+            Ok(metadata) if !metadata.is_file() => {
+                return Err(format!("草稿源文件无效：{name}"));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && name != "index.html" => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err("草稿版本缺少 index.html".to_owned());
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+
+    if version_report_is_reusable(state, project_id, version, source_dir).await {
+        update_render_job(state, project_id, job_id, "render/progress", |job| {
+            job.progress = 10;
+            job.message = "已复用草稿版本的通过检查".to_owned();
+        })
+        .await?;
+        return Ok(());
+    }
+
+    let project_dir = state.agent_projects.project_dir(project_id)?;
+    let report_dir = project_dir.join(format!(".yingya/reports/render-jobs/{job_id}"));
+    fs::create_dir_all(&report_dir)
+        .await
+        .map_err(|error| error.to_string())?;
+    for (index, command) in ["lint", "validate", "inspect"].into_iter().enumerate() {
+        let progress = 8 + (index as u8 * 2);
+        let label = match command {
+            "lint" => "正在检查 Composition 结构",
+            "validate" => "正在验证运行时与文字对比度",
+            _ => "正在检查时间轴画面布局",
+        };
+        update_render_job(state, project_id, job_id, "render/progress", |job| {
+            job.progress = progress;
+            job.message = label.to_owned();
+        })
+        .await?;
+        let report = run_preflight_command(state, command, source_dir).await?;
+        atomic_write_bytes(
+            &report_dir.join(format!("{command}.json")),
+            report.as_bytes(),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+fn reject_source_symlinks(
+    directory: &FilePath,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + '_>> {
+    Box::pin(async move {
+        let mut entries = fs::read_dir(directory)
+            .await
+            .map_err(|error| error.to_string())?;
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .await
+                .map_err(|error| error.to_string())?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "草稿版本包含不允许的软链接：{}",
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("unknown")
+                ));
+            }
+            if metadata.is_dir() {
+                reject_source_symlinks(&path).await?;
+            }
+        }
+        Ok(())
+    })
+}
+
+async fn version_report_is_reusable(
+    state: &AppState,
+    project_id: &str,
+    version: &agent_projects::DraftVersion,
+    source_dir: &FilePath,
+) -> bool {
+    let Some(relative_report) = version.report_path.as_deref() else {
+        return false;
+    };
+    let Ok(report_path) = state
+        .agent_projects
+        .resolve_relative(project_id, relative_report)
+    else {
+        return false;
+    };
+    let Ok(report_bytes) = fs::read(&report_path).await else {
+        return false;
+    };
+    let Ok(report) = serde_json::from_slice::<Value>(&report_bytes) else {
+        return false;
+    };
+    if report.get("ok").and_then(Value::as_bool) != Some(true) {
+        return false;
+    }
+    let Some(report_dir) = report_path.parent() else {
+        return false;
+    };
+    let Ok(fingerprint_bytes) = fs::read(report_dir.join("source-fingerprint.json")).await else {
+        return false;
+    };
+    let Ok(fingerprint) = serde_json::from_slice::<Value>(&fingerprint_bytes) else {
+        return false;
+    };
+    for name in ["index.html", "index.motion.json"] {
+        let path = source_dir.join(name);
+        let expected = fingerprint
+            .pointer(&format!("/files/{name}"))
+            .and_then(Value::as_str);
+        let exists = fs::try_exists(&path).await.unwrap_or(false);
+        let (true, Some(expected)) = (exists, expected) else {
+            if !exists && expected.is_none() {
+                continue;
+            }
+            return false;
+        };
+        let Ok(bytes) = fs::read(path).await else {
+            return false;
+        };
+        let actual = format!("{:x}", Sha256::digest(bytes));
+        if actual != expected {
+            return false;
+        }
+    }
+    true
+}
+
+async fn run_preflight_command(
+    state: &AppState,
+    command: &str,
+    source_dir: &FilePath,
+) -> Result<String, String> {
     let output = tokio::time::timeout(
-        Duration::from_secs(7_200),
+        Duration::from_secs(600),
         Command::new(state.root.join("node_modules/.bin/hyperframes"))
-            .arg("render")
-            .args(["--output", output_path.to_string_lossy().as_ref()])
-            .args(["--quality", "high"])
-            .args(["--resolution", resolution])
-            .args(["--fps", &request.fps.to_string()])
+            .arg(command)
+            .arg(source_dir)
+            .arg("--json")
             .current_dir(source_dir)
             .env("HOME", state.hyperframes_home.as_ref())
             .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
@@ -801,78 +1629,187 @@ async fn render_agent_video(
             .output(),
     )
     .await
-    .map_err(|_| ApiError::External("视频渲染超时".to_owned()))??;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        return Err(ApiError::External(if stderr.is_empty() {
-            stdout
-        } else {
-            stderr
-        }));
-    }
-    if fs::metadata(&output_path)
-        .await
-        .map(|value| !value.is_file())
-        .unwrap_or(true)
-    {
-        return Err(ApiError::External(
-            "HyperFrames 未生成预期的视频文件".to_owned(),
+    .map_err(|_| format!("HyperFrames {command} 检查超时"))?
+    .map_err(|error| error.to_string())?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    let parsed_ok = serde_json::from_str::<Value>(&stdout)
+        .ok()
+        .and_then(|value| value.get("ok").and_then(Value::as_bool))
+        .unwrap_or(output.status.success());
+    if !output.status.success() || !parsed_ok {
+        let detail = if stderr.is_empty() { stdout } else { stderr };
+        return Err(format!(
+            "HyperFrames {command} 检查未通过：{}",
+            truncate_status(&detail, 320)
         ));
     }
+    Ok(stdout)
+}
 
-    let label = format!(
-        "{} · {} · {} FPS 成片",
-        version.label, resolution_label, request.fps
-    );
-    let artifact_id = format!("final-{}-{}-{}fps", version.id, resolution, request.fps);
-    manifest
-        .artifacts
-        .retain(|artifact| artifact.id != artifact_id);
-    manifest.artifacts.push(AgentArtifact {
-        id: artifact_id,
-        kind: "final-video".to_owned(),
-        label: label.clone(),
-        path: relative_output.clone(),
-        version: Some(version.id.clone()),
-        metadata: json!({
-            "quality": "high",
-            "frameRate": request.fps,
-            "resolution": resolution_pixels,
-        }),
-    });
-    if let Some(output_spec) = manifest.output_spec.as_object_mut() {
-        output_spec.insert("finalQuality".to_owned(), Value::String("high".to_owned()));
-        output_spec.insert("frameRate".to_owned(), Value::from(request.fps));
-        output_spec.insert(
-            "resolution".to_owned(),
-            Value::String(resolution_pixels.to_owned()),
-        );
+async fn verify_render_output(path: &FilePath) -> Result<(), String> {
+    let metadata = fs::metadata(path)
+        .await
+        .map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() == 0 {
+        return Err("HyperFrames 未生成有效的视频文件".to_owned());
     }
-    manifest.checkpoint = None;
-    manifest.phase = "completed".to_owned();
-    manifest.dirty = false;
-    state
-        .agent_projects
-        .write_manifest(&project_id, &manifest)
-        .await
-        .map_err(ApiError::Project)?;
-    state
-        .agent_projects
-        .update_project(&project_id, |record| {
-            record.status = "completed".to_owned();
-            record.status_label = format!("{} 成片已完成", resolution_label);
-        })
-        .await
-        .map_err(ApiError::Project)?;
-    emit_agent_state_event(&state, &project_id, None, "project/updated").await;
+    let output = tokio::time::timeout(
+        Duration::from_secs(30),
+        Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nk=1:nw=1",
+            ])
+            .arg(path)
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .map_err(|_| "ffprobe 验证视频超时".to_owned())?
+    .map_err(|error| format!("无法启动 ffprobe：{error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "渲染文件验证失败：{}",
+            truncate_status(&String::from_utf8_lossy(&output.stderr), 320)
+        ));
+    }
+    let duration = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<f64>()
+        .unwrap_or_default();
+    if !duration.is_finite() || duration <= 0.0 {
+        return Err("渲染文件没有有效时长".to_owned());
+    }
+    Ok(())
+}
 
-    Ok(Json(RenderAgentVideoResponse {
-        path: relative_output,
-        label,
-        resolution: resolution_pixels.to_owned(),
-        fps: request.fps,
-    }))
+async fn atomic_write_bytes(path: &FilePath, bytes: &[u8]) -> Result<(), String> {
+    let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
+    fs::write(&temporary, bytes)
+        .await
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = fs::rename(&temporary, path).await {
+        let _ = fs::remove_file(temporary).await;
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+async fn run_render_command(
+    state: &AppState,
+    project_id: &str,
+    job_id: &str,
+    source_dir: &FilePath,
+    output_path: &FilePath,
+    resolution: &str,
+    fps: u16,
+) -> Result<(), String> {
+    let mut child = Command::new(state.root.join("node_modules/.bin/hyperframes"))
+        .arg("render")
+        .args(["--output", output_path.to_string_lossy().as_ref()])
+        .args(["--quality", "high"])
+        .args(["--resolution", resolution])
+        .args(["--fps", &fps.to_string()])
+        .current_dir(source_dir)
+        .env("HOME", state.hyperframes_home.as_ref())
+        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| error.to_string())?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let (lines_tx, mut lines_rx) = mpsc::channel::<(bool, String)>(64);
+    if let Some(stdout) = stdout {
+        let lines_tx = lines_tx.clone();
+        tokio::spawn(async move {
+            forward_process_lines(stdout, false, lines_tx).await;
+        });
+    }
+    if let Some(stderr) = stderr {
+        let lines_tx = lines_tx.clone();
+        tokio::spawn(async move {
+            forward_process_lines(stderr, true, lines_tx).await;
+        });
+    }
+    drop(lines_tx);
+    let mut errors = Vec::new();
+    let status = tokio::time::timeout(Duration::from_secs(7_200), async {
+        loop {
+            tokio::select! {
+                status = child.wait() => break status.map_err(|error| error.to_string()),
+                line = lines_rx.recv() => {
+                    let Some((is_error, line)) = line else {
+                        break child.wait().await.map_err(|error| error.to_string());
+                    };
+                    if is_error { errors.push(line.clone()); }
+                    if let Some(percent) = render_percent(&line) {
+                        let percent = 12 + ((u16::from(percent) * 83 / 100) as u8);
+                        let message = truncate_status(&line, 320);
+                        let _ = update_render_job(state, project_id, job_id, "render/progress", |job| {
+                            job.progress = percent;
+                            job.message = message;
+                        }).await;
+                    }
+                }
+            }
+        }
+    }).await.map_err(|_| "视频渲染超时".to_owned())??;
+    while let Ok((is_error, line)) = lines_rx.try_recv() {
+        if is_error {
+            errors.push(line);
+        }
+    }
+    if status.success() {
+        Ok(())
+    } else {
+        Err(errors
+            .into_iter()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .unwrap_or_else(|| format!("HyperFrames 渲染进程退出：{status}")))
+    }
+}
+
+async fn forward_process_lines(
+    stream: impl tokio::io::AsyncRead + Unpin,
+    is_error: bool,
+    sender: mpsc::Sender<(bool, String)>,
+) {
+    let mut lines = BufReader::new(stream).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if sender.send((is_error, line)).await.is_err() {
+            break;
+        }
+    }
+}
+
+fn render_percent(line: &str) -> Option<u8> {
+    line.split_whitespace().find_map(|word| {
+        let number =
+            word.trim_matches(|character: char| !character.is_ascii_digit() && character != '.');
+        if !word.contains('%') {
+            return None;
+        }
+        number
+            .parse::<f32>()
+            .ok()
+            .map(|value| value.clamp(1.0, 95.0) as u8)
+    })
+}
+
+fn truncate_status(value: &str, limit: usize) -> String {
+    let mut result: String = value.trim().chars().take(limit).collect();
+    if value.trim().chars().count() > limit {
+        result.push('…');
+    }
+    result
 }
 
 async fn respond_agent_request(
@@ -1023,6 +1960,121 @@ async fn emit_agent_state_event(
     }
 }
 
+async fn update_render_job<F>(
+    state: &AppState,
+    project_id: &str,
+    job_id: &str,
+    method: &str,
+    update: F,
+) -> Result<RenderJob, String>
+where
+    F: FnOnce(&mut RenderJob),
+{
+    let now = agent_projects::now_millis();
+    let job = state
+        .render_jobs
+        .update(project_id, job_id, |job| {
+            update(job);
+            job.updated_at = now;
+        })
+        .await?;
+    emit_render_event(state, project_id, method, &job).await;
+    Ok(job)
+}
+
+async fn emit_render_event(state: &AppState, project_id: &str, method: &str, job: &RenderJob) {
+    if let Ok(event) = state
+        .agent_projects
+        .append_event(
+            project_id,
+            None,
+            method.to_owned(),
+            json!({
+                "jobId": job.id,
+                "versionId": job.version_id,
+                "status": job.status,
+                "resolution": job.resolution,
+                "fps": job.fps,
+                "progress": job.progress,
+                "message": truncate_status(&job.message, 320),
+                "outputPath": job.output_path,
+                "error": job.error,
+            }),
+        )
+        .await
+    {
+        let _ = state.agent_events.send(event);
+    }
+}
+
+async fn reconcile_render_jobs(state: &AppState) {
+    let interrupted = match state
+        .render_jobs
+        .reconcile_interrupted(agent_projects::now_millis())
+        .await
+    {
+        Ok(jobs) => jobs,
+        Err(error) => {
+            warn!(%error, "failed to reconcile render jobs");
+            return;
+        }
+    };
+    for (project_id, job) in interrupted {
+        let _ = state
+            .agent_projects
+            .update_project(&project_id, |record| {
+                record.status = "draft_review".to_owned();
+                record.status_label = "上次渲染因服务重启中断，可重试".to_owned();
+            })
+            .await;
+        emit_render_event(state, &project_id, "render/interrupted", &job).await;
+    }
+}
+
+fn spawn_studio_maintenance(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(2));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            for project_id in state.studio_sessions.detect_source_changes().await {
+                let manifest_result = state.agent_projects.manifest(&project_id).await;
+                let Ok(mut manifest) = manifest_result else {
+                    continue;
+                };
+                if manifest.dirty {
+                    continue;
+                }
+                manifest.dirty = true;
+                if state
+                    .agent_projects
+                    .write_manifest(&project_id, &manifest)
+                    .await
+                    .is_err()
+                {
+                    continue;
+                }
+                if !state.agent_jobs.contains(&project_id).await
+                    && state.agent_jobs.active_render(&project_id).await.is_none()
+                {
+                    let _ = state
+                        .agent_projects
+                        .update_project(&project_id, |record| {
+                            record.status = "draft_review".to_owned();
+                            record.status_label = "Studio 中有未验证的修改".to_owned();
+                        })
+                        .await;
+                }
+                emit_agent_state_event(&state, &project_id, None, "project/updated").await;
+            }
+            let _ = state
+                .studio_sessions
+                .reap_idle(agent_projects::now_millis(), 2 * 60 * 60 * 1000)
+                .await;
+        }
+    });
+}
+
 async fn upload_agent_asset(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
@@ -1171,52 +2223,52 @@ async fn start_agent_studio(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
 ) -> Result<Json<StudioResponse>, ApiError> {
-    use std::hash::{Hash, Hasher};
-    let _guard = state.studio_lock.lock().await;
     let project_dir = state
         .agent_projects
         .project_dir(&project_id)
         .map_err(ApiError::Project)?;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    project_id.hash(&mut hasher);
-    let port = 8600 + (hasher.finish() % 100) as u16;
-    let status = run_preview_command(&state, &project_dir, &["--status"]).await?;
-    let reusable = status.pointer("/result/state").and_then(Value::as_str) == Some("running")
-        && status.pointer("/result/host").and_then(Value::as_str) == Some("0.0.0.0")
-        && status
-            .pointer("/result/port")
-            .and_then(Value::as_u64)
-            .is_some_and(|value| (8600..8800).contains(&value));
-    if !reusable && status.pointer("/result/state").and_then(Value::as_str) == Some("running") {
-        run_preview_command(&state, &project_dir, &["--stop"]).await?;
+    let session = state
+        .studio_sessions
+        .start(&project_id, &project_dir)
+        .await
+        .map_err(ApiError::External)?;
+    Ok(Json(studio_response(session)))
+}
+
+async fn heartbeat_agent_studio(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+) -> Result<Json<StudioResponse>, ApiError> {
+    let session = state
+        .studio_sessions
+        .heartbeat(&project_id)
+        .await
+        .map_err(ApiError::External)?;
+    Ok(Json(studio_response(session)))
+}
+
+async fn stop_agent_studio(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .studio_sessions
+        .stop(&project_id)
+        .await
+        .map_err(ApiError::External)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn studio_response(session: StudioSession) -> StudioResponse {
+    StudioResponse {
+        storyboard_url: session.storyboard_url,
+        preview_url: session.preview_url,
+        state: session.state,
+        host: session.host,
+        port: session.port,
+        project_name: session.project_name,
+        last_seen_at: session.last_seen_at,
     }
-    let preview = if reusable {
-        status
-    } else {
-        run_preview_command(
-            &state,
-            &project_dir,
-            &["--port", &port.to_string(), "--background", "--force-new"],
-        )
-        .await?
-    };
-    let server_url = preview
-        .pointer("/result/serverUrl")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ApiError::External("HyperFrames preview 未返回服务地址".to_owned()))?;
-    let name = project_dir
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or(&project_id);
-    let preview_url = preview
-        .pointer("/result/studioUrl")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("{server_url}/#project/{name}"));
-    Ok(Json(StudioResponse {
-        storyboard_url: format!("{server_url}/?view=storyboard#project/{name}"),
-        preview_url,
-    }))
 }
 
 async fn mark_agent_studio_dirty(
@@ -1377,7 +2429,9 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
 }
 
 async fn start_next_agent_turn_locked(state: AppState, project_id: String) -> Result<(), ApiError> {
-    if state.agent_jobs.contains(&project_id).await {
+    if state.agent_jobs.contains(&project_id).await
+        || state.agent_jobs.active_render(&project_id).await.is_some()
+    {
         return Ok(());
     }
     let Some(queued) = state
@@ -1508,9 +2562,13 @@ async fn run_agent_turn(
     } else {
         ""
     };
+    let voice_note = format!(
+        "\n项目固定旁白音色：{}。需要生成旁白时必须让所有片段都使用这个 voice ID，并复用同一音色；不要临时改回 default 或为不同片段重新设计音色。配置也保存在 .yingya/voice.json。",
+        project.voice_id
+    );
     let prompt = format!(
-        "用户请求：{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 HyperFrames 核心能力或说明 fallback。",
-        queued.text, attachment_note, context_note, dirty_note
+        "用户请求：{}{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 HyperFrames 核心能力或说明 fallback。",
+        queued.text, attachment_note, context_note, dirty_note, voice_note
     );
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Value>();
     let event_store = state.agent_projects.clone();
@@ -2101,7 +3159,10 @@ async fn execute_turn(
             },
         )
         .await?;
-    let images = state.assets.import_generated(turn.generated_images).await?;
+    let images = state
+        .assets
+        .import_generated(turn.generated_images, Some(request.prompt.trim()))
+        .await?;
 
     Ok(Json(TurnResponse {
         thread_id: turn.thread_id,
@@ -2125,6 +3186,7 @@ async fn upload_image(
             continue;
         }
 
+        let source_name = field.file_name().map(str::to_owned);
         let extension = image_extension(field.file_name(), field.content_type())?;
         let bytes = field
             .bytes()
@@ -2139,9 +3201,23 @@ async fn upload_image(
             ));
         }
 
-        let relative = format!("uploads/{}.{}", Uuid::new_v4(), extension);
+        let id = Uuid::new_v4().to_string();
+        let relative = format!("uploads/{id}.{extension}");
         let destination = state.assets.root.join(&relative);
         fs::write(&destination, bytes).await?;
+        state
+            .assets
+            .write_metadata(
+                &destination,
+                &ImageLibraryMetadata {
+                    id,
+                    prompt: None,
+                    source_name,
+                    kind: "uploaded".to_owned(),
+                    created_at: unix_millis(SystemTime::now()),
+                },
+            )
+            .await?;
         return Ok(Json(UploadResponse {
             url: format!("/assets/{relative}"),
             hyperframes_path: format!("assets/{relative}"),
@@ -2151,6 +3227,14 @@ async fn upload_image(
     Err(ApiError::BadRequest(
         "multipart field `file` is required".to_owned(),
     ))
+}
+
+async fn list_images(
+    State(state): State<AppState>,
+) -> Result<Json<ImageLibraryResponse>, ApiError> {
+    Ok(Json(ImageLibraryResponse {
+        images: state.assets.list_images().await?,
+    }))
 }
 
 async fn search_heygen_audio(
@@ -2170,36 +3254,6 @@ async fn search_heygen_audio(
             .search_audio(query, audio_type, limit, min_score)
             .await?,
     ))
-}
-
-async fn run_preview_command(
-    state: &AppState,
-    project_dir: &FilePath,
-    arguments: &[&str],
-) -> Result<Value, ApiError> {
-    let mut command = Command::new(state.root.join("node_modules/.bin/hyperframes"));
-    command
-        .arg("preview")
-        .args(arguments)
-        .args(["--json", "--no-open"])
-        .current_dir(project_dir)
-        .env("HOME", state.hyperframes_home.as_ref())
-        .env("HYPERFRAMES_PREVIEW_HOST", "0.0.0.0")
-        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
-        .kill_on_drop(true);
-    let output = tokio::time::timeout(Duration::from_secs(30), command.output())
-        .await
-        .map_err(|_| ApiError::External("HyperFrames preview 启动超时".to_owned()))??;
-    if !output.status.success() {
-        return Err(ApiError::External(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-        ));
-    }
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .rev()
-        .find_map(|line| serde_json::from_str(line).ok())
-        .ok_or_else(|| ApiError::External("HyperFrames preview 返回了无效状态".to_owned()))
 }
 
 fn default_audio_type() -> String {
@@ -2268,6 +3322,7 @@ impl AssetStore {
     async fn import_generated(
         &self,
         events: Vec<GeneratedImageEvent>,
+        fallback_prompt: Option<&str>,
     ) -> Result<Vec<ImageAsset>, ApiError> {
         let mut assets = Vec::new();
         for event in events {
@@ -2280,9 +3335,24 @@ impl AssetStore {
                 )));
             };
             let extension = generated_extension(&source)?;
-            let filename = format!("{}.{}", Uuid::new_v4(), extension);
+            let id = Uuid::new_v4().to_string();
+            let filename = format!("{id}.{extension}");
             let destination = self.root.join("generated").join(&filename);
             fs::copy(&source, &destination).await?;
+            self.write_metadata(
+                &destination,
+                &ImageLibraryMetadata {
+                    id: id.clone(),
+                    prompt: event
+                        .revised_prompt
+                        .clone()
+                        .or_else(|| fallback_prompt.map(str::to_owned)),
+                    source_name: None,
+                    kind: "generated".to_owned(),
+                    created_at: unix_millis(SystemTime::now()),
+                },
+            )
+            .await?;
             let relative = format!("generated/{filename}");
             assets.push(ImageAsset {
                 id: event.id,
@@ -2294,6 +3364,97 @@ impl AssetStore {
         }
         Ok(assets)
     }
+
+    async fn write_metadata(
+        &self,
+        image_path: &FilePath,
+        metadata: &ImageLibraryMetadata,
+    ) -> Result<(), ApiError> {
+        let metadata_path = image_path.with_extension(format!(
+            "{}.metadata.json",
+            image_path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("image")
+        ));
+        let bytes = serde_json::to_vec_pretty(metadata).map_err(std::io::Error::other)?;
+        fs::write(metadata_path, bytes).await?;
+        Ok(())
+    }
+
+    async fn list_images(&self) -> Result<Vec<ImageLibraryAsset>, ApiError> {
+        let mut images = Vec::new();
+        for kind in ["generated", "uploads"] {
+            let mut entries = fs::read_dir(self.root.join(kind)).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if !entry.file_type().await?.is_file() {
+                    continue;
+                }
+                let Some(extension) = path.extension().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                let extension = extension.to_ascii_lowercase();
+                if !matches!(
+                    extension.as_str(),
+                    "png" | "jpg" | "jpeg" | "webp" | "gif" | "avif"
+                ) {
+                    continue;
+                }
+                let filename = entry.file_name().to_string_lossy().into_owned();
+                let metadata_path = path.with_extension(format!("{extension}.metadata.json"));
+                let fallback_created_at = entry
+                    .metadata()
+                    .await?
+                    .modified()
+                    .map(unix_millis)
+                    .unwrap_or_default();
+                let metadata = match fs::read(metadata_path).await {
+                    Ok(bytes) => serde_json::from_slice::<ImageLibraryMetadata>(&bytes).ok(),
+                    Err(_) => None,
+                };
+                let relative = format!("{kind}/{filename}");
+                images.push(ImageLibraryAsset {
+                    id: metadata
+                        .as_ref()
+                        .map(|value| value.id.clone())
+                        .unwrap_or_else(|| filename.clone()),
+                    url: format!("/assets/{relative}"),
+                    hyperframes_path: format!("assets/{relative}"),
+                    mime_type: image_mime(&extension).to_owned(),
+                    prompt: metadata.as_ref().and_then(|value| value.prompt.clone()),
+                    source_name: metadata
+                        .as_ref()
+                        .and_then(|value| value.source_name.clone()),
+                    kind: metadata
+                        .as_ref()
+                        .map(|value| value.kind.clone())
+                        .unwrap_or_else(|| {
+                            if kind == "generated" {
+                                "generated"
+                            } else {
+                                "uploaded"
+                            }
+                            .to_owned()
+                        }),
+                    created_at: metadata
+                        .as_ref()
+                        .map(|value| value.created_at)
+                        .unwrap_or(fallback_created_at),
+                });
+            }
+        }
+        images.sort_by_key(|image| std::cmp::Reverse(image.created_at));
+        Ok(images)
+    }
+}
+
+fn unix_millis(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 fn image_extension(
@@ -2337,7 +3498,7 @@ fn generated_extension(path: &FilePath) -> Result<&str, ApiError> {
 
 fn image_mime(extension: &str) -> &'static str {
     match extension {
-        "jpg" => "image/jpeg",
+        "jpg" | "jpeg" => "image/jpeg",
         "webp" => "image/webp",
         "gif" => "image/gif",
         "avif" => "image/avif",
@@ -2439,6 +3600,12 @@ impl From<HeyGenError> for ApiError {
     }
 }
 
+impl From<VoiceError> for ApiError {
+    fn from(error: VoiceError) -> Self {
+        Self::External(error.to_string())
+    }
+}
+
 impl From<std::io::Error> for ApiError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
@@ -2528,6 +3695,34 @@ mod tests {
             codex_home
                 .join("skills/yingya-video-agent/agents/openai.yaml")
                 .is_file()
+        );
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn scaffolds_hyperframes_after_plan_confirmation_without_overwriting_source() {
+        let root = env::temp_dir().join(format!("yingya-hyperframes-scaffold-{}", Uuid::new_v4()));
+        fs::create_dir_all(root.join("compositions")).await.unwrap();
+        let first_scaffold = write_hyperframes_scaffold(
+            &root,
+            "project-id",
+            "9:16",
+            &json!({ "durationSeconds": 18 }),
+        )
+        .await;
+        assert!(first_scaffold.is_ok());
+        let generated = fs::read_to_string(root.join("index.html")).await.unwrap();
+        assert!(generated.contains("data-duration=\"18\""));
+        assert!(generated.contains("data-width=\"1080\" data-height=\"1920\""));
+        fs::write(root.join("index.html"), "user-authored-composition")
+            .await
+            .unwrap();
+        let second_scaffold =
+            write_hyperframes_scaffold(&root, "project-id", "16:9", &json!({})).await;
+        assert!(second_scaffold.is_ok());
+        assert_eq!(
+            fs::read_to_string(root.join("index.html")).await.unwrap(),
+            "user-authored-composition"
         );
         fs::remove_dir_all(root).await.unwrap();
     }
@@ -2624,5 +3819,83 @@ mod tests {
         assert_eq!(parse_byte_range("bytes=-100", 1_000), Some((900, 999)));
         assert_eq!(parse_byte_range("bytes=1000-", 1_000), None);
         assert_eq!(parse_byte_range("items=0-10", 1_000), None);
+    }
+
+    #[test]
+    fn parses_and_clamps_hyperframes_render_progress() {
+        assert_eq!(render_percent("Rendering frames 42%"), Some(42));
+        assert_eq!(render_percent("Encoding 99.8%"), Some(95));
+        assert_eq!(render_percent("Preparing renderer"), None);
+    }
+
+    #[test]
+    fn render_outputs_are_unique_per_job_and_never_use_the_temporary_directory() {
+        let first = render_output_relative_path("draft-3", "portrait-4k", 60, "job-one");
+        let second = render_output_relative_path("draft-3", "portrait-4k", 60, "job-two");
+        assert_ne!(first, second);
+        assert!(first.ends_with("draft-3-portrait-4k-60fps-job-one.mp4"));
+        assert!(!first.contains("/.tmp/"));
+        assert!(!first.contains(".partial.mp4"));
+    }
+
+    #[tokio::test]
+    async fn temporary_render_output_is_removed_after_a_terminal_state() {
+        let root = env::temp_dir().join(format!("yingya-render-cleanup-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let output = root.join("job.partial.mp4");
+        fs::write(&output, b"incomplete video").await.unwrap();
+
+        remove_temporary_render_output(&output).await;
+
+        assert!(!fs::try_exists(&output).await.unwrap());
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn render_preflight_rejects_symlinks_inside_version_source() {
+        use std::os::unix::fs::symlink;
+
+        let root = env::temp_dir().join(format!("yingya-render-symlink-{}", Uuid::new_v4()));
+        let source = root.join("source");
+        fs::create_dir_all(&source).await.unwrap();
+        fs::write(root.join("outside.html"), "outside")
+            .await
+            .unwrap();
+        symlink(root.join("outside.html"), source.join("index.html")).unwrap();
+
+        let error = reject_source_symlinks(&source).await.unwrap_err();
+
+        assert!(error.contains("软链接"));
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn render_output_cannot_escape_through_a_symlinked_directory() {
+        use std::os::unix::fs::symlink;
+
+        let root = env::temp_dir().join(format!("yingya-render-output-{}", Uuid::new_v4()));
+        let project = root.join("project");
+        let outside = root.join("outside");
+        fs::create_dir_all(project.join(".yingya")).await.unwrap();
+        fs::create_dir_all(&outside).await.unwrap();
+        symlink(&outside, project.join(".yingya/exports")).unwrap();
+        fs::create_dir_all(project.join(".yingya/exports/.tmp"))
+            .await
+            .unwrap();
+        let canonical_project = fs::canonicalize(&project).await.unwrap();
+        let final_output = project.join(".yingya/exports/final.mp4");
+        let temporary_output = project.join(".yingya/exports/.tmp/job.partial.mp4");
+
+        let error = ensure_render_output_parents(
+            &canonical_project,
+            [final_output.as_path(), temporary_output.as_path()],
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("软链接"));
+        fs::remove_dir_all(root).await.unwrap();
     }
 }

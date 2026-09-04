@@ -40,7 +40,7 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void) 
         const parsed = agentEventSchema.safeParse(payload);
         if (!parsed.success) return;
         setEvents(current => mergeEvents(current, [parsed.data]));
-        if (/^(project|queue|media)\//.test(parsed.data.method) || parsed.data.method === "turn/completed" || parsed.data.method === "turn/failed") callbackRef.current();
+        if (/^(project|queue|media|render)\//.test(parsed.data.method) || parsed.data.method === "turn/completed" || parsed.data.method === "turn/failed") callbackRef.current();
       });
       source.addEventListener("resync-required", () => { void loadRecent().then(() => callbackRef.current()); });
     }).catch(() => undefined);
