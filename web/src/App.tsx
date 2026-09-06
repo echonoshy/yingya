@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowUp, CheckCircle, CloudSlash, DotsThree, FilmSlate, Images, Paperclip, Plus, Trash, WifiHigh } from "@phosphor-icons/react";
+import { ArrowRight, ArrowUp, CheckCircle, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, WifiHigh, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api } from "./api";
 import { AgentWorkspace } from "./components/AgentWorkspace";
@@ -55,10 +55,12 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
   const [prompt, setPrompt] = useState(""); const [aspectRatio, setAspectRatio] = useState("9:16"); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
   const creationAttemptRef = useRef<{ signature: string; creationRequestId: string; turnRequestId: string; uploadedPaths: Map<string, string> } | null>(null);
   const [filter, setFilter] = useState<ProjectFilter>("all");
+  const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState("");
   const [covers, setCovers] = useState<Record<string, string>>({});
   const promptRef = useRef<HTMLTextAreaElement>(null);
-  const visibleProjects = projects.filter(project => filter === "all" || projectGroup(project) === filter);
+  const visibleProjects = projects.filter(project => (filter === "all" || projectGroup(project) === filter) && project.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const filterCounts = Object.fromEntries(projectFilters.map(item => [item.id, projects.filter(project => item.id === "all" || projectGroup(project) === item.id).length]));
   useEffect(() => {
     let cancelled = false;
     void Promise.all(projects.slice(0, 12).map(async project => {
@@ -105,47 +107,54 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
   }
   function startCreating() {
     promptRef.current?.focus();
-    promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    promptRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" });
   }
   async function removeProject(project: ProjectRecord) {
     setOpenMenu("");
     if (!window.confirm(`确定删除“${project.title}”吗？\n项目文件和生成内容将被永久删除。`)) return;
-    await onDelete(project);
+    try { await onDelete(project); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "项目删除失败，请重试"); }
   }
   if (busy) return <ProjectCreationPendingView prompt={prompt.trim()} fileCount={files.length} stage={creationStage}/>;
   return <div className="home-layout">
     <aside className="home-nav">
       <div className="home-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div>
+      <button className="home-new-button" onClick={startCreating}><Plus weight="bold"/>新建视频</button>
       <nav aria-label="映芽功能">
-        <button className="active"><FilmSlate/>视频创作</button>
+        <button className="active" aria-current="page" onClick={startCreating}><FilmSlate/>视频创作</button>
         <button onClick={onAssets}><Images/>素材工坊</button>
       </nav>
-      <div className="home-service"><span/><WifiHigh/><span>本地服务已连接</span></div>
+      <div className="home-service" title="本地服务已连接"><span/><WifiHigh/><span>本地服务已连接</span></div>
     </aside>
     <main className="home-main">
       <div className="home-scroll">
         <header className="home-header">
-          <div><h1>视频项目</h1><p>把想法变成可继续创作的视频项目</p></div>
-          <button className="home-new-button" onClick={startCreating}><Plus weight="bold"/>新建视频</button>
+          <div><h1>让想法，长成影像。</h1><p>从一句描述开始，在这里完成你的视频创作。</p></div>
         </header>
         {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
         <section className="home-create">
-          <h2>今天想创作什么？</h2>
+          <h2 id="create-prompt-label">今天想创作什么？</h2>
           <form className="composer composer--hero" onSubmit={submit}>
-          <textarea ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="描述视频主题、风格、时长，或直接粘贴网页链接…"/>
+          <textarea aria-labelledby="create-prompt-label" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="描述视频主题、风格、时长，或直接粘贴网页链接…"/>
           <div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
-          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option>9:16</option><option>16:9</option><option>1:1</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy} aria-label="创建视频任务"><ArrowUp weight="bold"/></button></div>
+          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy} aria-label="创建视频任务" title="创建视频任务"><span>开始创作</span><ArrowUp weight="bold"/></button></div>
           </form>
-          {error ? <p className="form-error">{error}</p> : null}
+          <div className="home-starters" aria-label="创作灵感"><span>试试这些方向</span>{starterIdeas.map(idea => <button key={idea.label} type="button" onClick={() => { setPrompt(idea.prompt); startCreating(); }}>{idea.label}<ArrowRight/></button>)}</div>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
         </section>
         <section className="home-projects">
-          <header><h2>最近项目</h2><div className="project-filters" role="tablist" aria-label="筛选项目">{projectFilters.map(item => <button key={item.id} role="tab" aria-selected={filter === item.id} className={filter === item.id ? "active" : ""} onClick={() => setFilter(item.id)}>{item.label}</button>)}</div></header>
-          <div className="home-project-list">
-            {visibleProjects.map(project => <article key={project.id}>
+          <header><div className="home-project-heading"><h2>最近项目</h2><span aria-live="polite">{loading ? "正在读取…" : `${visibleProjects.length} 个项目`}</span></div><label className="home-project-search"><MagnifyingGlass/><input type="search" aria-label="搜索项目" placeholder="搜索项目名称" value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button type="button" aria-label="清除搜索" onClick={() => setSearch("")}><X/></button> : null}</label></header>
+          <div className="project-filters" role="tablist" aria-label="筛选项目">{projectFilters.map((item, index) => <button key={item.id} id={`project-filter-${item.id}`} role="tab" aria-controls="home-project-results" aria-selected={filter === item.id} tabIndex={filter === item.id ? 0 : -1} className={filter === item.id ? "active" : ""} onClick={() => setFilter(item.id)} onKeyDown={event => {
+            const nextIndex = event.key === "ArrowRight" ? (index + 1) % projectFilters.length : event.key === "ArrowLeft" ? (index + projectFilters.length - 1) % projectFilters.length : event.key === "Home" ? 0 : event.key === "End" ? projectFilters.length - 1 : -1;
+            if (nextIndex < 0) return;
+            event.preventDefault(); setFilter(projectFilters[nextIndex].id); document.getElementById(`project-filter-${projectFilters[nextIndex].id}`)?.focus();
+          }}>{item.label}<span aria-hidden="true">{filterCounts[item.id]}</span></button>)}</div>
+          <div className="home-project-list" id="home-project-results" role="tabpanel" aria-labelledby={`project-filter-${filter}`}>
+            {visibleProjects.map(project => <article key={project.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(current => current === project.id ? "" : current); }} onKeyDown={event => { if (event.key === "Escape") { setOpenMenu(""); event.currentTarget.querySelector<HTMLButtonElement>(".home-project-menu-button")?.focus(); } }}>
               <button className="home-project-open" onClick={() => onOpen(project.id)}>
                 <span className="home-project-cover">{covers[project.id] ? <img src={covers[project.id]} alt=""/> : <FilmSlate/>}</span>
-                <span className="home-project-copy"><b>{project.title}</b><small className={`home-status home-status--${projectGroup(project)}`}><i/>{project.statusLabel}</small></span>
-                <time>{formatHomeTime(project.updatedAt)}</time>
+                <span className="home-project-copy"><b title={project.title}>{project.title}</b><small className={`home-status home-status--${projectGroup(project)}`}><i/>{project.statusLabel}</small></span>
+                <time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time>
                 <span className="home-project-ratio">{project.aspectRatio}</span>
                 <ArrowRight className="home-project-arrow"/>
               </button>
@@ -153,13 +162,19 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
               {openMenu === project.id ? <div className="home-project-menu"><button onClick={() => onOpen(project.id)}><ArrowRight/>打开项目</button><button disabled={Boolean(project.activeTurnId)} onClick={() => void removeProject(project)}><Trash/>删除项目</button></div> : null}
             </article>)}
             {loading ? <div className="home-project-message">正在读取项目…</div> : null}
-            {!loading && !visibleProjects.length ? <div className="home-project-empty"><CheckCircle/><b>{projects.length ? "没有符合条件的项目" : "还没有视频项目"}</b><span>{projects.length ? "切换筛选条件查看其他项目。" : "从上方描述你的第一个视频想法。"}</span></div> : null}
+            {!loading && !visibleProjects.length ? <div className="home-project-empty"><CheckCircle/><b>{projects.length ? "没有符合条件的项目" : "还没有视频项目"}</b><span>{projects.length ? "试试其他关键词，或切换项目状态。" : "从上方描述你的第一个视频想法。"}</span>{projects.length ? <button className="home-reset-filters" onClick={() => { setSearch(""); setFilter("all"); }}>查看全部项目</button> : null}</div> : null}
           </div>
         </section>
       </div>
     </main>
   </div>;
 }
+
+const starterIdeas = [
+  { label: "产品宣传", prompt: "制作一条 30 秒的产品宣传视频，面向首次了解产品的用户。突出核心功能、使用场景和产品价值，风格简洁明亮。" },
+  { label: "知识讲解", prompt: "制作一条 60 秒的知识讲解视频，用通俗的语言和直观的动画解释一个知识点，包含开场问题、原理演示和总结。" },
+  { label: "网页转视频", prompt: "把这个网页制作成一条 30 秒的视频，提炼关键内容，保留页面的品牌风格。网页链接：" },
+];
 
 type ProjectFilter = "all" | "active" | "review" | "completed";
 

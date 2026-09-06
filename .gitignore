@@ -12,7 +12,6 @@ target/
 data/*
 !data/README.md
 artifacts/*
-!artifacts/README.md
 
 # HyperFrames outputs are reproducible from composition sources.
 **/renders/

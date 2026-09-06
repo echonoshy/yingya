@@ -46,7 +46,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader},
     net::TcpListener,
     process::Command,
-    sync::{broadcast, mpsc},
+    sync::{Mutex, broadcast, mpsc},
 };
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use tower_http::services::{ServeDir, ServeFile};
@@ -137,6 +137,7 @@ fn default_voice_preview_text() -> String {
 #[derive(Clone)]
 struct AssetStore {
     root: Arc<PathBuf>,
+    folders_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2615,7 +2616,7 @@ fn parse_byte_range(value: &str, total: u64) -> Option<(u64, u64)> {
     }
     if start.is_empty() {
         let suffix = end.parse::<u64>().ok()?.min(total);
-        return Some((total - suffix, total - 1));
+        return (suffix > 0).then_some((total - suffix, total - 1));
     }
     let start = start.parse::<u64>().ok()?;
     if start >= total {
@@ -3653,6 +3654,7 @@ impl AssetStore {
         fs::create_dir_all(root.join("generated")).await?;
         Ok(Self {
             root: Arc::new(root.canonicalize()?),
+            folders_lock: Arc::new(Mutex::new(())),
         })
     }
 
@@ -3681,6 +3683,7 @@ impl AssetStore {
                 "文件夹名称需要包含 1–40 个字符".to_owned(),
             ));
         }
+        let _guard = self.folders_lock.lock().await;
         let mut folders = self.list_folders().await?;
         if folders
             .iter()
@@ -3695,7 +3698,9 @@ impl AssetStore {
         };
         folders.push(folder.clone());
         let bytes = serde_json::to_vec_pretty(&folders).map_err(std::io::Error::other)?;
-        fs::write(self.root.join("folders.json"), bytes).await?;
+        atomic_write_bytes(&self.root.join("folders.json"), &bytes)
+            .await
+            .map_err(ApiError::External)?;
         Ok(folder)
     }
 
@@ -4154,6 +4159,7 @@ async fn discover_hyperframes_browser(
     path.is_file().then_some(path)
 }
 
+#[derive(Debug)]
 enum ApiError {
     BadRequest(String),
     Validation(String),
@@ -4252,6 +4258,37 @@ fn is_not_found_message(message: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn concurrent_folder_creation_preserves_all_folders_and_rejects_duplicates() {
+        let root = env::temp_dir().join(format!("yingya-folders-test-{}", Uuid::new_v4()));
+        let store = AssetStore::new(root.clone()).await.unwrap();
+        let mut tasks = tokio::task::JoinSet::new();
+        for index in 0..20 {
+            let store = store.clone();
+            tasks.spawn(async move { store.create_folder(&format!("Folder {index}")).await });
+        }
+        while let Some(result) = tasks.join_next().await {
+            result.unwrap().unwrap();
+        }
+        assert_eq!(store.list_folders().await.unwrap().len(), 20);
+
+        for _ in 0..10 {
+            let store = store.clone();
+            tasks.spawn(async move { store.create_folder("Shared folder").await });
+        }
+        let mut created = 0;
+        while let Some(result) = tasks.join_next().await {
+            match result.unwrap() {
+                Ok(_) => created += 1,
+                Err(ApiError::Conflict(_)) => {}
+                Err(error) => panic!("unexpected folder error: {error:?}"),
+            }
+        }
+        assert_eq!(created, 1);
+        assert_eq!(store.list_folders().await.unwrap().len(), 21);
+        fs::remove_dir_all(root).await.unwrap();
+    }
 
     #[tokio::test]
     async fn installs_bundled_video_agent_into_codex_home() {
@@ -4443,6 +4480,10 @@ mod tests {
         assert_eq!(parse_byte_range("bytes=-100", 1_000), Some((900, 999)));
         assert_eq!(parse_byte_range("bytes=1000-", 1_000), None);
         assert_eq!(parse_byte_range("items=0-10", 1_000), None);
+        assert_eq!(parse_byte_range("bytes=-0", 1_000), None);
+        assert_eq!(parse_byte_range("bytes=-2000", 1_000), Some((0, 999)));
+        assert_eq!(parse_byte_range("bytes=0-", 0), None);
+        assert_eq!(parse_byte_range("bytes=99-0", 1_000), None);
     }
 
     #[test]

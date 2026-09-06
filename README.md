@@ -7,9 +7,9 @@ The application backend is implemented in Rust. The browser application uses
 React and Vite; Node.js also provides the pinned Codex and HyperFrames binaries.
 
 ```bash
-npm install
+npm ci
 npm run web:build
-cargo run
+npm run backend:service:start
 ```
 
 The server listens on `127.0.0.1:8797` by default and starts Codex app-server
@@ -39,19 +39,24 @@ checkpoint before composition work and a draft checkpoint before final render.
 It also requires HyperFrames lint, validate, and inspect gates and durable Draft
 snapshots. Agent projects are the application's single supported project model.
 
-For day-to-day development, keep the backend and frontend in separate terminals:
+For day-to-day development, run both services in named tmux sessions:
 
 ```bash
-cargo run
-npm run web:dev
+npm run backend:service:start   # yingya-backend, port 8797
+npm run web:service:start       # yingya-frontend, port 8798
+npm run backend:service:status
+npm run web:service:status
+tmux capture-pane -pt yingya-backend -S -100
+tmux capture-pane -pt yingya-frontend -S -100
 ```
 
 Open `http://127.0.0.1:8798/`. Vite listens on `0.0.0.0`, proxies API and asset
-requests to the Rust server, and applies React and CSS changes through HMR. The
-Rust process does not watch source files: after a backend change, stop and rerun
-`cargo run`. The `web:service:*` scripts are convenience commands for machines
-that have a local `yingya-web` user service configured; the repository does not
-install that service.
+requests to the Rust server, and applies React and CSS changes through HMR.
+After a backend change, run `npm run backend:service:restart`. Use
+`npm run web:service:reload` to restart Vite when its configuration changes.
+The start commands reuse an existing named session and forward the invoking
+shell's environment, including proxy variables. Stop with
+`npm run backend:service:stop` and `npm run web:service:stop`.
 
 ## Codex image generation
 

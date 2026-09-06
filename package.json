@@ -4,12 +4,12 @@
   "private": true,
   "description": "映芽 · Yingya，通过对话创作视频，让想法长成影像。",
   "scripts": {
-    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run web:build && npm run test:hyperframes && npm run test:ui",
+    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:services && npm run web:build && npm run test:hyperframes && npm run test:ui",
     "format:check": "cargo fmt --all -- --check",
     "lint:rust": "cargo clippy --all-targets -- -D warnings",
     "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
-    "web:service:status": "systemctl --user status yingya-web --no-pager",
-    "web:service:reload": "systemctl --user restart yingya-web",
+    "web:service:status": "bash scripts/dev-service.sh frontend status",
+    "web:service:reload": "bash scripts/dev-service.sh frontend restart",
     "web:build": "vite build --config web/vite.config.ts",
     "web:preview": "vite preview --config web/vite.config.ts",
     "typecheck": "tsc --noEmit",
@@ -30,7 +30,14 @@
     "hyperframes:skills:install": "bash scripts/install-hyperframes-skills.sh",
     "heygen:skill:install": "bash scripts/install-heygen-audio-skill.sh",
     "voxcpm2:skill:install": "bash scripts/install-voxcpm2-skill.sh",
-    "hyperframes:upgrade": "npm install --save-exact hyperframes@latest && npm run hyperframes:skills:install && npm run hyperframes:browser:ensure"
+    "hyperframes:upgrade": "npm install --save-exact hyperframes@latest && npm run hyperframes:skills:install && npm run hyperframes:browser:ensure",
+    "web:service:start": "bash scripts/dev-service.sh frontend start",
+    "web:service:stop": "bash scripts/dev-service.sh frontend stop",
+    "backend:service:start": "bash scripts/dev-service.sh backend start",
+    "backend:service:stop": "bash scripts/dev-service.sh backend stop",
+    "backend:service:restart": "bash scripts/dev-service.sh backend restart",
+    "backend:service:status": "bash scripts/dev-service.sh backend status",
+    "test:services": "node --test tests/dev-service.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-sc": "^5.3.0",

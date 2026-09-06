@@ -33,7 +33,7 @@ state with different cleanup rules:
 | `voxcpm2-vllm/.venv/` | Python, PyTorch, CUDA libraries, vLLM dependencies | Keep; required by the speech service |
 | `voxcpm2-vllm/src/` | Locally built vLLM and vLLM-Omni code plus native extensions | Keep; added to `PYTHONPATH` by the service launcher |
 | `huggingface/` | Regenerated Transformers dynamic-module cache | Safe to remove while the service is stopped; recreated on startup |
-| `voxcpm2/` | Service PID and active log | Keep while the service is running |
+| `voxcpm2/` | Saved voice samples and possible legacy PID/log files | Keep saved voices; current service output lives in tmux `yingya-voxcpm2` |
 
 ## HyperFrames project boundaries
 
@@ -84,7 +84,7 @@ makes a project straightforward to preview, render, export, or delete.
 
 `tests/fixtures/hyperframes-smoke/` contains the minimal deterministic
 composition used to verify HyperFrames integration. Its HTML, design contract,
-motion assertions, configuration, and input asset are source files.
+motion assertions, and configuration are source files.
 
 Rendered MP4 files and inspection snapshots are outputs. Product projects keep
 them inside their own ignored `data/video-projects/<project-id>/` directory.

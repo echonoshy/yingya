@@ -44,9 +44,8 @@ export function VoiceStudio({ value, onChange, compact = false }: { value: strin
   async function create() {
     setWorking(mode); setError("");
     try {
-      const created = mode === "design"
-        ? await api.designVoice({ name: name.trim(), description: description.trim() })
-        : await api.cloneVoice({ name: name.trim(), description: description.trim(), refText: refText.trim(), audio: audio!, authorized });
+      if (mode === "design") await api.designVoice({ name: name.trim(), description: description.trim() });
+      else await api.cloneVoice({ name: name.trim(), description: description.trim(), refText: refText.trim(), audio: audio!, authorized });
       setName(""); setRefText(""); setAudio(null); setAuthorized(false); await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "音色创建失败"); }
     finally { setWorking(""); }

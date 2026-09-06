@@ -128,7 +128,6 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     finally { setRenaming(false); }
   }
 
-  const selectedVersion = project.manifest.versions.find(value => value.id === project.manifest.currentDraft) ?? project.manifest.versions.at(-1);
   const checkpointSuperseded = running || project.queue.length > 0 || project.status === "queued";
   const visibleCheckpoint = project.manifest.checkpoint && project.manifest.checkpoint.kind !== "draft" && !checkpointSuperseded && project.manifest.checkpoint.id !== dismissedCheckpoint ? project.manifest.checkpoint : undefined;
   const checkpointArtifact = visibleCheckpoint?.artifactIds.map(id => project.manifest.artifacts.find(artifact => artifact.id === id)).find(Boolean);
@@ -389,15 +388,5 @@ async function uploadLibraryAsset(projectId: string, asset: AssetLibraryItem) {
   if (!response.ok) throw new Error(`无法读取素材：${assetName(asset)}`);
   const blob = await response.blob();
   return api.uploadAsset(projectId, new window.File([blob], assetFileName(asset), { type: asset.mimeType }));
-}
-function normalizeLocalUrl(value: string) {
-  const url = new URL(value, window.location.href);
-  if (["0.0.0.0", "127.0.0.1", "localhost"].includes(url.hostname)) url.hostname = window.location.hostname;
-  return url.toString();
-}
-function withReloadKey(value: string, reloadKey: number) {
-  const url = new URL(value, window.location.href);
-  url.searchParams.set("yingyaReload", String(reloadKey));
-  return url.toString();
 }
 function savedWidth(key: string, fallback: number) { return readNumberSetting(key, fallback); }

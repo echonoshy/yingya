@@ -17,9 +17,14 @@ under `.runtime/`, so they stay isolated from the Rust and Node dependencies:
 ```bash
 ./deploy/voxcpm2/start.sh
 ./deploy/voxcpm2/status.sh
-tail -f .runtime/voxcpm2/server.log
+tmux capture-pane -pt yingya-voxcpm2 -S -100
 ./deploy/voxcpm2/stop.sh
 ```
+
+The launcher runs in the `yingya-voxcpm2` tmux session (port `8791` by
+default), preserves the invoking environment, and reuses an existing session.
+Legacy PID files are never used to stop a process; an active legacy PID blocks
+a duplicate start until that process is identified and stopped.
 
 The launcher uses physical GPU 1 because it was idle during installation.
 Override any setting without editing the scripts:
