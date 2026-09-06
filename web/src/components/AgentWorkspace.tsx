@@ -1,11 +1,27 @@
-import { ArrowClockwise, ArrowLeft, ArrowRight, ArrowUp, CaretLeft, Check, CheckCircle, CircleNotch, Code, DownloadSimple, Eye, File, FileAudio, FileText, FilmSlate, FolderSimple, Images, Paperclip, PencilSimple, Plus, Queue, SquaresFour, Stop, Terminal, VideoCamera, Warning, X } from "@phosphor-icons/react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useFeedbackDraft, type FeedbackDraft } from "../hooks/useFeedbackDraft";
+import { captureFrame, type CapturedFrame } from "../feedback/captureFrame";
+import { VideoAnnotationEditor } from "./VideoAnnotationEditor";
+import { FeedbackCard } from "./FeedbackCard";
+import { submissionAttempt, saveSubmission, type SubmissionAttempt } from "../feedback/submission";
+import { useMotionPresence } from "../hooks/useMotionPresence";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretLeft, Check, CheckCircle, CircleNotch, Code, DownloadSimple, Eye, File, FileAudio, FileText, FilmSlate, FolderSimple, Images, Paperclip, PencilSimple, Plus, Queue, Stop, Terminal, VideoCamera, Warning, X } from "@phosphor-icons/react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useDraftFiles } from "../hooks/useDraftFiles";
+import { z } from "zod";
+import { useSavedState } from "../hooks/useSavedState";
+import { assetLibraryItemSchema } from "../schemas";
+import { workflowState } from "../projectState";
+import { AudioLibrary } from "./AudioLibrary";
+import { VersionComparison } from "./VersionComparison";
+import { StoryboardPanel } from "./StoryboardPanel";
 import { api } from "../api";
-import type { AgentEvent, AgentMedia, AgentMessage, Artifact, AssetFolder, AssetLibraryItem, CodexModel, MediaScene, ModelSelection, ProjectDetail } from "../types";
+import type { AgentEvent, AgentMedia, AgentMessage, Artifact, AssetFolder, AssetLibraryItem, CodexModel, ModelSelection, ProjectDetail } from "../types";
 import { buildTimeline, type TimelineActivity } from "./eventTimeline";
 import { ModelSelector } from "./ModelSelector";
 import { VoiceSelector } from "./VoiceSelector";
 import { useAgentEvents } from "../hooks/useAgentEvents";
+import { useTimelineScroll } from "../hooks/useTimelineScroll";
+import { animateElement } from "./motion";
 import { readNumberSetting, readStringSetting, writeNumberSetting, writeStringSetting } from "../storage";
 import type { AgentConnectionState } from "../hooks/useAgentEvents";
 import { LiveHyperFramesPreview as ManagedLiveHyperFramesPreview, RenderPanel as PersistentRenderPanel } from "./HyperFramesWorkspace";
@@ -15,18 +31,28 @@ type ConversationEntry = { kind: "message"; item: AgentMessage; createdAt: numbe
 type CanvasTab = "preview" | "storyboard" | "assets" | "artifacts";
 
 export function AgentWorkspace({ project, models, selection, onSelection, onVoice, onProject, onRename, onBack }: { project: ProjectDetail; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onVoice: (voiceId: string) => void | Promise<void>; onProject: (value: ProjectDetail) => void; onRename: (id: string, title: string) => Promise<void>; onBack: () => void }) {
-  const [text, setText] = useState(""); const [files, setFiles] = useState<File[]>([]); const [contexts, setContexts] = useState<string[]>([]); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<CanvasTab>(() => savedCanvasTab(project.id)); const fileRef = useRef<HTMLInputElement>(null); const composerRef = useRef<HTMLTextAreaElement>(null); const timelineRef = useRef<HTMLElement>(null);
+  const [text, setText, textSaved] = useSavedState(`yingya-draft-text:${project.id}`, z.string(), ""); const [files, setFiles, fileDraftStatus] = useDraftFiles(project.id); const [contexts, setContexts] = useSavedState(`yingya-draft-context:${project.id}`, z.array(z.string()), []); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<CanvasTab>(() => savedCanvasTab(project.id)); const fileRef = useRef<HTMLInputElement>(null); const composerRef = useRef<HTMLTextAreaElement>(null);
+  const feedbackDraft = useFeedbackDraft(project.id);
+  const attemptRef = useRef<SubmissionAttempt | null>(null);
+  const [sendStage, setSendStage] = useState<"idle" | "uploading" | "sending" | "sent" | "failed">("idle");
+  const [sendResult, setSendResult] = useState("");
+  const [assetFeedback, setAssetFeedback] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const sendingRef = useRef(false);
   const [artifactPreview, setArtifactPreview] = useState<{ artifact: Artifact; content: string; loading: boolean; error: string } | null>(null);
   const [threadWidth, setThreadWidth] = useState(() => savedWidth("yingya-thread-width", 468));
   const [libraryAssets, setLibraryAssets] = useState<AssetLibraryItem[]>([]);
   const [libraryFolders, setLibraryFolders] = useState<AssetFolder[]>([]);
-  const [selectedAssets, setSelectedAssets] = useState<AssetLibraryItem[]>([]);
+  const [selectedAssets, setSelectedAssets] = useSavedState(`yingya-draft-assets:${project.id}`, z.array(assetLibraryItemSchema), []);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [media, setMedia] = useState<AgentMedia>({ scenes: [], assets: [] });
   const [editingTitle, setEditingTitle] = useState(false); const [titleDraft, setTitleDraft] = useState(""); const [renaming, setRenaming] = useState(false); const [titleError, setTitleError] = useState("");
   const [dismissedCheckpoint, setDismissedCheckpoint] = useState("");
   const refreshGeneration = useRef(0);
   const running = Boolean(project.activeTurnId);
+  const state = workflowState(project);
+  const [removingQueued, setRemovingQueued] = useState("");
+  async function removeQueued(id: string) { setRemovingQueued(id); setError(""); try { await api.removeQueued(project.id, id); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "撤回失败，请重试"); } finally { setRemovingQueued(""); } }
   const refreshMedia = useCallback(async () => { try { setMedia(await api.getProjectMedia(project.id)); } catch { /* media is optional for older projects */ } }, [project.id]);
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
@@ -48,30 +74,68 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     ? [...project.messages].reverse().find(message => message.role === "assistant")
     : undefined, [project.messages, project.status]);
   const waitingInputChoices = useMemo(() => extractInputChoices(waitingInputMessage?.text ?? ""), [waitingInputMessage?.text]);
-  useEffect(() => { const timeline = timelineRef.current; if (timeline) timeline.scrollTop = timeline.scrollHeight; }, [project.messages.length, activities.length]);
+  const timelineRevision = useMemo(() => JSON.stringify([
+    conversation.map(entry => entry.kind === "message" ? [entry.item.id, entry.item.text, entry.item.status] : [entry.item.id, entry.item.summary, entry.item.status]),
+    project.manifest.checkpoint?.id, project.queue.map(turn => turn.id), project.status,
+  ]), [conversation, project.manifest.checkpoint?.id, project.queue, project.status]);
+  const { timelineRef, contentRef, onScroll, hasNewContent, scrollToLatest } = useTimelineScroll(timelineRevision);
   useEffect(() => {
     void refreshMedia();
     void Promise.all([api.listAssetLibrary(), api.listAssetFolders()])
       .then(([library, folders]) => { setLibraryAssets(library.assets); setLibraryFolders(folders); })
       .catch(() => undefined);
   }, [refreshMedia]);
-  function selectCanvasTab(tab: CanvasTab) { setCanvasTab(tab); writeStringSetting(`yingya-canvas-tab:${project.id}`, tab); }
+  function selectCanvasTab(tab: CanvasTab) { setArtifactPreview(null); setCanvasTab(tab); writeStringSetting(`yingya-canvas-tab:${project.id}`, tab); }
+
+  function clearSubmissionFeedback() {
+    if (sendingRef.current || (sendStage !== "sent" && sendStage !== "failed")) return;
+    setSendStage("idle"); setSendResult(""); setError("");
+  }
 
   async function send(event: FormEvent) {
-    event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length) || busy) return; setBusy(true); setError("");
+    event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || sendingRef.current || fileDraftStatus === "loading" || feedbackDraft.status === "loading") return;
+    sendingRef.current = true;
+    setBusy(true); setError(""); setAssetFeedback("");
+    setSendStage(files.length || selectedAssets.length || feedbackDraft.items.length ? "uploading" : "sending");
     try {
-      const uploaded = await Promise.all([
-        ...files.map(file => api.uploadAsset(project.id, file)),
-        ...selectedAssets.map(asset => uploadLibraryAsset(project.id, asset)),
-      ]);
-      const assetContexts = selectedAssets.map(asset => `创作参考 · ${assetName(asset)}`);
-      await api.sendTurn(project.id, { text: text.trim() || "请结合所选素材继续创作。", attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], interrupt, ...selection });
-      if (project.manifest.checkpoint?.id) setDismissedCheckpoint(project.manifest.checkpoint.id); setText(""); setFiles([]); setSelectedAssets([]); setContexts([]); setInterrupt(false); await refresh();
+      const submittedFeedback = feedbackDraft.items;
+      const signature = JSON.stringify({ text, contexts, interrupt, selection, files: files.map(f => [f.name, f.size, f.lastModified]), assets: selectedAssets.map(a => a.id), feedback: submittedFeedback.map(({ blob: _blob, asset: _asset, ...item }) => item) });
+      const attempt = attemptRef.current?.signature === signature ? attemptRef.current : submissionAttempt(project.id, signature);
+      attemptRef.current = attempt;
+      if (!attempt.input) {
+        const [uploaded, visualFeedback] = await Promise.all([
+          Promise.all([...files.map(file => api.uploadAsset(project.id, file)), ...selectedAssets.map(asset => uploadLibraryAsset(project.id, asset))]),
+          Promise.all(submittedFeedback.map(async draft => {
+            const asset = draft.asset ?? await api.uploadFeedbackAsset(project.id, draft.id, draft.blob);
+            feedbackDraft.update(items => items.map(item => item.id === draft.id ? { ...item, asset } : item));
+            const { blob: _blob, asset: _asset, ...item } = draft;
+            return { ...item, screenshotAssetId: asset.id, screenshotPath: asset.path, screenshotSha256: asset.sha256 };
+          })),
+        ]);
+        const assetContexts = selectedAssets.map(asset => `创作参考 · ${assetName(asset)}`);
+        attempt.input = { clientRequestId: attempt.id, text: text.trim() || (submittedFeedback.length ? "请根据画面标注修改视频，保留其他内容。" : "请结合所选素材继续创作。"), attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], feedback: visualFeedback, interrupt, ...selection };
+        saveSubmission(project.id, attempt);
+      }
+      setSendStage("sending");
+      const accepted = await api.sendTurn(project.id, attempt.input);
+      attemptRef.current = null; saveSubmission(project.id, null);
+      feedbackDraft.update(items => items.filter(item => !submittedFeedback.some(sent => sent.id === item.id)));
+      if (project.manifest.checkpoint?.id) setDismissedCheckpoint(project.manifest.checkpoint.id);
+      // Only clear this submission: the composer remains available for the next draft.
+      setText(current => current === text ? "" : current);
+      setFiles(current => current.filter(file => !files.includes(file)));
+      setSelectedAssets(current => current.filter(asset => !selectedAssets.some(sent => sent.id === asset.id)));
+      setContexts(current => current.filter(context => !contexts.includes(context)));
+      setInterrupt(current => current === interrupt ? false : current);
+      setSendResult(accepted.status === "queued" ? "已加入队列" : "已提交");
+      setSendStage("sent");
+      try { await refresh(); } catch { setError("已提交，但状态暂未同步，请重新同步项目。"); }
     }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "消息发送失败"); } finally { setBusy(false); }
+    catch (reason) { setSendStage("failed"); setError(reason instanceof Error ? reason.message : "消息发送失败"); }
+    finally { sendingRef.current = false; setBusy(false); }
   }
   async function confirm() {
-    setBusy(true); setError("");
+    setBusy(true); setConfirming(true); setError("");
     try {
       const checkpointId = project.manifest.checkpoint?.id;
       const checkpointKind = project.manifest.checkpoint?.kind;
@@ -81,11 +145,11 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       if (checkpointKind === "plan") { selectCanvasTab("preview"); setMobilePanel("canvas"); }
       await refresh();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "确认失败"); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setConfirming(false); }
   }
   async function stop() { setStopping(true); setError(""); try { await api.interrupt(project.id); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "停止失败"); } finally { setStopping(false); } }
   async function resumeQueue() { setBusy(true); setError(""); try { await api.resume(project.id); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "恢复队列失败"); } finally { setBusy(false); } }
-  function selectQuickReply(value: string) { setText(value); composerRef.current?.focus(); }
+  function selectQuickReply(value: string) { clearSubmissionFeedback(); setText(value); setMobilePanel("thread"); composerRef.current?.focus(); requestAnimationFrame(() => composerRef.current?.focus()); }
   async function answerWaitingInput(choice: string) {
     if (busy) return;
     setBusy(true); setError("");
@@ -99,6 +163,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     requestAnimationFrame(() => composerRef.current?.focus());
   }
   function addTimedFeedback(versionLabel: string, feedback: Array<{ time: number; description: string }>) {
+    clearSubmissionFeedback();
     const feedbackText = [`${versionLabel} 时间点修改：`, ...feedback.map(item => `- ${formatTimestamp(item.time)} ${item.description.trim()}`)].join("\n");
     setText(current => [current.trim(), feedbackText].filter(Boolean).join("\n\n"));
     const context = `${versionLabel} · ${feedback.length} 条时间点反馈`;
@@ -129,8 +194,12 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   }
 
   const checkpointSuperseded = running || project.queue.length > 0 || project.status === "queued";
-  const visibleCheckpoint = project.manifest.checkpoint && project.manifest.checkpoint.kind !== "draft" && !checkpointSuperseded && project.manifest.checkpoint.id !== dismissedCheckpoint ? project.manifest.checkpoint : undefined;
-  const checkpointArtifact = visibleCheckpoint?.artifactIds.map(id => project.manifest.artifacts.find(artifact => artifact.id === id)).find(Boolean);
+  const visibleCheckpoint = project.manifest.checkpoint && !checkpointSuperseded && project.manifest.checkpoint.id !== dismissedCheckpoint ? project.manifest.checkpoint : undefined;
+  const checkpointPresence = useMotionPresence(visibleCheckpoint?.id ?? null);
+  const lastCheckpoint = useRef(visibleCheckpoint);
+  if (visibleCheckpoint) lastCheckpoint.current = visibleCheckpoint;
+  const displayedCheckpoint = checkpointPresence.value ? lastCheckpoint.current : undefined;
+  const checkpointArtifact = displayedCheckpoint?.artifactIds.map(id => project.manifest.artifacts.find(artifact => artifact.id === id)).find(Boolean);
   const workspaceStyle = { "--thread-width": `${threadWidth}px` } as CSSProperties;
   function dragThread(event: ReactPointerEvent<HTMLDivElement>) { if (event.currentTarget.hasPointerCapture(event.pointerId)) setThreadWidth(Math.min(620, Math.max(380, event.clientX))); }
   function finishResize(event: ReactPointerEvent<HTMLDivElement>, key: string, value: number) { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); writeNumberSetting(key, value); }
@@ -143,34 +212,60 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     writeNumberSetting(key, next);
   }
   function selectReferenceAssets(assets: AssetLibraryItem[]) {
+    clearSubmissionFeedback();
+    const additions = assets.filter(asset => !selectedAssets.some(selected => selected.id === asset.id));
+    if (!additions.length) return;
+    setAssetFeedback(`已加入 ${additions.length} 个参考文件，可在对话中发送`);
     setSelectedAssets(items => {
       const selectedIds = new Set(items.map(item => item.id));
       return [...items, ...assets.filter(asset => !selectedIds.has(asset.id))];
     });
   }
   return <div className={`workspace workspace--canvas workspace-mobile--${mobilePanel}`} style={workspaceStyle}>
-    <header className="project-header"><div className="project-header-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div><button className="project-back" onClick={onBack}><CaretLeft/>所有项目</button><div className="project-heading">{editingTitle ? <form className="thread-title-editor" onSubmit={saveTitle}><input aria-label="项目标题" autoFocus maxLength={48} value={titleDraft} onChange={event => setTitleDraft(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setEditingTitle(false); setTitleError(""); } }}/><button aria-label="保存项目标题" disabled={!titleDraft.trim() || renaming}><Check/></button><button type="button" aria-label="取消修改标题" onClick={() => { setEditingTitle(false); setTitleError(""); }}><X/></button></form> : <button className="thread-title-button" aria-label={`修改项目标题：${project.title}`} title="修改项目标题" onClick={() => { setTitleDraft(project.title); setTitleError(""); setEditingTitle(true); }}><h1>{project.title}</h1><PencilSimple/></button>}<span className={`project-state project-state--${project.status}`}>{project.statusLabel}</span></div><div className="project-header-actions"><ConnectionBadge state={connectionState}/><span className="spec-chip">{project.aspectRatio}</span><button className="export-button" onClick={() => { selectCanvasTab("preview"); setMobilePanel("canvas"); }}><DownloadSimple/>导出</button></div></header>
+    <header className="project-header"><div className="project-header-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div><button className="project-back" onClick={onBack}><CaretLeft/>所有项目</button><div className="project-heading">{editingTitle ? <form className="thread-title-editor" onSubmit={saveTitle}><input aria-label="项目标题" autoFocus maxLength={48} value={titleDraft} onChange={event => setTitleDraft(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setEditingTitle(false); setTitleError(""); } }}/><button aria-label="保存项目标题" disabled={!titleDraft.trim() || renaming}><Check/></button><button type="button" aria-label="取消修改标题" onClick={() => { setEditingTitle(false); setTitleError(""); }}><X/></button></form> : <button className="thread-title-button" aria-label={`修改项目标题：${project.title}`} title="修改项目标题" onClick={() => { setTitleDraft(project.title); setTitleError(""); setEditingTitle(true); }}><h1>{project.title}</h1><PencilSimple/></button>}<span className={`project-state project-state--${project.status}`}>{state.label}</span></div><div className="project-header-actions"><ConnectionBadge state={connectionState}/><span className="spec-chip">{project.aspectRatio}</span><button className="export-button" onClick={() => { selectCanvasTab("preview"); setMobilePanel("canvas"); }}><DownloadSimple/>导出</button></div></header>
     <div className="workspace-splitter workspace-splitter--thread" role="separator" aria-label="调整创作对话宽度" aria-orientation="vertical" aria-valuemin={380} aria-valuemax={620} aria-valuenow={threadWidth} tabIndex={0} onKeyDown={event => resizeWithKeyboard(event, threadWidth, setThreadWidth, "yingya-thread-width", 380, 620, 1)} onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragThread} onPointerUp={event => finishResize(event, "yingya-thread-width", threadWidth)} onPointerCancel={event => finishResize(event, "yingya-thread-width", threadWidth)}/>
     <nav className="workspace-tabs" aria-label="工作区视图"><button className={mobilePanel === "thread" ? "active" : ""} onClick={() => setMobilePanel("thread")}>对话</button>{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button key={tab} className={mobilePanel === "canvas" && canvasTab === tab ? "active" : ""} onClick={() => { setMobilePanel("canvas"); selectCanvasTab(tab); }}>{canvasTabLabel(tab)}</button>)}</nav>
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "与创作助手继续完善视频"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
-      <section className="timeline" ref={timelineRef}><div className="timeline-inner">
+      <section className="timeline" aria-label="创作消息" tabIndex={0} ref={timelineRef} onScroll={onScroll}><div className="timeline-inner" ref={contentRef}>
         {stalled || connectionState === "disconnected" ? <ConnectionNotice stalled={stalled} onRetry={() => void resync()}/> : null}
-        <ConversationFeed entries={conversation} onQuickReply={selectQuickReply}/>
+        <ConversationFeed projectId={project.id} entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
         {(project.status === "failed" || project.status === "incomplete") && project.manifest.dirty ? <WorkflowRecoveryCard briefing={project.manifest.phase === "briefing"} incomplete={project.status === "incomplete"} statusLabel={project.statusLabel} onRecover={selectQuickReply}/> : null}
-        {visibleCheckpoint ? <CheckpointCard kind={visibleCheckpoint.kind} title={visibleCheckpoint.title} summary={visibleCheckpoint.summary} busy={busy} onPreview={checkpointArtifact ? () => void previewArtifact(checkpointArtifact) : undefined} onConfirm={() => void confirm()}/> : null}
-        {project.queue.length ? <section className="queue-card"><header><Queue/><b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b><span>{project.queue.length}</span>{project.queuePaused ? <button className="queue-resume" disabled={busy} onClick={() => void resumeQueue()}>继续处理</button> : null}</header>{project.queue.map((turn, index) => <div key={turn.id}><i>{String(index + 1).padStart(2, "0")}</i><span>{turn.text}</span><button aria-label="撤回排队消息" onClick={() => void api.removeQueued(project.id, turn.id).then(refresh)}><X/></button></div>)}</section> : null}
+        {displayedCheckpoint ? <div className="checkpoint-presence" ref={checkpointPresence.ref} inert={checkpointPresence.exiting} aria-hidden={checkpointPresence.exiting || undefined}><CheckpointCard kind={displayedCheckpoint.kind} title={displayedCheckpoint.title} summary={displayedCheckpoint.summary} busy={busy} confirming={confirming} onPreview={checkpointArtifact ? () => void previewArtifact(checkpointArtifact) : undefined} onConfirm={() => void confirm()}/></div> : null}
+        {project.queue.length ? <section className="queue-card"><header><Queue/><b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b><span>{project.queue.length}</span>{project.queuePaused ? <button className="queue-resume" disabled={busy} onClick={() => void resumeQueue()}>继续处理</button> : null}</header>{project.queue.map((turn, index) => <div key={turn.id}><i>{String(index + 1).padStart(2, "0")}</i><span>{turn.text}</span><button aria-label="撤回排队消息" disabled={Boolean(removingQueued)} onClick={() => void removeQueued(turn.id)}><X/></button></div>)}</section> : null}
       </div></section>
       <footer className="thread-footer">
-        {assetPickerOpen ? <ComposerAssetPicker assets={libraryAssets} selected={selectedAssets} onClose={() => setAssetPickerOpen(false)} onToggle={asset => setSelectedAssets(items => items.some(item => item.id === asset.id) ? items.filter(item => item.id !== asset.id) : [...items, asset])}/> : null}
-        {selectedAssets.length ? <div className="selected-asset-chips" aria-label="已选择素材">{selectedAssets.map(asset => <span key={asset.id}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · 创作参考</small></span><button aria-label={`移除素材 ${assetName(asset)}`} onClick={() => setSelectedAssets(items => items.filter(item => item.id !== asset.id))}><X/></button></span>)}</div> : null}
+        {feedbackDraft.status === "error" ? <p className="form-error" role="status">标注草稿无法保存，请勿刷新页面。</p> : feedbackDraft.items.length ? <p className="draft-save-status" role="status">{feedbackDraft.status === "saving" ? "正在保存标注草稿…" : "标注草稿已保存"}</p> : null}
+        <div className="feedback-drafts">{feedbackDraft.items.map(item => <FeedbackCard key={item.id} projectId={project.id} feedback={item} onRemove={() => feedbackDraft.update(items => items.filter(value => value.id !== item.id))}/>)}</div>
+        {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存，刷新后需重新添加。</p> : null}
+        {text ? <p className="draft-save-status" role="status">{textSaved ? "修改描述已自动保存" : "草稿保存失败，请勿关闭页面"}</p> : null}
+        {hasNewContent ? <button className="timeline-latest" type="button" onClick={() => { scrollToLatest(); timelineRef.current?.focus({ preventScroll: true }); }}><ArrowDown/>有新消息，回到最新</button> : null}
+        {assetPickerOpen ? <ComposerAssetPicker assets={libraryAssets} selected={selectedAssets} onClose={() => setAssetPickerOpen(false)} onToggle={asset => { clearSubmissionFeedback(); if (selectedAssets.some(item => item.id === asset.id)) { setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); } else selectReferenceAssets([asset]); }}/> : null}
+        <SelectedAssetChips assets={selectedAssets} onRemove={asset => { clearSubmissionFeedback(); setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); composerRef.current?.focus({ preventScroll: true }); }}/>
         {contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}
-        <form className="composer" onSubmit={send}><textarea ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述修改，或继续推进视频…"}/><div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div><div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><button className={`asset-picker-trigger ${selectedAssets.length ? "active" : ""}`} type="button" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(open => !open)}><Images/>选择素材{selectedAssets.length ? <span>{selectedAssets.length}</span> : null}</button><VoiceSelector value={project.voiceId} onChange={onVoice} disabled={running}/><ModelSelector models={models} value={selection} onChange={onSelection}/>{running ? <label className="interrupt-toggle"><input type="checkbox" checked={interrupt} onChange={event => setInterrupt(event.target.checked)}/><span>{interrupt ? "立即应用" : "排队"}</span></label> : null}</div><div>{running ? <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "正在停止" : "停止当前任务"}</button> : null}<button className="send-button" aria-label="发送消息" disabled={(!text.trim() && !files.length && !selectedAssets.length) || busy}><ArrowUp weight="bold"/></button></div></div></form>{error ? <p className="form-error">{error}</p> : null}
+        <div className="composer-feedback" role="status" aria-live="polite" aria-atomic="true">{sendStage === "uploading" || sendStage === "sending" ? <span key={sendStage}><CircleNotch className="spin"/>{sendStage === "uploading" ? "正在上传素材…" : "正在发送…"}</span> : sendStage === "failed" ? <span className="composer-feedback-error"><Warning/>发送未完成，可重试</span> : assetFeedback ? <span key={assetFeedback}><Check/>{assetFeedback}</span> : sendStage === "sent" ? <span><Check/>{sendResult}</span> : null}</div>
+        <form className="composer" onSubmit={send} onChange={clearSubmissionFeedback}><textarea aria-label="修改描述" ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述修改，或继续推进视频…"}/><div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div><div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加附件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><button className={`asset-picker-trigger ${selectedAssets.length ? "active" : ""}`} type="button" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(open => !open)}><Images/>选择素材{selectedAssets.length ? <span>{selectedAssets.length}</span> : null}</button><VoiceSelector value={project.voiceId} onChange={onVoice} disabled={running}/><ModelSelector models={models} value={selection} onChange={onSelection}/>{running ? <label className="interrupt-toggle"><input type="checkbox" checked={interrupt} onChange={event => setInterrupt(event.target.checked)}/><span>{interrupt ? "立即应用" : "排队"}</span></label> : null}</div><div>{running ? <button className="stop-button" type="button" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "正在停止" : "停止当前任务"}</button> : null}<button className="send-button" aria-label={sendStage === "failed" ? "重试发送消息" : "发送消息"} title={sendStage === "failed" ? "重试发送" : "发送消息"} aria-busy={sendStage === "uploading" || sendStage === "sending"} disabled={(!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || fileDraftStatus === "loading" || feedbackDraft.status === "loading"}>{sendStage === "uploading" || sendStage === "sending" ? <CircleNotch className="spin"/> : sendStage === "failed" ? <ArrowClockwise/> : <ArrowUp weight="bold"/>}</button></div></div></form>{error ? <p className="form-error" role="alert">{error}</p> : null}
       </footer>
     </main>
-    <ArtifactCanvas project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onTimedFeedback={addTimedFeedback} onRefresh={refresh}/>
+    <ArtifactCanvas project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onFeedback={item => { if (feedbackDraft.items.length >= 8) throw new Error("每条消息最多包含 8 个画面标注"); feedbackDraft.update(items => [...items, item]); setMobilePanel("thread"); composerRef.current?.focus(); }} feedbackDisabled={feedbackDraft.status === "loading" || feedbackDraft.items.length >= 8} onTimedFeedback={addTimedFeedback} onCompose={selectQuickReply} onRefresh={refresh}/>
   </div>;
+}
+
+function SelectedAssetChips({ assets, onRemove }: { assets: AssetLibraryItem[]; onRemove: (asset: AssetLibraryItem) => void }) {
+  const [previous, setPrevious] = useState(assets);
+  const [visible, setVisible] = useState(() => assets.map(asset => ({ asset, exiting: false })));
+  if (previous !== assets) {
+    setPrevious(assets);
+    // The parent selection changes immediately; retain only the visual shell during exit.
+    setVisible(current => [
+      ...current.map(item => ({ asset: assets.find(asset => asset.id === item.asset.id) ?? item.asset, exiting: !assets.some(asset => asset.id === item.asset.id) })),
+      ...assets.filter(asset => !current.some(item => item.asset.id === asset.id)).map(asset => ({ asset, exiting: false })),
+    ]);
+  }
+  return <div className={`selected-asset-chips ${assets.length ? "" : "selected-asset-chips--empty"}`} aria-label="已选择素材">{visible.map(({ asset, exiting }) => <span key={asset.id} className={exiting ? "is-exiting" : ""} aria-hidden={exiting || undefined} inert={exiting} onAnimationEnd={event => {
+    if (event.target === event.currentTarget && exiting) setVisible(items => items.filter(item => item.asset.id !== asset.id || !item.exiting));
+  }}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · 创作参考</small></span><button type="button" aria-label={`移除素材 ${assetName(asset)}`} onClick={() => onRemove(asset)}><X/></button></span>)}</div>;
 }
 
 function ConnectionBadge({ state }: { state: AgentConnectionState }) {
@@ -187,7 +282,8 @@ function ComposerAssetPicker({ assets, selected, onToggle, onClose }: { assets: 
   return <section className="composer-asset-picker" aria-label="选择创作素材"><header><div><b>选择参考文件</b><span>图片、视频、音频和文档都可随对话进入创作</span></div><button type="button" aria-label="关闭素材选择" onClick={onClose}><X/></button></header>{assets.length ? <div>{assets.map(asset => { const active = selected.some(item => item.id === asset.id); return <button type="button" className={active ? "selected" : ""} aria-pressed={active} key={asset.id} onClick={() => onToggle(asset)}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · {asset.kind === "generated" ? "AI 生成" : "已上传"}</small></span>{active ? <Check/> : <Plus/>}</button>; })}</div> : <p>素材库暂时为空，可先在项目外的素材工坊上传文件。</p>}</section>;
 }
 
-function ConversationFeed({ entries, onQuickReply }: { entries: ConversationEntry[]; onQuickReply: (value: string) => void }) {
+function ConversationFeed({ projectId, entries, onQuickReply }: { projectId: string; entries: ConversationEntry[]; onQuickReply: (value: string) => void }) {
+  const initialMessages = useRef(new Set(entries.filter(entry => entry.kind === "message").map(entry => entry.item.id)));
   const rows: ReactNode[] = [];
   let pendingActivities: TimelineActivity[] = [];
   const visibleActivityIds = new Set(compactTimelineActivities(entries.flatMap(entry => entry.kind === "activity" ? [entry.item] : [])).map(activity => activity.id));
@@ -203,7 +299,7 @@ function ConversationFeed({ entries, onQuickReply }: { entries: ConversationEntr
       continue;
     }
     flushActivities();
-    rows.push(<MessageRow message={entry.item} onQuickReply={onQuickReply} key={entry.item.id}/>);
+    rows.push(<MessageRow projectId={projectId} message={entry.item} animate={!initialMessages.current.has(entry.item.id)} onQuickReply={onQuickReply} key={entry.item.id}/>);
   }
   flushActivities();
   return <>{rows}</>;
@@ -214,9 +310,9 @@ export function compactTimelineActivities(activities: TimelineActivity[]) {
   return activities.filter(activity => activity.kind === "assistant" || activity.kind === "request" || activity.id === latestOperation?.id);
 }
 
-function MessageRow({ message, onQuickReply }: { message: AgentMessage; onQuickReply: (value: string) => void }) {
+function MessageRow({ projectId, message, animate, onQuickReply }: { projectId: string; message: AgentMessage; animate: boolean; onQuickReply: (value: string) => void }) {
   const quickReplies = message.role === "assistant" ? extractQuickReplies(message.text) : [];
-  return <article className={`message message--${message.role}`}><div className="message-body">{message.context.length ? <div className="context-line">{message.context.map(value => <span key={value}>{value}</span>)}</div> : null}{message.role === "assistant" ? <div className="message-markdown"><Suspense fallback={<div>{message.text}</div>}><MarkdownPreview>{message.text}</MarkdownPreview></Suspense></div> : <div>{message.text}</div>}{message.attachments.length ? <small>{message.attachments.length} 个附件</small> : null}{quickReplies.length ? <div className="quick-replies" aria-label="选择下一步">{quickReplies.map(value => <button type="button" key={value} onClick={() => onQuickReply(value)}><span>{value}</span><ArrowRight/></button>)}</div> : null}</div></article>;
+  return <article className={`message message--${message.role}${animate ? " message--new" : ""}`}><div className="message-body">{message.context.length ? <div className="context-line">{message.context.map(value => <span key={value}>{value}</span>)}</div> : null}{message.role === "assistant" ? <div className="message-markdown"><Suspense fallback={<div>{message.text}</div>}><MarkdownPreview>{message.text}</MarkdownPreview></Suspense></div> : <div>{message.text}</div>}{message.feedback?.map(item => <FeedbackCard key={item.id} projectId={projectId} feedback={item}/>)}{message.attachments.length ? <small>{message.attachments.length} 个附件</small> : null}{quickReplies.length ? <div className="quick-replies" aria-label="选择下一步">{quickReplies.map(value => <button type="button" key={value} onClick={() => onQuickReply(value)}><span>{value}</span><ArrowRight/></button>)}</div> : null}</div></article>;
 }
 
 export function extractQuickReplies(text: string) {
@@ -259,7 +355,7 @@ function ActivityRow({ activity }: { activity: TimelineActivity }) {
   if (activity.kind === "request" && activity.event) return <section className="activity-request"><header><Warning/><b>{activity.title}</b></header><RequestControls event={activity.event}/></section>;
   const icon = activity.kind === "command" ? <Terminal/> : activity.kind === "file" ? <File/> : activity.kind === "plan" ? <Check/> : activity.kind === "system" ? <Warning/> : <Code/>;
   const statusLabel = activity.status === "running" ? "进行中" : activity.status === "waiting" ? "自动重试中" : activity.status === "failed" ? "失败" : activity.status === "interrupted" ? "已中断" : "完成";
-  return <div className={`activity-item activity-item--${activity.status}`} role={activity.kind === "system" ? "status" : undefined}><div className="activity-item-content"><span className="activity-icon">{activity.status === "running" ? <CircleNotch className="spin"/> : activity.status === "failed" ? <Warning/> : icon}</span><b>{activity.status === "failed" ? `${activity.title}失败` : activity.title}</b>{activity.summary ? <em>{activity.summary}</em> : null}<small>{statusLabel}</small></div></div>;
+  return <div className={`activity-item activity-item--${activity.status}`} role={activity.kind === "system" ? "status" : undefined}><div className="activity-item-content"><span className="activity-icon" key={activity.status}>{activity.status === "running" ? <CircleNotch className="spin"/> : activity.status === "failed" ? <Warning/> : activity.status === "completed" ? <Check/> : icon}</span><b>{activity.status === "failed" ? `${activity.title}失败` : activity.title}</b>{activity.summary ? <em>{activity.summary}</em> : null}<small>{statusLabel}</small></div></div>;
 }
 
 function RequestControls({ event }: { event: AgentEvent }) {
@@ -273,9 +369,9 @@ function RequestControls({ event }: { event: AgentEvent }) {
   return <div className="request-controls"><p>{String(params.reason ?? "Codex 请求执行项目范围外的操作，请检查原始事件后决定。")}</p><div><button onClick={() => void respond({ decision: "accept" })}>仅本次允许</button><button onClick={() => void respond({ decision: "decline" })}>拒绝</button></div>{error ? <small>{error}</small> : null}</div>;
 }
 
-function CheckpointCard({ kind, title, summary, busy, onPreview, onConfirm }: { kind: string; title: string; summary: string; busy: boolean; onPreview?: () => void; onConfirm: () => void }) {
+function CheckpointCard({ kind, title, summary, busy, confirming, onPreview, onConfirm }: { kind: string; title: string; summary: string; busy: boolean; confirming: boolean; onPreview?: () => void; onConfirm: () => void }) {
   const draft = kind === "draft";
-  return <section className="checkpoint-card"><div className="checkpoint-icon"><CheckCircle weight="fill"/></div><div className="checkpoint-copy"><small>制作检查点</small><h2>{title || (draft ? "草稿视频已就绪" : "制作方案已就绪")}</h2><p>{summary || (draft ? "确认草稿后，Agent 才会渲染最终高清成片。" : "确认方向后，Agent 才会开始制作完整 Composition。")}</p></div><div className="checkpoint-actions">{onPreview ? <button className="checkpoint-preview" onClick={onPreview}><Eye/>{draft ? "查看草稿" : "查看计划"}</button> : null}<button className="primary-button primary-fill" disabled={busy} onClick={onConfirm}>{draft ? "确认并渲染成片" : "确认并制作"}<ArrowUp/></button></div></section>;
+  return <section className="checkpoint-card"><div className="checkpoint-icon"><CheckCircle weight="fill"/></div><div className="checkpoint-copy"><small>制作检查点</small><h2>{title || (draft ? "草稿视频已就绪" : "制作方案已就绪")}</h2><p>{summary || (draft ? "确认草稿后，Agent 才会渲染最终高清成片。" : "确认方向后，Agent 才会开始制作完整 Composition。")}</p></div><div className="checkpoint-actions">{onPreview ? <button className="checkpoint-preview" onClick={onPreview}><Eye/>{draft ? "查看草稿" : "查看计划"}</button> : null}<button className="primary-button primary-fill" disabled={busy} onClick={onConfirm}>{confirming ? "正在提交…" : draft ? "确认并渲染成片" : "确认并制作"}{confirming ? <CircleNotch className="spin"/> : <ArrowUp/>}</button></div></section>;
 }
 
 function WorkflowRecoveryCard({ briefing, incomplete, statusLabel, onRecover }: { briefing: boolean; incomplete: boolean; statusLabel: string; onRecover: (value: string) => void }) {
@@ -283,29 +379,66 @@ function WorkflowRecoveryCard({ briefing, incomplete, statusLabel, onRecover }: 
   const detail = briefing ? "检测到视频制作越过了方案确认。已有文件会保留，恢复后将先生成可确认的制作方案。" : incomplete ? "现有文件和有效检查结果已保留。恢复时会先复用已有成果，只补齐缺失的版本与审核登记。" : "项目状态或产物不完整。恢复后会先检查现有文件，再回到正确的确认节点。";
   return <section className={`workflow-recovery ${incomplete ? "workflow-recovery--incomplete" : ""}`} role={incomplete ? "status" : "alert"}><Warning/><div><b>{incomplete ? statusLabel : "制作流程已安全暂停"}</b><p>{detail}</p></div><button type="button" onClick={() => onRecover(prompt)}>{prompt}<ArrowRight/></button></section>;
 }
-type TimeFeedback = { id: number; time: number; description: string };
 
-function ArtifactCanvas({ project, activeTab, preview, media, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onRefresh }: { project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onTimedFeedback: (versionLabel: string, feedback: Array<{ time: number; description: string }>) => void; onRefresh: () => Promise<void> }) {
+function ArtifactCanvas({ onFeedback, feedbackDisabled, project, activeTab, preview, media, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onCompose, onRefresh }: { onFeedback: (draft: FeedbackDraft) => void; feedbackDisabled: boolean; project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onCompose: (text: string) => void; onTimedFeedback: (versionLabel: string, feedback: Array<{ time: number; description: string }>) => void; onRefresh: () => Promise<void> }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!contentRef.current) return;
+    const animation = animateElement(contentRef.current, [{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "translateY(0)" }]);
+    return () => animation?.cancel();
+  }, [activeTab, preview?.artifact.id]);
+  function navigateTab(event: KeyboardEvent<HTMLDivElement>) {
+    const tabs: CanvasTab[] = ["preview", "storyboard", "assets", "artifacts"];
+    const index = tabs.indexOf(activeTab);
+    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    onTab(tabs[next]);
+    tabListRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  }
   const [versionId, setVersionId] = useState(() => savedVersionId(project));
-  const [timeFeedback, setTimeFeedback] = useState<TimeFeedback[]>([]);
+  const [timeFeedback, setTimeFeedback] = useSavedState(`yingya-feedback:${project.id}:${versionId}`, z.array(z.object({ id: z.number(), time: z.number(), description: z.string() })), []);
+  const [rollbackBusy, setRollbackBusy] = useState(false);
+  const [rollbackError, setRollbackError] = useState("");
+  const [annotation, setAnnotation] = useState<{ frame: CapturedFrame; versionId: string; versionLabel: string; videoPath: string } | null>(null);
+  const [captureError, setCaptureError] = useState("");
+  const [capturing, setCapturing] = useState(false);
   const nextFeedbackId = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const version = project.manifest.versions.find(value => value.id === versionId) ?? project.manifest.versions.at(-1);
   const finalVideoArtifact = [...project.manifest.artifacts].reverse().find(value => value.kind === "final-video" && value.version === version?.id);
   const videoArtifact = project.manifest.artifacts.find(value => value.kind.includes("video") && value.version === version?.id) ?? project.manifest.artifacts.find(value => value.kind.includes("video"));
   const videoPath = finalVideoArtifact?.path ?? version?.videoPath ?? videoArtifact?.path;
+  const canAnnotate = Boolean(version && videoPath && (videoPath === version.videoPath || project.manifest.artifacts.some(a => a.version === version.id && a.path === videoPath)));
+  async function annotate() {
+    if (!videoRef.current || !version || !videoPath || capturing || !canAnnotate) return;
+    setCapturing(true); setCaptureError("");
+    try { const frame = await captureFrame(videoRef.current); setAnnotation({ frame, versionId: version.id, versionLabel: version.label, videoPath }); }
+    catch (reason) { setCaptureError(reason instanceof Error ? reason.message : "截图失败，请使用文字时间点反馈"); }
+    finally { setCapturing(false); }
+  }
   const completedFeedback = timeFeedback.filter(item => item.description.trim());
   const liveAvailable = project.manifest.phase !== "briefing" && project.manifest.phase !== "plan_review";
+  const playbackKey = `yingya-video-time:${project.id}:${version?.id ?? "current"}`;
+  useLayoutEffect(() => {
+    const video = videoRef.current;
+    // Capture the node before a tab/version change removes it. A paused seek does not
+    // emit another pause event, so saving only onPause loses the playhead on navigation.
+    return () => { if (video) saveVideoTime(video, playbackKey); };
+  }, [activeTab, preview?.artifact.id, playbackKey, videoPath]);
+
 
   useEffect(() => {
     if (versionId && project.manifest.versions.some(version => version.id === versionId)) return;
     setVersionId(project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? "");
   }, [project.manifest.currentDraft, project.manifest.versions, versionId]);
-  useEffect(() => setTimeFeedback([]), [project.id, versionId]);
 
+
+  async function rollback() { if (!version || rollbackBusy) return; setRollbackBusy(true); setRollbackError(""); try { await api.rollbackVersion(project.id, version.id); await onRefresh(); } catch (reason) { setRollbackError(reason instanceof Error ? reason.message : "版本回退失败"); } finally { setRollbackBusy(false); } }
   function addTimeFeedback() {
     const time = videoRef.current?.currentTime ?? 0;
-    setTimeFeedback(items => [...items, { id: nextFeedbackId.current++, time, description: "" }]);
+    setTimeFeedback(items => [...items, { id: Date.now() + nextFeedbackId.current++, time, description: "" }]);
   }
   function updateTimeFeedback(id: number, description: string) {
     setTimeFeedback(items => items.map(item => item.id === id ? { ...item, description } : item));
@@ -317,42 +450,43 @@ function ArtifactCanvas({ project, activeTab, preview, media, libraryAssets, lib
   }
 
   return <aside className="artifact-canvas">
-    <header><div className="canvas-version"><span className="canvas-label">当前版本</span>{project.manifest.versions.length ? <select value={versionId} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" role="tablist" aria-label="项目工作台">{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{project.manifest.dirty ? <span className="dirty-chip">待检查</span> : null}</div></header>
+    {annotation ? <VideoAnnotationEditor {...annotation} onAdd={onFeedback} onClose={() => setAnnotation(null)}/> : null}
+    <header><div className="canvas-version"><span className="canvas-label">{activeTab === "preview" ? "预览版本" : "当前版本"}</span>{project.manifest.versions.length ? <select aria-label="视频版本" disabled={activeTab !== "preview"} value={activeTab === "preview" ? versionId : project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" ref={tabListRef} onKeyDown={navigateTab} role="tablist" aria-label="项目工作台">{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" id={`canvas-tab-${tab}`} aria-controls="canvas-content" tabIndex={activeTab === tab ? 0 : -1} aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{project.manifest.dirty ? <span className="dirty-chip">修改待检查</span> : null}</div></header>
+    {rollbackError ? <p className="form-error" role="alert">{rollbackError}</p> : null}
+    <div className="canvas-content" id="canvas-content" role="tabpanel" aria-labelledby={`canvas-tab-${activeTab}`} ref={contentRef}>
     {preview ? <InlineArtifactPreview preview={preview} onClose={onClosePreview}/> : <>
       <ManagedLiveHyperFramesPreview project={project} active={activeTab === "preview" && !videoPath && liveAvailable} available={liveAvailable}/>
       {activeTab === "preview" && (videoPath || !liveAvailable) ? <section className="preview-panel preview-panel--with-inspector"><div className="preview-main">
         <div className="section-heading"><h3>{videoPath ? "当前成片" : "作品预览"}</h3><span>{project.aspectRatio}</span></div>
         {project.activeTurnId && version ? <div className="preview-version-notice"><CircleNotch className="spin"/><span>正在生成新版，当前预览为 {version.label}</span></div> : null}
-        <div className="preview-stage-shell"><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls onLoadedMetadata={event => restoreVideoTime(event.currentTarget, `yingya-video-time:${project.id}:${version?.id ?? "current"}`)} onPause={event => saveVideoTime(event.currentTarget, `yingya-video-time:${project.id}:${version?.id ?? "current"}`)}/> : <div className="canvas-empty"><FilmSlate/><b>暂无草稿视频</b><span>制作过程中可先在“实时画面”查看 HTML 动效。</span></div>}</div></div>
+        <div className="preview-stage-shell"><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls onLoadedMetadata={event => restoreVideoTime(event.currentTarget, playbackKey)} onPause={event => saveVideoTime(event.currentTarget, playbackKey)} onSeeked={event => saveVideoTime(event.currentTarget, playbackKey)}/> : <div className="canvas-empty"><FilmSlate/><b>暂无草稿视频</b><span>制作过程中可先在“实时画面”查看 HTML 动效。</span></div>}</div></div>
         {videoPath ? <>
-          <div className="canvas-actions"><button onClick={addTimeFeedback}><Plus/>添加时间点</button>{version && version.id !== project.manifest.currentDraft ? <button onClick={() => void api.rollbackVersion(project.id, version.id)}><ArrowClockwise/>回退版本</button> : null}</div>
+          <div className="canvas-actions"><button type="button" disabled={!canAnnotate || feedbackDisabled || capturing} onClick={() => void annotate()}><PencilSimple/>{capturing ? "正在截取…" : "标注这一帧"}</button><button onClick={addTimeFeedback}><Plus/>添加时间点</button>{version && version.id !== project.manifest.currentDraft ? <button disabled={rollbackBusy || Boolean(project.activeTurnId)} onClick={() => void rollback()}><ArrowClockwise/>{rollbackBusy ? "正在回退…" : "回退版本"}</button> : null}</div>
+          {captureError ? <p className="form-error" role="alert">{captureError}。可点击“添加时间点”仅发送文字反馈。</p> : null}
           {timeFeedback.length ? <section className="time-feedback" aria-label="时间点修改"><header><b>时间点修改</b><span>{timeFeedback.length} 条</span></header><div className="time-feedback-list">{timeFeedback.map((item, index) => <div className="time-feedback-row" key={item.id}><time>{formatTimestamp(item.time)}</time><input autoFocus={index === timeFeedback.length - 1} aria-label={`${formatTimestamp(item.time)} 的修改描述`} value={item.description} onChange={event => updateTimeFeedback(item.id, event.target.value)} placeholder="描述这个时间点需要如何修改"/><button aria-label={`删除 ${formatTimestamp(item.time)} 的反馈`} title="删除反馈" onClick={() => setTimeFeedback(items => items.filter(value => value.id !== item.id))}><X/></button></div>)}</div><button className="time-feedback-apply" disabled={!completedFeedback.length} onClick={applyTimeFeedback}><ArrowLeft/>添加到修改描述</button></section> : null}
         </> : null}
+        {version ? <VersionComparison project={project} current={version}/> : null}
         {version ? <PersistentRenderPanel project={project} version={version} onRefresh={onRefresh}/> : null}
       </div><PreviewAssetInspector media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])}/></section> : null}
-      {activeTab === "storyboard" ? <StoryboardPanel scenes={media.scenes} assets={media.assets} onContext={onContext}/> : null}
-      {activeTab === "assets" ? <ProjectAssetsPanel media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])} onSelectFolder={onSelectAssets}/> : null}
+      {activeTab === "storyboard" ? <StoryboardPanel project={project} media={media} onContext={onContext} onCompose={onCompose} onRefresh={onRefresh}/> : null}
+      {activeTab === "assets" ? <><AudioLibrary projectId={project.id} onRefresh={onRefresh} onCompose={onCompose}/><ProjectAssetsPanel media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])} onSelectFolder={onSelectAssets}/></> : null}
       {activeTab === "artifacts" ? <section className="artifact-list"><div className="section-heading"><h3>全部产物</h3><span>{project.manifest.artifacts.length}</span></div>{project.manifest.artifacts.map(artifact => <div className="artifact-row" key={artifact.id}><button className="artifact-open" onClick={() => onPreview(artifact)}><span>{artifact.kind.includes("report") ? <Check/> : <File/>}</span><div><b>{artifact.label}</b><small>{artifact.path}</small></div><Eye/></button><button className="artifact-context" aria-label={`加入反馈 ${artifact.label}`} title="加入反馈" onClick={() => onContext(`${version?.label ?? "项目"} · ${artifact.label}`)}>+</button></div>)}{!project.manifest.artifacts.length ? <div className="artifact-empty"><File/><b>还没有项目产物</b><p>生成完成后，视频与检查报告会显示在这里。</p></div> : null}</section> : null}
     </>}
+    </div>
   </aside>;
-}
-
-function StoryboardPanel({ scenes, assets, onContext }: { scenes: MediaScene[]; assets: AgentMedia["assets"]; onContext: (value: string) => void }) {
-  const orderedScenes = [...scenes].sort((left, right) => left.order - right.order);
-  return <section className="storyboard-panel"><div className="section-heading"><div><h3>分镜</h3><p>场景、旁白与采用素材在这里保持关联。</p></div><span>{orderedScenes.length} 个场景</span></div>{orderedScenes.length ? <div className="storyboard-list">{orderedScenes.map((scene, index) => { const sceneAssets = scene.assetIds.map(id => assets.find(asset => asset.id === id)).filter((asset): asset is AgentMedia["assets"][number] => Boolean(asset)); return <article key={scene.id}><div className="scene-index">{String(index + 1).padStart(2, "0")}</div><div className="scene-copy"><b>场景 {String(scene.order || index + 1).padStart(2, "0")}</b><span>{scene.narrativeRole || "待补充场景描述"}</span></div><div className="scene-assets">{sceneAssets.slice(0, 3).map(asset => asset.url ? <img src={asset.url} alt={asset.name} key={asset.id}/> : null)}{!sceneAssets.length ? <span>暂无素材</span> : null}</div><button onClick={() => onContext(`场景 ${scene.order || index + 1} · ${scene.narrativeRole || "分镜"}`)}>加入反馈</button></article>; })}</div> : <div className="workbench-empty"><SquaresFour/><b>分镜正在准备</b><p>确认制作方案后，场景结构会显示在这里；聊天中选择的素材会随创作要求一起进入分镜。</p></div>}</section>;
 }
 
 function ProjectAssetsPanel({ media, libraryAssets, libraryFolders, selectedAssets, onSelect, onSelectFolder }: { media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onSelect: (asset: AssetLibraryItem) => void; onSelectFolder: (assets: AssetLibraryItem[]) => void }) {
   const [folderId, setFolderId] = useState("*");
   const visibleAssets = folderId === "*" ? libraryAssets : libraryAssets.filter(asset => (asset.folderId ?? "") === folderId);
   const selectableAssets = visibleAssets.filter(asset => !selectedAssets.some(item => item.id === asset.id));
-  return <section className="project-assets-panel"><div className="section-heading"><div><h3>参考文件</h3><p>图片、视频、音频、文档及其他文件都可加入当前创作对话。</p></div><span>{media.assets.length} 项已进入项目</span></div>{media.assets.length ? <section className="project-media-section"><h4>项目中</h4><div>{media.assets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.source === "upload" ? "对话参考" : asset.source}</small></div></article>)}</div></section> : null}<section className="project-library-section"><div className="project-library-heading"><div><h4>全局素材库</h4><span>{visibleAssets.length} 个文件</span></div><div className="project-library-controls"><label><FolderSimple/><select aria-label="筛选素材文件夹" value={folderId} onChange={event => setFolderId(event.target.value)}><option value="*">全部文件夹</option><option value="">未整理</option>{libraryFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>{folderId !== "*" && visibleAssets.length ? <button type="button" disabled={!selectableAssets.length} onClick={() => onSelectFolder(selectableAssets)}><FolderSimple/>{selectableAssets.length ? "选择此文件夹" : "文件夹已选择"}</button> : null}</div></div>{visibleAssets.length ? <div className="project-library-grid">{visibleAssets.map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <article key={asset.id}><AssetReferenceThumb asset={asset}/><div><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · {asset.kind === "generated" ? "AI 生成" : "已上传"}</small></div><button disabled={selected} aria-label={`${selected ? "已选择" : "选择参考文件"} ${assetName(asset)}`} onClick={() => onSelect(asset)}>{selected ? <Check/> : <Plus/>}{selected ? "已选择" : "加入提示"}</button></article>; })}</div> : <div className="workbench-empty"><File/><b>这个文件夹暂无素材</b><p>可前往素材工坊上传任意类型的参考文件。</p></div>}</section></section>;
+  return <section className="project-assets-panel"><div className="section-heading"><div><h3>参考文件</h3><p>图片、视频、音频、文档及其他文件都可加入当前创作对话。</p></div><span>{media.assets.length} 项已进入项目</span></div>{media.assets.length ? <section className="project-media-section"><h4>项目中</h4><div>{media.assets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.source === "upload" ? "对话参考" : asset.source}</small></div></article>)}</div></section> : null}<section className="project-library-section"><div className="project-library-heading"><div><h4>全局素材库</h4><span>{visibleAssets.length} 个文件</span></div><div className="project-library-controls"><label><FolderSimple/><select aria-label="筛选素材文件夹" value={folderId} onChange={event => setFolderId(event.target.value)}><option value="*">全部文件夹</option><option value="">未整理</option>{libraryFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>{folderId !== "*" && visibleAssets.length ? <button type="button" disabled={!selectableAssets.length} onClick={() => onSelectFolder(selectableAssets)}><FolderSimple/>{selectableAssets.length ? "选择此文件夹" : "文件夹已选择"}</button> : null}</div></div>{visibleAssets.length ? <div className="project-library-grid">{visibleAssets.map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <article key={asset.id}><AssetReferenceThumb asset={asset}/><div><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · {asset.kind === "generated" ? "AI 生成" : "已上传"}</small></div><button disabled={selected} aria-label={`${selected ? "已选择" : "选择参考文件"} ${assetName(asset)}`} onClick={() => onSelect(asset)}>{selected ? <Check/> : <Plus/>}{selected ? "已加入" : "加入提示"}</button></article>; })}</div> : <div className="workbench-empty"><File/><b>这个文件夹暂无素材</b><p>可前往素材工坊上传任意类型的参考文件。</p></div>}</section></section>;
 }
 
 function PreviewAssetInspector({ media, libraryAssets, selectedAssets, onSelect }: { media: AgentMedia; libraryAssets: AssetLibraryItem[]; selectedAssets: AssetLibraryItem[]; onSelect: (asset: AssetLibraryItem) => void }) {
   const scene = [...media.scenes].sort((left, right) => left.order - right.order)[0];
   const sceneAssets = scene ? scene.assetIds.map(id => media.assets.find(asset => asset.id === id)).filter((asset): asset is AgentMedia["assets"][number] => Boolean(asset)) : media.assets.slice(0, 4);
-  return <aside className="preview-asset-inspector"><header><div><b>{scene ? `场景 ${String(scene.order || 1).padStart(2, "0")}` : "创作参考"}</b><span>{scene?.narrativeRole || "当前项目上下文"}</span></div><span>{sceneAssets.length}</span></header><section><h4>已使用素材</h4>{sceneAssets.length ? <div className="preview-used-assets">{sceneAssets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.description || asset.source}</small></div></article>)}</div> : <p>聊天中选择的参考文件会在发送后进入当前项目。</p>}</section><section><div className="inspector-section-title"><h4>全局素材库</h4><span>{libraryAssets.length}</span></div><div className="preview-library-strip">{libraryAssets.slice(0, 6).map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <button key={asset.id} disabled={selected} aria-label={`${selected ? "已选择" : "加入提示"} ${assetName(asset)}`} onClick={() => onSelect(asset)}><AssetReferenceThumb asset={asset}/><span>{selected ? <Check/> : <Plus/>}</span></button>; })}</div></section><p className="preview-inspector-hint">选择任意参考文件后可在左侧对话中补充用途，并随剧本、分镜一起创作。</p></aside>;
+  return <aside className="preview-asset-inspector"><header><div><b>{scene ? `场景 ${String(scene.order || 1).padStart(2, "0")}` : "创作参考"}</b><span>{scene?.narrativeRole || "当前项目上下文"}</span></div><span>{sceneAssets.length}</span></header><section><h4>已使用素材</h4>{sceneAssets.length ? <div className="preview-used-assets">{sceneAssets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.description || asset.source}</small></div></article>)}</div> : <p>聊天中选择的参考文件会在发送后进入当前项目。</p>}</section><section><div className="inspector-section-title"><h4>全局素材库</h4><span>{libraryAssets.length}</span></div><div className="preview-library-strip">{libraryAssets.slice(0, 6).map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <button key={asset.id} disabled={selected} aria-label={`${selected ? "已加入" : "加入提示"} ${assetName(asset)}`} onClick={() => onSelect(asset)}><AssetReferenceThumb asset={asset}/><span>{selected ? <Check/> : <Plus/>}</span></button>; })}</div></section><p className="preview-inspector-hint">选择任意参考文件后可在左侧对话中补充用途，并随剧本、分镜一起创作。</p></aside>;
 }
 
 function InlineArtifactPreview({ preview, onClose }: { preview: { artifact: Artifact; content: string; loading: boolean; error: string }; onClose: () => void }) {
@@ -366,16 +500,10 @@ function canvasTabLabel(tab: CanvasTab) { return ({ preview: "预览", storyboar
 function savedCanvasTab(projectId: string): CanvasTab { const value = readStringSetting(`yingya-canvas-tab:${projectId}`, "preview"); return value === "storyboard" || value === "assets" || value === "artifacts" ? value : "preview"; }
 function savedVersionId(project: ProjectDetail) { const fallback = project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? ""; const saved = readStringSetting(`yingya-version:${project.id}`, fallback); return project.manifest.versions.some(version => version.id === saved) ? saved : fallback; }
 function restoreVideoTime(video: HTMLVideoElement, key: string) { const saved = readNumberSetting(key, 0); if (saved > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(saved, Math.max(0, video.duration - .1)); }
-function saveVideoTime(video: HTMLVideoElement, key: string) { if (Number.isFinite(video.currentTime) && video.currentTime > 0) writeNumberSetting(key, video.currentTime); }
+function saveVideoTime(video: HTMLVideoElement, key: string) { if (video.readyState >= 1 && Number.isFinite(video.currentTime) && video.currentTime >= 0) writeNumberSetting(key, video.currentTime); }
 function assetName(asset: AssetLibraryItem) { return asset.sourceName?.trim() || asset.prompt?.trim() || "未命名素材"; }
 function displayFileName(name: string) { return name.replace(/(\.[a-z0-9]{1,10})\1$/i, "$1"); }
 function assetTypeLabel(asset: AssetLibraryItem) { return ({ image: "图片", video: "视频", audio: "音频", document: "文档", file: "文件" } as const)[asset.category]; }
-function assetFileName(asset: AssetLibraryItem) {
-  const safeName = (asset.sourceName || asset.prompt || asset.id).replace(/[\\/:*?"<>|]/g, "-").slice(0, 64);
-  if (/\.[a-z0-9]{1,10}$/i.test(safeName)) return safeName;
-  const extension = asset.mimeType.split("/")[1]?.replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "bin";
-  return `${safeName}.${extension}`;
-}
 function AssetReferenceThumb({ asset }: { asset: AssetLibraryItem }) {
   if (asset.category === "image") return <span className="asset-reference-thumb"><img src={asset.url} alt=""/></span>;
   if (asset.category === "video") return <span className="asset-reference-thumb"><VideoCamera/></span>;
@@ -384,9 +512,6 @@ function AssetReferenceThumb({ asset }: { asset: AssetLibraryItem }) {
   return <span className="asset-reference-thumb"><File/></span>;
 }
 async function uploadLibraryAsset(projectId: string, asset: AssetLibraryItem) {
-  const response = await fetch(asset.url);
-  if (!response.ok) throw new Error(`无法读取素材：${assetName(asset)}`);
-  const blob = await response.blob();
-  return api.uploadAsset(projectId, new window.File([blob], assetFileName(asset), { type: asset.mimeType }));
+  return api.importLibraryAsset(asset.id, projectId);
 }
 function savedWidth(key: string, fallback: number) { return readNumberSetting(key, fallback); }

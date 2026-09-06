@@ -3,6 +3,7 @@ mod agent_projects;
 mod api;
 mod codex;
 mod config;
+mod feedback;
 mod heygen;
 mod model_settings;
 mod render_jobs;

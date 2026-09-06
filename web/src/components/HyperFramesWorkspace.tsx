@@ -111,6 +111,10 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
   const options = useMemo(() => resolutionOptions(project.aspectRatio), [project.aspectRatio]);
   const finalVideo = [...project.manifest.artifacts].reverse().find(artifact => artifact.kind === "final-video" && artifact.version === version?.id);
 
+  const finalJob = finalVideo ? [...project.renderJobs].reverse().find(job => job.status === "completed" && job.outputPath === finalVideo.path) : undefined;
+  const recordedResolution = finalJob ? resolutionLabels[finalJob.resolution as RenderResolution] ?? finalJob.resolution : finalVideo?.metadata.resolution;
+  const recordedFps = finalJob?.fps ?? finalVideo?.metadata.frameRate ?? finalVideo?.metadata.fps;
+  const downloadSpec = [typeof recordedResolution === "string" ? recordedResolution : "分辨率未记录", typeof recordedFps === "number" ? `${recordedFps} FPS` : "帧率未记录"].join(" · ");
   useEffect(() => setResolution(defaultResolution(project.aspectRatio)), [project.aspectRatio]);
 
   async function render(input: { versionId: string; resolution: RenderResolution; fps: 30 | 60 }) {
@@ -133,7 +137,9 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
   }
 
   return <section className="render-panel" aria-label="导出视频">
-    <header><b>导出视频</b>{finalVideo ? <span className="render-ready"><Check/>已生成</span> : null}</header>
+    <header><b>导出视频</b>{finalVideo ? <span className="render-ready"><Check/>已有成片</span> : null}</header>
+    {finalVideo ? <p className="render-existing-spec">可下载文件：{version?.label} · {downloadSpec}<br/><span>{finalVideo.path.split("/").at(-1)}</span></p> : null}
+    <p className="render-hint">以下设置用于下一次渲染，不会改变已有下载文件。</p>
     {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.message}</p></div> : null}
     <div className="render-options">
       <label><span>分辨率</span><select value={resolution} disabled={rendering} onChange={event => setResolution(event.target.value as RenderResolution)}>{options.map(value => <option value={value} key={value}>{resolutionLabels[value]}</option>)}</select></label>

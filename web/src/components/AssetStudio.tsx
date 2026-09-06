@@ -1,10 +1,12 @@
+import { useMotionPresence } from "../hooks/useMotionPresence";
 import {
-  ArrowRight, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
+  PencilSimple, Trash, ArrowRight, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
   FilmSlate, FolderOpen, FolderSimple, Folders, Image as ImageIcon, Images,
   MagnifyingGlass, MusicNotes, Paperclip, Plus, Sparkle, SpeakerHigh, UploadSimple,
   VideoCamera, Waveform, X,
 } from "@phosphor-icons/react";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { ActionDialog } from "./ActionDialog";
 import { api } from "../api";
 import { createClientRequestId } from "../requestId";
 import type { AssetFolder, AssetLibraryItem, ModelSelection, ProjectRecord } from "../types";
@@ -16,7 +18,7 @@ type UsageIndex = Record<string, UsageRecord[]>;
 type GenerationJob = { id: string; prompt: string; state: "running" | "done" | "failed"; createdAt: number };
 type AssetTab = "all" | "image" | "video" | "audio" | "voice" | "document";
 type SourceFilter = "all" | "uploaded" | "generated";
-const usageStorageKey = "yingya-image-usage-v1";
+
 
 const typeTabs: { id: AssetTab; label: string; icon: typeof Images }[] = [
   { id: "all", label: "全部", icon: Folders },
@@ -27,10 +29,6 @@ const typeTabs: { id: AssetTab; label: string; icon: typeof Images }[] = [
   { id: "document", label: "文档", icon: FileText },
 ];
 
-function readUsage(): UsageIndex {
-  try { return JSON.parse(localStorage.getItem(usageStorageKey) ?? "{}"); }
-  catch { return {}; }
-}
 function formatDate(timestamp: number) {
   return new Date(timestamp).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).replaceAll("/", "-");
 }
@@ -66,10 +64,18 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [usage, setUsage] = useState<UsageIndex>(readUsage);
+  const [usage, setUsage] = useState<UsageIndex>({});
   const [targetProjectId, setTargetProjectId] = useState(projects[0]?.id ?? "");
   const [adding, setAdding] = useState(false);
   const [createKind, setCreateKind] = useState<"image" | "voice" | null>(null);
+  const drawerPresence = useMotionPresence(createKind);
+  const drawerRoot = useRef<HTMLDivElement>(null);
+  const createTriggerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!createKind) return;
+    drawerRoot.current?.querySelector<HTMLElement>("textarea, input, button")?.focus();
+    return () => createTriggerRef.current?.focus({ preventScroll: true });
+  }, [createKind]);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [folderFormOpen, setFolderFormOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -84,6 +90,36 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   const [error, setError] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
   const referenceRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [usageError, setUsageError] = useState("");
+  const [management, setManagement] = useState<{ kind: "rename-asset" | "delete-asset" | "rename-folder" | "delete-folder"; id: string; name: string } | null>(null);
+  const [managementName, setManagementName] = useState("");
+  const [managementBusy, setManagementBusy] = useState(false);
+  const [managementError, setManagementError] = useState("");
+  function manage(kind: NonNullable<typeof management>["kind"], id: string, name: string) { setManagement({ kind, id, name }); setManagementName(name); setManagementError(""); }
+  async function applyManagement(event: FormEvent) {
+    event.preventDefault(); if (!management || managementBusy) return;
+    setManagementBusy(true); setManagementError("");
+    try {
+      if (management.kind === "rename-asset") await api.renameLibraryAsset(management.id, managementName.trim());
+      if (management.kind === "delete-asset") await api.deleteLibraryAsset(management.id);
+      if (management.kind === "rename-folder") await api.renameAssetFolder(management.id, managementName.trim());
+      if (management.kind === "delete-folder") { await api.deleteAssetFolder(management.id); if (activeFolder === management.id) setActiveFolder("unfiled"); }
+      setManagement(null); await load();
+    } catch (reason) { setManagementError(reason instanceof Error ? reason.message : "操作失败，请重试"); }
+    finally { setManagementBusy(false); }
+  }
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); searchRef.current?.focus(); } };
+    window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
+  }, []);
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false; setUsageError("");
+    void api.getLibraryUsage(selectedId).then(records => { if (!cancelled) setUsage(current => ({ ...current, [selectedId]: records })); }).catch(() => { if (!cancelled) setUsageError("使用位置暂时无法读取，请重新选择素材重试。"); });
+    return () => { cancelled = true; };
+  }, [selectedId]);
+
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -200,14 +236,10 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
     const project = projects.find(item => item.id === targetProjectId); if (!project) return;
     setAdding(true); setError("");
     try {
-      const response = await fetch(selected.url); if (!response.ok) throw new Error("素材文件读取失败");
-      const blob = await response.blob();
-      await api.uploadAsset(project.id, new File([blob], fileNameFor(selected), { type: selected.mimeType }));
-      const record: UsageRecord = { projectId: project.id, projectTitle: project.title, addedAt: Date.now() };
-      setUsage(current => {
-        const next = { ...current, [selected.id]: [record, ...(current[selected.id] ?? []).filter(item => item.projectId !== project.id)] };
-        localStorage.setItem(usageStorageKey, JSON.stringify(next)); return next;
-      });
+      await api.importLibraryAsset(selected.id, project.id);
+      const records = await api.getLibraryUsage(selected.id);
+      setUsage(current => ({ ...current, [selected.id]: records }));
+      setUsageError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "添加到项目失败"); }
     finally { setAdding(false); }
   }
@@ -226,12 +258,12 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
       <nav className="asset-folder-list" aria-label="素材文件夹">
         <button className={activeFolder === "all" ? "active" : ""} onClick={() => setActiveFolder("all")}><FolderOpen/><span>全部素材</span><small>{assets.length}</small></button>
         <button className={activeFolder === "unfiled" ? "active" : ""} onClick={() => setActiveFolder("unfiled")}><FolderSimple/><span>未整理</span><small>{assets.filter(asset => !asset.folderId).length}</small></button>
-        {folders.map(folder => <button key={folder.id} className={activeFolder === folder.id ? "active" : ""} onClick={() => setActiveFolder(folder.id)}><FolderSimple/><span>{folder.name}</span><small>{assets.filter(asset => asset.folderId === folder.id).length}</small></button>)}
+        {folders.map(folder => <div className="asset-folder-row" key={folder.id}><button className={activeFolder === folder.id ? "active" : ""} onClick={() => setActiveFolder(folder.id)}><FolderSimple/><span>{folder.name}</span><small>{assets.filter(asset => asset.folderId === folder.id).length}</small></button><button aria-label={`重命名文件夹 ${folder.name}`} title="重命名文件夹" onClick={() => manage("rename-folder", folder.id, folder.name)}><PencilSimple/></button><button aria-label={`删除文件夹 ${folder.name}`} title="删除文件夹" onClick={() => manage("delete-folder", folder.id, folder.name)}><Trash/></button></div>)}
       </nav>
       <div className="asset-service-status"><span/><span>本地服务已连接</span></div>
     </aside>
     <main className="asset-main asset-main--library">
-      <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/><div className="asset-create-control"><button className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div></header>
+      <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/><div className="asset-create-control"><button ref={createTriggerRef} className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div></header>
       <nav className="asset-media-tabs" aria-label="素材类型">{typeTabs.map(item => { const Icon = item.icon; const count = item.id === "all" ? assets.length : item.id === "voice" ? undefined : assets.filter(asset => asset.category === item.id).length; return <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => chooseTab(item.id)}><Icon/>{item.label}{count !== undefined ? <small>{count}</small> : null}</button>; })}</nav>
       {tab === "voice" ? <div className="asset-voice-content"><VoiceStudio value={voiceId} onChange={onVoice}/></div> : <>
         <div className={`asset-library-controls ${selectionMode ? "asset-library-controls--selecting" : ""}`}><nav aria-label="素材来源">{([ ["all", "全部来源"], ["uploaded", "已上传"], ["generated", "AI 生成"] ] as const).map(([id, label]) => <button key={id} className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)}>{id === "uploaded" ? <UploadSimple/> : id === "generated" ? <Sparkle/> : <Folders/>}{label}</button>)}</nav>{selectionMode ? <div className="asset-bulk-actions" role="toolbar" aria-label="批量整理素材"><strong>{batchSelectedIds.length} 项已选</strong><button type="button" aria-pressed={allFilteredSelected} onClick={() => setBatchSelectedIds(allFilteredSelected ? [] : filtered.map(asset => asset.id))}>{allFilteredSelected ? "取消全选" : "全选当前"}</button><select aria-label="批量移动到文件夹" value={batchTargetFolderId} onChange={event => setBatchTargetFolderId(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button className="asset-bulk-move" type="button" disabled={!batchSelectedIds.length || movingBatch} onClick={() => void moveBatch()}>{movingBatch ? <CircleNotch className="spin"/> : <FolderOpen/>}{movingBatch ? "正在移动" : "移动"}</button><button className="asset-bulk-cancel" type="button" onClick={closeSelectionMode}>取消</button></div> : <div className="asset-library-summary"><span>{filtered.length} 项素材</span><button type="button" onClick={() => { setSelectionMode(true); setBatchStatus(""); }}><Checks/>批量整理</button></div>}</div>
@@ -248,14 +280,23 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
             {selected ? <><AssetPreview asset={selected}/>
               {selected.prompt ? <section><h3>提示词</h3><p>{selected.prompt}</p></section> : null}
               <section><h3>信息</h3><dl><div><dt>类型</dt><dd>{assetTypeLabel(selected)}（{assetFormat(selected)}）</dd></div><div><dt>来源</dt><dd>{selected.kind === "generated" ? <><Sparkle/>AI 生成</> : <><UploadSimple/>已上传</>}</dd></div><div><dt>文件夹</dt><dd><select aria-label="素材文件夹" value={selected.folderId ?? ""} onChange={event => void moveSelected(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></dd></div><div><dt>添加时间</dt><dd>{formatDate(selected.createdAt)}</dd></div></dl></section>
-              <section className="asset-usage-section"><div className="asset-section-title"><h3>使用位置</h3><span>{selectedUsage.length}</span></div>{selectedUsage.map(item => <button className="asset-usage-row" key={item.projectId} onClick={() => onOpen(item.projectId)}><FolderSimple/><span><b>{item.projectTitle}</b><small>{formatDate(item.addedAt)}</small></span><ArrowRight/></button>)}<div className="asset-add-project"><select value={targetProjectId} onChange={event => setTargetProjectId(event.target.value)} aria-label="选择项目"><option value="">选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select><button onClick={() => void addToProject()} disabled={!targetProjectId || adding}>{adding ? <CircleNotch className="spin"/> : <Plus/>}添加</button></div></section>
+              <div className="asset-manage-actions"><button onClick={() => manage("rename-asset", selected.id, assetName(selected))}><PencilSimple/>重命名素材</button><button onClick={() => manage("delete-asset", selected.id, assetName(selected))}><Trash/>删除素材</button></div>
+              <section className="asset-usage-section"><div className="asset-section-title"><h3>使用位置</h3><span>{selectedUsage.length}</span></div><p className="draft-save-status">记录通过素材库加入的项目；早期导入可能尚未登记。</p>{usageError ? <p className="form-error" role="status">{usageError}</p> : null}{selectedUsage.map(item => <button className="asset-usage-row" key={item.projectId} onClick={() => onOpen(item.projectId)}><FolderSimple/><span><b>{item.projectTitle}</b><small>{formatDate(item.addedAt)}</small></span><ArrowRight/></button>)}<div className="asset-add-project"><select value={targetProjectId} onChange={event => setTargetProjectId(event.target.value)} aria-label="选择项目"><option value="">选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select><button onClick={() => void addToProject()} disabled={!targetProjectId || adding}>{adding ? <CircleNotch className="spin"/> : <Plus/>}添加</button></div></section>
               {jobs.length ? <section><div className="asset-section-title"><h3>生成任务</h3><span>{jobs.length}</span></div>{jobs.map(job => <div className="asset-job" key={job.id}><ImageIcon/><span><b>{job.prompt}</b><small>{job.state === "running" ? "生成中" : job.state === "done" ? "已完成" : "失败"}</small></span>{job.state === "running" ? <CircleNotch className="spin"/> : job.state === "done" ? <Check/> : <X/>}</div>)}</section> : null}
               <a className="asset-download" href={selected.url} download={fileNameFor(selected)}><DownloadSimple/>下载文件</a></> : <div className="asset-empty-state"><FileIcon/><p>选择一项素材查看详情</p></div>}
           </aside> : null}
         </div>
       </>}
     </main>
-    {createKind ? <div className="asset-drawer-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setCreateKind(null); }}><aside className="asset-drawer" role="dialog" aria-modal="true" aria-labelledby="asset-drawer-title"><header><h2 id="asset-drawer-title">{createKind === "image" ? "生成图片" : "创建音色"}</h2><button aria-label="关闭创建面板" onClick={() => setCreateKind(null)}><X/></button></header>{createKind === "voice" ? <VoiceStudio value={voiceId} onChange={onVoice} compact/> : <form className="asset-create-form" onSubmit={generate}><label><span>画面描述</span><textarea autoFocus value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="主体、场景、构图、光线和画幅要求"/></label>{references.length ? <div className="reference-files">{references.map((file, index) => <span key={`${file.name}-${index}`}><ImageIcon/>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setReferences(files => files.filter((_, itemIndex) => itemIndex !== index))}><X/></button></span>)}</div> : null}<button type="button" className="asset-reference-button" onClick={() => referenceRef.current?.click()}><Paperclip/>添加参考图</button><input hidden ref={referenceRef} type="file" accept="image/*" multiple onChange={event => setReferences(Array.from(event.target.files ?? []))}/><label><span>生成模型</span><ModelSelector models={models} value={selection} onChange={onSelection}/></label><button className="asset-primary" disabled={!prompt.trim() || busy}>{busy ? <CircleNotch className="spin"/> : <Sparkle weight="fill"/>}{busy ? "正在生成" : "生成图片"}</button>{error ? <p className="asset-error" role="alert">{error}</p> : null}</form>}</aside></div> : null}
+    {management ? <ActionDialog title={management.kind.startsWith("rename") ? "修改名称" : "确认删除"} busy={managementBusy} onClose={() => setManagement(null)}><form onSubmit={applyManagement}><p>{management.name}</p>{management.kind.startsWith("rename") ? <label>新名称<input autoFocus value={managementName} maxLength={management.kind.endsWith("folder") ? 40 : 120} onChange={event => setManagementName(event.target.value)}/></label> : <p>{management.kind === "delete-folder" ? "文件夹将被删除，其中的素材会移到“未整理”，文件不会删除。" : "将从素材库删除此文件。已导入项目的独立副本会保留，此操作不能撤销。"}</p>}{managementError ? <p className="form-error" role="alert">{managementError}</p> : null}<footer><button type="button" disabled={managementBusy} onClick={() => setManagement(null)}>取消</button><button className={management.kind.startsWith("delete") ? "danger-action" : "primary-button"} disabled={managementBusy || (management.kind.startsWith("rename") && !managementName.trim())}>{managementBusy ? "正在处理…" : management.kind.startsWith("rename") ? "保存名称" : "确认删除"}</button></footer></form></ActionDialog> : null}
+    {drawerPresence.value ? <div ref={node => { drawerRoot.current = node; drawerPresence.ref(node); }} inert={drawerPresence.exiting} aria-hidden={drawerPresence.exiting || undefined} onKeyDown={event => {
+      if (event.key === "Escape") { event.stopPropagation(); setCreateKind(null); }
+      if (event.key !== "Tab") return;
+      const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(control => control.getClientRects().length && !control.closest('[inert]'));
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }} className="asset-drawer-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setCreateKind(null); }}><aside data-motion-panel className="asset-drawer" role="dialog" aria-modal="true" aria-labelledby="asset-drawer-title"><header><h2 id="asset-drawer-title">{drawerPresence.value === "image" ? "生成图片" : "创建音色"}</h2><button aria-label="关闭创建面板" onClick={() => setCreateKind(null)}><X/></button></header>{drawerPresence.value === "voice" ? <VoiceStudio value={voiceId} onChange={onVoice} compact/> : <form className="asset-create-form" onSubmit={generate}><label><span>画面描述</span><textarea autoFocus value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="主体、场景、构图、光线和画幅要求"/></label>{references.length ? <div className="reference-files">{references.map((file, index) => <span key={`${file.name}-${index}`}><ImageIcon/>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setReferences(files => files.filter((_, itemIndex) => itemIndex !== index))}><X/></button></span>)}</div> : null}<button type="button" className="asset-reference-button" onClick={() => referenceRef.current?.click()}><Paperclip/>添加参考图</button><input hidden ref={referenceRef} type="file" accept="image/*" multiple onChange={event => setReferences(Array.from(event.target.files ?? []))}/><label><span>生成模型</span><ModelSelector models={models} value={selection} onChange={onSelection}/></label><button className="asset-primary" disabled={!prompt.trim() || busy}>{busy ? <CircleNotch className="spin"/> : <Sparkle weight="fill"/>}{busy ? "正在生成" : "生成图片"}</button>{error ? <p className="asset-error" role="alert">{error}</p> : null}</form>}</aside></div> : null}
   </div>;
 }
 

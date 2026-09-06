@@ -305,12 +305,7 @@ impl CodexClient {
                 "path": path
             }));
         }
-        input.push(json!({ "type": "text", "text": prompt }));
-        input.extend(
-            reference_images
-                .iter()
-                .map(|path| json!({ "type": "localImage", "path": path, "detail": "original" })),
-        );
+        input.extend(turn_user_input(prompt, reference_images));
 
         let mut params = json!({
             "threadId": thread_id,
@@ -657,10 +652,32 @@ fn spawn_stderr_reader(stderr: tokio::process::ChildStderr) {
     });
 }
 
+fn turn_user_input(prompt: &str, images: &[PathBuf]) -> Vec<Value> {
+    let mut input = vec![json!({ "type": "text", "text": prompt })];
+    input.extend(
+        images
+            .iter()
+            .map(|path| json!({ "type": "localImage", "path": path, "detail": "original" })),
+    );
+    input
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn feedback_screenshots_are_visual_inputs_not_only_prompt_paths() {
+        let path = PathBuf::from("/tmp/project/.yingya/feedback-assets/frame.png");
+        let input = turn_user_input("把标记中的形状改成圆形", std::slice::from_ref(&path));
+        assert_eq!(input[0]["type"], "text");
+        assert_eq!(
+            input[1],
+            json!({"type":"localImage","path":path,"detail":"original"})
+        );
+        assert_eq!(turn_user_input("普通消息", &[]).len(), 1);
+    }
 
     #[test]
     fn runtime_validation_rejects_missing_binary() {

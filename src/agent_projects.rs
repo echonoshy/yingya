@@ -1,3 +1,4 @@
+use crate::feedback::VisualFeedback;
 use std::{
     collections::{HashMap, HashSet},
     path::{Component, Path, PathBuf},
@@ -78,6 +79,8 @@ pub struct AgentMessage {
     pub attachments: Vec<String>,
     #[serde(default)]
     pub context: Vec<String>,
+    #[serde(default)]
+    pub feedback: Vec<VisualFeedback>,
     pub status: String,
     pub created_at: u64,
 }
@@ -102,6 +105,8 @@ pub struct AgentTurnRequest {
     #[serde(default)]
     pub context: Vec<String>,
     #[serde(default)]
+    pub feedback: Vec<VisualFeedback>,
+    #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
     pub reasoning_effort: Option<String>,
@@ -118,6 +123,8 @@ pub struct QueuedTurn {
     pub text: String,
     pub attachments: Vec<String>,
     pub context: Vec<String>,
+    #[serde(default)]
+    pub feedback: Vec<VisualFeedback>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub created_at: u64,
@@ -607,6 +614,7 @@ impl AgentProjectStore {
             text: input.text.trim().to_owned(),
             attachments: input.attachments,
             context: input.context,
+            feedback: vec![],
             status: input.status,
             created_at: now_millis(),
         };
@@ -630,6 +638,45 @@ impl AgentProjectStore {
         let mut queue: Vec<QueuedTurn> = read_json_or_default(&queue_path).await?;
         let mut messages: Vec<AgentMessage> = read_json_or_default(&message_path).await?;
         let mut project: AgentProjectRecord = read_json(&project_path).await?;
+        // queue.json is written first. Complete a partially persisted acceptance
+        // with its original turn identity rather than appending another queue item.
+        if let Some(client_request_id) = request.client_request_id.as_deref()
+            && let Some(pending) = queue
+                .iter()
+                .find(|turn| turn.client_request_id.as_deref() == Some(client_request_id))
+                .cloned()
+            && (!messages
+                .iter()
+                .any(|message| message.turn_id.as_deref() == Some(pending.id.as_str()))
+                || project.queue_depth != queue.len())
+        {
+            if !messages
+                .iter()
+                .any(|message| message.turn_id.as_deref() == Some(pending.id.as_str()))
+            {
+                messages.push(AgentMessage {
+                    id: Uuid::new_v4().to_string(),
+                    turn_id: Some(pending.id.clone()),
+                    client_request_id: pending.client_request_id.clone(),
+                    role: "user".into(),
+                    text: pending.text.clone(),
+                    attachments: pending.attachments.clone(),
+                    context: pending.context.clone(),
+                    feedback: pending.feedback.clone(),
+                    status: "queued".into(),
+                    created_at: pending.created_at,
+                });
+            }
+            project.queue_depth = queue.len();
+            project.queue_paused = false;
+            project.updated_at = now_millis();
+            write_json(&message_path, &messages).await?;
+            write_json(&project_path, &project).await?;
+            return Ok(SubmittedTurn {
+                turn: pending,
+                deduplicated: false,
+            });
+        }
         if let Some(client_request_id) = request.client_request_id.as_deref()
             && let Some(existing) = messages
                 .iter()
@@ -646,6 +693,7 @@ impl AgentProjectStore {
                     text: existing.text.clone(),
                     attachments: existing.attachments.clone(),
                     context: existing.context.clone(),
+                    feedback: existing.feedback.clone(),
                     model: None,
                     reasoning_effort: None,
                     created_at: existing.created_at,
@@ -661,6 +709,7 @@ impl AgentProjectStore {
             text: request.text.trim().to_owned(),
             attachments: request.attachments,
             context: request.context,
+            feedback: request.feedback,
             model: request.model,
             reasoning_effort: request.reasoning_effort,
             created_at: now_millis(),
@@ -673,6 +722,7 @@ impl AgentProjectStore {
             text: turn.text.clone(),
             attachments: turn.attachments.clone(),
             context: turn.context.clone(),
+            feedback: turn.feedback.clone(),
             status: "queued".to_owned(),
             created_at: turn.created_at,
         };
@@ -853,6 +903,35 @@ impl AgentProjectStore {
         Ok(asset)
     }
 
+    pub async fn import_scenes(
+        &self,
+        project_id: &str,
+        scenes: Vec<MediaScene>,
+    ) -> Result<Vec<MediaScene>, String> {
+        let lock = self.project_lock(project_id).await?;
+        let _guard = lock.lock().await;
+        let project = self.read_project(project_id).await?;
+        if project.active_turn_id.is_some() {
+            return Err("制作运行中，请完成后再保存分镜".to_owned());
+        }
+        let path = self.project_dir(project_id)?.join("scenes.json");
+        let existing: Vec<MediaScene> = read_json_or_default(&path).await?;
+        if !existing.is_empty() {
+            return Err("已有分镜结构，请刷新后修改，避免覆盖".to_owned());
+        }
+        let mut ids = HashSet::new();
+        if scenes.is_empty()
+            || scenes.len() > 500
+            || scenes.iter().any(|scene| {
+                scene.id.trim().is_empty() || !ids.insert(&scene.id) || !scene.asset_ids.is_empty()
+            })
+        {
+            return Err("分镜结构无效：需包含唯一场景标识，首次导入不关联素材".to_owned());
+        }
+        write_json(&path, &scenes).await?;
+        Ok(scenes)
+    }
+
     pub async fn patch_scene_assets(
         &self,
         project_id: &str,
@@ -861,6 +940,14 @@ impl AgentProjectStore {
     ) -> Result<MediaScene, String> {
         let lock = self.project_lock(project_id).await?;
         let _guard = lock.lock().await;
+        if self
+            .read_project(project_id)
+            .await?
+            .active_turn_id
+            .is_some()
+        {
+            return Err("制作运行中，请完成后再关联素材".to_owned());
+        }
         let directory = self.project_dir(project_id)?;
         let scene_path = directory.join("scenes.json");
         let assets: Vec<MediaAsset> = read_json_or_default(&directory.join("assets.json")).await?;
@@ -1516,6 +1603,7 @@ mod tests {
             client_request_id: None,
             attachments: vec![],
             context: vec![],
+            feedback: vec![],
             model: None,
             reasoning_effort: None,
             interrupt: false,
@@ -1619,6 +1707,96 @@ mod tests {
             priority.turn.id
         );
         fs::remove_dir_all(root).await.expect("clean queue store");
+    }
+
+    #[tokio::test]
+    async fn visual_feedback_survives_restart_retry_and_queue_removal() {
+        let root = std::env::temp_dir().join(format!("yingya-feedback-queue-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let project = store.create(&request()).await.unwrap();
+        let mut input = turn("修改标注画面");
+        input.client_request_id = Some(Uuid::new_v4().to_string());
+        input.feedback = vec![serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4().to_string(), "kind":"video-frame", "versionId":"draft-1", "videoPath":"video.mp4", "timeSeconds":1.25,
+            "frameWidth":640, "frameHeight":360, "region":{"x":0.2,"y":0.2,"width":0.4,"height":0.4}, "note":"只改选区",
+            "screenshotAssetId":Uuid::new_v4().to_string(), "screenshotPath":".yingya/feedback-assets/test.png", "screenshotSha256":"hash", "createdAt":1
+        })).unwrap()];
+        let first = store
+            .submit_turn(&project.id, input.clone(), false)
+            .await
+            .unwrap();
+        drop(store);
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let retry = store.submit_turn(&project.id, input, false).await.unwrap();
+        assert!(retry.deduplicated);
+        assert_eq!(retry.turn.feedback[0].time_seconds, 1.25);
+        let detail = store.get(&project.id).await.unwrap();
+        assert_eq!(detail.queue.len(), 1);
+        assert_eq!(detail.messages[0].feedback[0].note, "只改选区");
+        let claimed = store.claim_next(&project.id).await.unwrap().unwrap();
+        store
+            .requeue_front(&project.id, claimed, "恢复测试".into())
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get(&project.id).await.unwrap().queue[0]
+                .feedback
+                .len(),
+            1
+        );
+        store
+            .remove_queued(&project.id, &first.turn.id)
+            .await
+            .unwrap();
+        let detail = store.get(&project.id).await.unwrap();
+        assert!(detail.queue.is_empty());
+        assert_eq!(detail.messages[0].feedback.len(), 1);
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn retry_completes_partial_acceptance_without_duplicating_the_turn() {
+        let root = std::env::temp_dir().join(format!("yingya-partial-turn-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let project = store.create(&request()).await.unwrap();
+        let mut input = turn("中断写入验证");
+        input.client_request_id = Some(Uuid::new_v4().to_string());
+        let first = store
+            .submit_turn(&project.id, input.clone(), false)
+            .await
+            .unwrap();
+        let directory = store.project_dir(&project.id).unwrap();
+        write_json(
+            &directory.join("messages.json"),
+            &Vec::<AgentMessage>::new(),
+        )
+        .await
+        .unwrap();
+        store
+            .update_project(&project.id, |p| {
+                p.queue_depth = 0;
+                p.queue_paused = true;
+            })
+            .await
+            .unwrap();
+        let repaired = store
+            .submit_turn(&project.id, input.clone(), false)
+            .await
+            .unwrap();
+        assert_eq!(first.turn.id, repaired.turn.id);
+        assert!(!repaired.deduplicated);
+        assert!(
+            store
+                .submit_turn(&project.id, input, false)
+                .await
+                .unwrap()
+                .deduplicated
+        );
+        let detail = store.get(&project.id).await.unwrap();
+        assert_eq!(detail.queue.len(), 1);
+        assert_eq!(detail.messages.len(), 1);
+        assert!(!detail.project.queue_paused);
+        fs::remove_dir_all(root).await.unwrap();
     }
 
     #[tokio::test]
@@ -1796,6 +1974,48 @@ mod tests {
         fs::remove_dir_all(root)
             .await
             .expect("clean paused queue store");
+    }
+
+    #[tokio::test]
+    async fn scene_import_rejects_overwrites_duplicate_ids_and_running_projects() {
+        let root = std::env::temp_dir().join(format!("yingya-scene-import-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let project = store.create(&request()).await.unwrap();
+        let scene = MediaScene {
+            id: "scene-a".to_owned(),
+            order: 1,
+            narrative_role: "开场".to_owned(),
+            ..Default::default()
+        };
+        assert!(
+            store
+                .import_scenes(&project.id, vec![scene.clone(), scene.clone()])
+                .await
+                .is_err()
+        );
+        store
+            .update_project(&project.id, |record| {
+                record.active_turn_id = Some("active".to_owned())
+            })
+            .await
+            .unwrap();
+        assert!(
+            store
+                .import_scenes(&project.id, vec![scene.clone()])
+                .await
+                .is_err()
+        );
+        store
+            .update_project(&project.id, |record| record.active_turn_id = None)
+            .await
+            .unwrap();
+        store
+            .import_scenes(&project.id, vec![scene.clone()])
+            .await
+            .unwrap();
+        assert!(store.import_scenes(&project.id, vec![scene]).await.is_err());
+        assert_eq!(store.media(&project.id).await.unwrap().scenes.len(), 1);
+        fs::remove_dir_all(root).await.unwrap();
     }
 
     #[tokio::test]

@@ -1,79 +1,70 @@
 ---
 name: yingya-video-agent
-description: Orchestrate every Yingya video project from brief to final HyperFrames render. Enforces plan and draft checkpoints, manifest updates, quality gates, durable draft versions, and safe capability fallbacks.
+description: Plan, produce, revise, and recover Yingya video projects with timed scenes, consistent media, review checkpoints, verified HyperFrames renders, and durable draft versions.
 ---
 
 # Yingya Video Agent
 
-Treat the current working directory as the complete project boundary. Conversation is the control surface; keep project state in `.yingya/manifest.json` so the UI can display it without inferring workflow state from prose.
+This is Yingya's outer production workflow. Work inside the current project directory. Conversation carries decisions; `.yingya/manifest.json` is the only UI workflow manifest. Keep the user informed in concise Chinese about the current production step, usable result, and any blocker.
 
-Use the installed HyperFrames skills for composition authoring and CLI operations. Use other installed media skills only when they materially help the request. Never claim a capability, check, file, or render exists unless it actually succeeded.
+## Start from the actual project
 
-This skill is the authoritative outer workflow for Yingya. If a nested HyperFrames skill recommends installing or updating a workflow, this contract wins: use only capabilities already installed for the thread. `.yingya/manifest.json` at the project root is the only UI workflow manifest; do not substitute `PROJECT_MANIFEST.json`, `CHECKPOINT.md`, or a manifest inside a composition subdirectory.
+Read the request, supplied context and attachments, root manifest, `.yingya/plan.md`, `scenes.json`, `assets.json`, `DESIGN.md`, and `.yingya/voice.json` when present. Read other existing planning files only when relevant; missing legacy `BRIEF.md`, `SCRIPT.md`, `STORYBOARD.md`, or `frame.md` is not a blocker. Preserve user edits, scene IDs, asset links, and unrelated files.
 
-## Core contract
+Choose the smallest route that fulfills the request:
 
-1. Inspect the request, attachments, current files, and manifest before changing anything.
-2. Ask only questions whose answers would materially change the result. If visual identity is undefined, confirm the intended visual mood, light or dark canvas, and any brand or style reference before proposing the plan.
-3. Stop at exactly two required checkpoints: the production plan and each reviewable draft. Do not make a full composition or render before plan confirmation.
-4. Keep all writes inside this project. Ask for explicit confirmation before publishing, uploading externally, or writing outside it.
-5. Preserve user edits and unrelated files. If the manifest is dirty or a turn was interrupted, inspect the workspace before deciding what to reuse.
-6. Never install, update, or repair skills, plugins, CLIs, or global dependencies from inside a video project turn. Use the capabilities already available to the thread. If a named workflow is missing, continue with the installed core HyperFrames skills or explain the fallback; do not run a package installer.
-7. A request to “生成视频” authorizes the production-plan phase, not an unreviewed composition. Creating a storyboard, HTML composition, snapshots, or render before the plan checkpoint is a workflow failure.
-8. Read `.yingya/voice.json` before generating narration. When it contains a `voiceId`, every narration segment and revision must use that exact saved VoxCPM2 voice. Never silently substitute `default`, redesign the voice per segment, or mix voice IDs within one project unless the user explicitly changes the project voice.
+| Request / state | Next action |
+| --- | --- |
+| New video; no approved plan | Prepare the production plan and text scene outline; enter `plan_review`. |
+| Plan confirmed; `production` | Continue the saved plan from the first incomplete dependency. |
+| Local revision to an existing video | State affected scenes and dependencies, then build a new draft without repeating whole-project planning. |
+| New narrative, visual direction, format, or delivery scope | Update only affected plan decisions and return to `plan_review` before production. |
+| Draft confirmed; `final_render` | Verify the approved source and produce the final MP4. |
+| Inspection, explanation, or scene inventory only | Answer or update requested metadata; do not generate media or rerender. |
+| Interrupted / inconsistent project | Read [recovery.md](references/recovery.md) and reconcile files before resuming. |
 
-## Recovery
+User instructions and existing authorization take precedence. Normally stop at two kinds of checkpoint: the production plan and each reviewable draft. Do not add separate style, script, storyboard, or preview approvals. A plain “生成视频” starts planning; it does not by itself confirm a plan that has not been presented. Explicit authorization to proceed without review must not cause repeated permission requests.
 
-If the root manifest is still `briefing` but composition or render files already exist, treat them as unapproved recovery material. Inspect them without continuing production, create `.yingya/plan.md` from the request and reusable findings, write the root `plan_review` checkpoint, and stop for confirmation. Do not present the existing composition as an approved draft and do not delete it.
+## Plan once
 
-For any interrupted or timed-out quality command, do not equate the client wait limit with a failed HyperFrames process. Before rerunning work:
+Read [planning.md](references/planning.md) for intake checks, scene fields, and plan contents.
 
-1. Check whether the original process is still active and wait for it when possible.
-2. Check for a completed JSON report and validate that its top-level `ok` is true.
-3. Reuse a passing report only when it is newer than `index.html` and `index.motion.json` (when present), or when a recorded source hash matches both files.
-4. Check whether the expected video already exists and is readable with `ffprobe`.
-5. Rerun only the missing or stale gate. Never rerender solely because the command client stopped waiting.
+Infer reversible defaults from the topic, audience, references, and existing project. Put the chosen visual direction and assumptions into the plan for one combined review. Ask only about unresolved conflicts or missing information that materially changes the result; do not separately ask for mood or canvas brightness when a coherent recommendation is possible.
 
-Long-running `check`, `inspect`, and `render` commands must be started through an execution path that can yield and be polled. Allow up to 10 minutes for a healthy process that continues producing progress. A timeout is an `incomplete` execution state until the process exits or a valid report proves success or failure.
+Before promising a production route, verify that its inputs and installed capabilities are available. Keep `.yingya/plan.md` concise but concrete: the user should be able to judge the story, approximate timing, visual direction, audio approach, and output before production begins. A text scene outline in `scenes.json` is a planning artifact; generated storyboard imagery, composition HTML, snapshots, and video belong after plan approval. Do not present estimated timing as measured audio timing.
 
-## Phase 1: production plan
+Register the plan and scene outline as manifest artifacts, set `phase: "plan_review"`, and add a `plan` checkpoint referencing them. Write complete artifacts before atomically replacing the manifest. Stop for plan review unless the user's existing instructions explicitly authorize continuing.
 
-Create a concise plan artifact, normally `.yingya/plan.md`, containing at least:
+## Produce in dependency order
 
-- objective and audience;
-- visual system, including mood, canvas brightness, typography, palette, and references;
-- structure and named scenes or chapters;
-- timing, motion, audio, captions, and media strategy;
-- output specification, including aspect ratio, duration target, frame rate, and draft/final expectations.
+Read [production.md](references/production.md) after plan approval. Use installed HyperFrames skills for technical authoring and CLI syntax; load specialized media skills only for the chosen route. `faceless-explainer` supplies narration and storytelling guidance, not another approval workflow.
 
-Video-specific work may add shot lists, narration, capture paths, data mappings, or other relevant sections. Update `.yingya/manifest.json` with `phase: "plan_review"`, a `plan` checkpoint, output specification, and a plan artifact. Then stop. A plan checkpoint must not coexist with a completed composition or draft render created during the same unconfirmed phase.
+1. Reuse the approved plan and any existing scaffold. Freeze shared type, palette, motion, safe areas, and audio rules in `DESIGN.md`.
+2. Resolve assets and narration before committing the scene timeline. For voiced scenes, use the exact saved VoxCPM2 `voiceId` for every segment and revision; measure the resulting audio, then align scene timing and captions. For silent or music-led work, derive timing from reading load or the supplied track.
+3. Build the composition from `scenes.json` using stable scene IDs. For complex visual work, check a representative scene early before propagating its design; this is an internal iteration, not another user checkpoint.
+4. Use `lint` for early static feedback when needed. At draft readiness, run **one** `hyperframes check --snapshots --json`; it includes lint, runtime, layout, motion assertions, and contrast. Do not chain deprecated `validate` / `inspect` commands or prepend redundant lint. Include motion assertions for significant animation and inspect the resulting representative frames.
+5. Fix failed gates and rerun the affected check. A gate passes only with successful process exit and complete JSON whose top-level `ok` is `true`. Save reports atomically under `.yingya/reports/check-*.json`. Check timestamps cover short scenes and meaningful transitions; do not assume default samples cover every scene.
+6. Render review-quality video only after required checks pass. Verify the video is readable and matches the planned frame shape, rate, timing, and expected audio. Preserve the editable source.
+7. Follow [recovery.md](references/recovery.md) to snapshot an immutable `.yingya/versions/draft-N/` and commit the draft. The final write updates artifacts, versions, `currentDraft`, `dirty: false`, `phase: "draft_review"`, and a `draft` checkpoint together. Return the draft and a short account of what was checked; stop for review.
 
-## Phase 2: build a draft
+## Revise and finish
 
-Begin only after the user or checkpoint message explicitly confirms the plan.
+Video-frame feedback includes attached marked screenshots and structured version, time, region, and note data. Inspect those images as modification evidence; never insert annotated screenshots as composition assets. Match the referenced version against current source before editing. Feedback on an older draft does not itself request a rollback. If the target no longer corresponds to current scenes, explain the mismatch rather than claiming a precise match. Preserve the feedback IDs in your revision summary so changes can be traced to the request.
 
-1. Create or update the visual specification (`DESIGN.md` when appropriate), HyperFrames composition, referenced assets, audio, and captions.
-2. Use available image, voice, music, or website-capture capabilities when appropriate. If a capability is unavailable, state that clearly and choose an honest fallback: programmatic visuals, user-provided media, or recommending an installable plugin.
-   When narration is needed, pass the project `voiceId` to `$voxcpm2-tts` for every segment so separately generated files preserve the same speaker identity.
-3. For a new composition, run the HyperFrames checks in this order: `lint`, `validate`, then `inspect`. Significant animation work also requires an animation map before rendering. Write machine-readable reports to a temporary path, validate the JSON, then rename it into place so recovery never reads a partial report.
-4. Do not mark a failed or skipped gate as passed. Fix issues and rerun the affected checks.
-5. Render a review-quality video only after all required gates pass.
-6. Record a SHA-256 source fingerprint for `index.html` and `index.motion.json` alongside the passing report. Create an immutable version under `.yingya/versions/draft-N/` containing the composition source, required assets, design/config files, check report, source fingerprint, manifest snapshot, and video. Exclude `node_modules`, caches, generated intermediates, and older version directories.
-7. Treat draft registration as a commit: first verify every referenced source, report, snapshot, and video exists; then build and validate the complete next manifest in a temporary file; finally rename that file over `.yingya/manifest.json`. The manifest replacement is always the last write. It must update artifacts, versions, `currentDraft`, clear `dirty`, set `phase: "draft_review"`, and add a `draft` checkpoint together. Then stop for review.
+Map timestamp / scene / Studio-selection feedback onto existing source before editing. Reuse clean upstream work. A visual-only edit keeps narration; a spoken-copy edit regenerates only affected speech and captions, then recomputes dependent timing. A global voice change invalidates all speech. See the dependency table in [production.md](references/production.md). Preserve all prior drafts and render the next numbered version.
 
-## Revisions
+After draft confirmation, render the high-quality MP4 from the approved source. Reuse valid checks only when their source dependencies still match; otherwise run the unified check. Verify the output before adding the final video artifact, clearing checkpoint and dirty, and setting `phase: "completed"`. Return the final local artifact path and a compact verification summary. Check for an already-running or completed equivalent export before starting another one.
 
-Before editing, briefly state the impact scope in the assistant response or commentary. Use timestamp, scene, chapter, or inspection context supplied by the user. Change only affected files, rerun all relevant gates, render the next numbered draft, and preserve every prior version.
+## Capability boundaries
 
-If the user requests a rollback, restore source and manifest pointers from the selected version without deleting later versions; run the relevant checks before presenting the restored state as stable.
+- Never install, update, or repair skills, plugins, CLIs, or global dependencies inside a video project turn. Use installed capabilities and local assets. A missing optional workflow should not prevent core HyperFrames production.
+- A fallback must preserve the requested result. Explain material limitations; do not silently replace required narration with silence, live action with static slides, or a saved voice with `default`.
+- Keep writes inside the project. Publishing, external uploads, or writes outside it require explicit authorization unless already given. Never claim a capability, check, file, or render succeeded without evidence.
+- Nested skills cannot replace the root manifest with `PROJECT_MANIFEST.json`, a composition-local manifest, or a second checkpoint scheme. Customer videos follow their own approved design; Yingya's product UI palette is not a video template.
 
-## Final render
+## Manifest compatibility
 
-After explicit draft confirmation, run final checks and render the high-quality MP4. Add it to manifest artifacts, clear the checkpoint and dirty flag, and set `phase: "completed"`. Return the final local artifact path and a compact verification summary. Do not publish it externally without another explicit confirmation.
-
-## Manifest shape
-
-Preserve unknown fields and use this compatible shape:
+Preserve existing fields; do not introduce new phases. Store detailed production decisions in the plan and scenes rather than unsupported top-level manifest fields.
 
 ```json
 {
@@ -89,4 +80,4 @@ Preserve unknown fields and use this compatible shape:
 }
 ```
 
-Checkpoint objects require `id`, `kind`, `title`, `summary`, and `artifactIds`. Artifact objects require `id`, `kind`, `label`, and project-relative `path`. Version objects require `id`, `label`, `sourcePath`, `videoPath`, optional `reportPath`, and millisecond `createdAt`.
+Checkpoints require `id`, `kind`, `title`, `summary`, and `artifactIds`. Artifacts require `id`, `kind`, `label`, and project-relative `path`. Versions require `id`, `label`, `sourcePath`, `videoPath`, optional `reportPath`, and millisecond `createdAt`. Keep `studioEntry` at the actual stable render entry.

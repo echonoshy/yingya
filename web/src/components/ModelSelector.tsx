@@ -1,3 +1,4 @@
+import { useMotionPresence } from "../hooks/useMotionPresence";
 import { CaretRight, Check } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CodexModel, ModelSelection } from "../types";
@@ -20,6 +21,7 @@ export function ModelSelector({ models, value, onChange }: {
   onChange: (value: ModelSelection) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const presence = useMotionPresence(open ? true : null);
   const root = useRef<HTMLDivElement>(null);
   const matchingModel = models.find(model => model.model === value.model);
   const selectedModel = matchingModel ?? models[0];
@@ -40,11 +42,11 @@ export function ModelSelector({ models, value, onChange }: {
   const displayName = matchingModel?.displayName ?? value.model;
   const effortName = effortLabels[value.reasoningEffort] ?? value.reasoningEffort;
 
-  return <div className="model-selector" ref={root}>
+  return <div className="model-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
     <button type="button" className="model-trigger" onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
       {displayName} · {effortName}<span>⌄</span>
     </button>
-    {open ? <div className="model-menu" role="menu">
+    {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu">
       <div className="model-menu-primary">
         {models.map(model => <button
           type="button"
@@ -68,6 +70,7 @@ export function ModelSelector({ models, value, onChange }: {
           onClick={() => {
             onChange({ model: selectedModel?.model ?? value.model, reasoningEffort: effort });
             setOpen(false);
+            root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus();
           }}
         >
           <span>{effortLabels[effort] ?? effort}</span>

@@ -8,13 +8,24 @@ export const codexModelSchema = z.object({
   supportedReasoningEfforts: z.array(reasoningEffortOptionSchema), defaultReasoningEffort: z.string(), isDefault: z.boolean(),
 });
 export const projectRecordSchema = z.object({
+  workflowStatus: z.enum(["active", "review", "completed", "failed"]).optional(), workflowLabel: z.string().optional(),
   id: z.string(), title: z.string(), status: z.string(), statusLabel: z.string(), threadId: optionalString, activeTurnId: optionalString,
   queueDepth: z.number(), queuePaused: z.boolean().default(false), model: z.string(), reasoningEffort: z.string(), aspectRatio: z.string(), voiceId: z.string().default("default"), createdAt: z.number(), updatedAt: z.number(),
 });
-export const agentMessageSchema = z.object({
-  id: z.string(), turnId: optionalString, clientRequestId: optionalString, role: z.enum(["user", "assistant"]), text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), status: z.string(), createdAt: z.number(),
+export const feedbackRegionSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().positive().max(1), height: z.number().positive().max(1) }).refine(r => r.x + r.width <= 1.000001 && r.y + r.height <= 1.000001);
+export const feedbackAssetSchema = z.object({ id: z.string().uuid(), path: z.string(), sha256: z.string(), width: z.number().positive(), height: z.number().positive() });
+export const visualFeedbackSchema = z.object({
+  id: z.string().uuid(), kind: z.literal("video-frame"), versionId: z.string(), videoPath: z.string(), timeSeconds: z.number().nonnegative(),
+  frameWidth: z.number().positive(), frameHeight: z.number().positive(), region: feedbackRegionSchema, note: z.string().min(1).max(2000),
+  screenshotAssetId: z.string().uuid(), screenshotPath: z.string(), screenshotSha256: z.string(), createdAt: z.number(),
 });
-export const queuedTurnSchema = z.object({ id: z.string(), clientRequestId: optionalString, text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), model: optionalString, reasoningEffort: optionalString, createdAt: z.number() });
+export type VisualFeedback = z.infer<typeof visualFeedbackSchema>;
+export type FeedbackRegion = z.infer<typeof feedbackRegionSchema>;
+export type FeedbackAsset = z.infer<typeof feedbackAssetSchema>;
+export const agentMessageSchema = z.object({
+  id: z.string(), turnId: optionalString, clientRequestId: optionalString, role: z.enum(["user", "assistant"]), text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), feedback: z.array(visualFeedbackSchema).default([]), status: z.string(), createdAt: z.number(),
+});
+export const queuedTurnSchema = z.object({ id: z.string(), clientRequestId: optionalString, text: z.string(), attachments: z.array(z.string()), context: z.array(z.string()), feedback: z.array(visualFeedbackSchema).default([]), model: optionalString, reasoningEffort: optionalString, createdAt: z.number() });
 export const agentEventSchema = z.object({ seq: z.number(), projectId: z.string(), turnId: optionalString, method: z.string(), payload: z.unknown(), createdAt: z.number() });
 export const checkpointSchema = z.object({ id: z.string(), kind: z.string(), title: z.string(), summary: z.string(), artifactIds: z.array(z.string()) });
 export const artifactSchema = z.object({

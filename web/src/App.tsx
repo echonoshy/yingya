@@ -1,5 +1,13 @@
-import { ArrowRight, ArrowUp, CheckCircle, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, WifiHigh, X } from "@phosphor-icons/react";
+import { useMotionPresence } from "./hooks/useMotionPresence";
+import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, WifiHigh, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useDraftFiles } from "./hooks/useDraftFiles";
+import { CreationSettings, creationBrief, creationSettingsSchema, defaultCreationSettings } from "./components/CreationSettings";
+import { z } from "zod";
+import { useSavedState } from "./hooks/useSavedState";
+import { useAppRoute } from "./hooks/useAppRoute";
+import { TaskCenter } from "./components/TaskCenter";
+import { projectGroup, projectStatus, projectSummary } from "./projectState";
 import { api } from "./api";
 import { AgentWorkspace } from "./components/AgentWorkspace";
 import { AssetStudio } from "./components/AssetStudio";
@@ -20,13 +28,37 @@ function savedSelection(): ModelSelection {
 
 export function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection); const [voiceId, setVoiceId] = useState(() => readStringSetting("yingya-voice-id", "default"));
-  const [section, setSection] = useState<"create" | "assets">("create");
+  const [route, navigate] = useAppRoute();
+  const [opening, setOpening] = useState(Boolean(route.projectId));
   const saveSelection = (next: ModelSelection) => { setSelection(next); writeModelSelection(next); };
   const saveVoice = (next: string) => { setVoiceId(next); writeStringSetting("yingya-voice-id", next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
-  const updateActiveProject = useCallback((detail: ProjectDetail) => { setActive(detail); setProjects(current => current.map(project => project.id === detail.id ? detail : project)); }, []);
+  const updateActiveProject = useCallback((detail: ProjectDetail) => { setActive(detail); setProjects(current => current.map(project => project.id === detail.id ? projectSummary(detail) : project)); }, []);
   useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(value.data)).catch(() => undefined); }, [refreshProjects]);
-  async function open(id: string) { setLoading(true); setOpenError(""); try { const detail = await api.getProject(id); setSection("create"); setActive(detail); saveSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); saveVoice(detail.voiceId); setOffline(false); } catch (reason) { setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } finally { setLoading(false); } }
+  const open = (id: string) => navigate({ section: "create", projectId: id });
+  useEffect(() => {
+    let cancelled = false;
+    if (!route.projectId) { setActive(null); setOpening(false); setOpenError(""); return; }
+    setOpening(true); setOpenError("");
+    void api.getProject(route.projectId).then(detail => {
+      if (cancelled) return;
+      setActive(detail); setSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); setVoiceId(detail.voiceId); setOffline(false);
+    }).catch(reason => { if (!cancelled) { setActive(null); setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } }).finally(() => { if (!cancelled) setOpening(false); });
+    return () => { cancelled = true; };
+  }, [route.projectId]);
+  useEffect(() => {
+    let disposed = false, inFlight = false;
+    const sync = async () => {
+      if (inFlight || document.visibilityState === "hidden") return;
+      inFlight = true;
+      try { const latest = await api.listProjects(); if (!disposed) { setProjects(latest); setOffline(false); } }
+      catch { if (!disposed) setOffline(true); }
+      finally { inFlight = false; }
+    };
+    const timer = window.setInterval(() => void sync(), 10000);
+    document.addEventListener("visibilitychange", sync);
+    return () => { disposed = true; window.clearInterval(timer); document.removeEventListener("visibilitychange", sync); };
+  }, []);
   async function deleteProject(project: ProjectRecord) {
     await api.deleteProject(project.id);
     setProjects(current => current.filter(item => item.id !== project.id));
@@ -34,36 +66,43 @@ export function App() {
   }
   async function renameProject(id: string, title: string) {
     const updated = await api.renameProject(id, title);
-    setProjects(current => current.map(project => project.id === id ? updated : project));
+    setProjects(current => current.map(project => project.id === id ? { ...project, ...updated } : project));
     setActive(current => current?.id === id ? { ...current, ...updated } : current);
   }
   async function setProjectVoice(id: string, nextVoiceId: string) {
     const updated = await api.setProjectVoice(id, nextVoiceId);
     saveVoice(updated.voiceId);
-    setProjects(current => current.map(project => project.id === id ? updated : project));
+    setProjects(current => current.map(project => project.id === id ? { ...project, ...updated } : project));
     setActive(current => current?.id === id ? { ...current, ...updated } : current);
   }
   if (offline && !active) return <div className="state-screen"><CloudSlash/><h1>本地服务未连接</h1><p>项目仍保存在电脑上。服务恢复后可继续。</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
-  const showCreate = () => { setSection("create"); setActive(null); void refreshProjects(); };
-  const showAssets = () => { setSection("assets"); setActive(null); };
-  if (active) return <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showCreate}/>;
-  if (section === "assets") return <AssetStudio projects={projects} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate} onOpen={open}/>;
-  return <StartScreen projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); void refreshProjects(); }}/>;
+  const showCreate = () => { navigate({ section: "create" }); void refreshProjects(); };
+  const showAssets = () => navigate({ section: "assets" });
+  const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
+    : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showCreate}/>
+    : route.section === "assets" ? <AssetStudio projects={projects} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate} onOpen={open}/>
+    : <StartScreen openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
+  return <>{surface}<TaskCenter projects={projects} offline={offline} onOpen={open}/></>;
+
 }
 
-function StartScreen({ projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
-  const [prompt, setPrompt] = useState(""); const [aspectRatio, setAspectRatio] = useState("9:16"); const [files, setFiles] = useState<File[]>([]); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
+function StartScreen({ openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
+  const [prompt, setPrompt, promptSaved] = useSavedState("yingya-home-prompt", z.string(), ""); const [aspectRatio, setAspectRatio] = useSavedState("yingya-home-aspect", z.enum(["9:16", "16:9", "1:1"]), "9:16"); const [files, setFiles, fileDraftStatus] = useDraftFiles("home");
+  const [settings, setSettings] = useSavedState("yingya-creation-settings", creationSettingsSchema, defaultCreationSettings);
+  const [libraryIds, setLibraryIds] = useSavedState("yingya-home-library", z.array(z.string()), []); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
   const creationAttemptRef = useRef<{ signature: string; creationRequestId: string; turnRequestId: string; uploadedPaths: Map<string, string> } | null>(null);
   const [filter, setFilter] = useState<ProjectFilter>("all");
   const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState("");
+  const menuPresence = useMotionPresence(openMenu || null);
   const [covers, setCovers] = useState<Record<string, string>>({});
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const visibleProjects = projects.filter(project => (filter === "all" || projectGroup(project) === filter) && project.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const filterCounts = Object.fromEntries(projectFilters.map(item => [item.id, projects.filter(project => item.id === "all" || projectGroup(project) === item.id).length]));
+  const coverProjectIds = projects.slice(0, 12).map(project => project.id).join(",");
   useEffect(() => {
     let cancelled = false;
-    void Promise.all(projects.slice(0, 12).map(async project => {
+    void Promise.all(coverProjectIds.split(",").filter(Boolean).map(id => ({ id })).map(async project => {
       try {
         const media = await api.getProjectMedia(project.id);
         const image = media.assets.find(asset => asset.mediaType?.startsWith("image/") || asset.kind === "image");
@@ -73,12 +112,13 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
       if (!cancelled) setCovers(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry))));
     });
     return () => { cancelled = true; };
-  }, [projects]);
+  }, [coverProjectIds]);
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!prompt.trim() || busy) return;
-    const normalizedPrompt = prompt.trim();
+    event.preventDefault(); if (!prompt.trim() || busy || fileDraftStatus === "loading") return;
+    const brief = creationBrief(settings);
+    const normalizedPrompt = [prompt.trim(), brief ? `创作要求：${brief}` : ""].filter(Boolean).join("\n\n");
     const fileKeys = files.map((file, index) => `${index}:${file.name}:${file.size}:${file.lastModified}:${file.type}`);
-    const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId, selection, fileKeys });
+    const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId, selection, fileKeys, libraryIds });
     let attempt = creationAttemptRef.current;
     if (!attempt || attempt.signature !== signature) {
       attempt = { signature, creationRequestId: createClientRequestId(), turnRequestId: createClientRequestId(), uploadedPaths: new Map() };
@@ -96,11 +136,14 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
         attempt.uploadedPaths.set(key, uploaded.path);
         return uploaded.path;
       }));
+      const libraryPaths = await Promise.all(libraryIds.map(id => api.importLibraryAsset(id, project.id).then(asset => asset.path)));
+      uploadedPaths.push(...libraryPaths);
       setCreationStage("starting");
       await api.sendTurn(project.id, { text: normalizedPrompt, clientRequestId: attempt.turnRequestId, attachments: uploadedPaths, ...selection });
       setCreationStage("opening");
       const detail = await api.getProject(project.id);
       creationAttemptRef.current = null;
+      setPrompt(""); setFiles([]); setLibraryIds([]);
       onCreated(detail);
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : "无法创建视频任务"); } finally { setBusy(false); }
@@ -133,12 +176,14 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
         </header>
         {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
         <section className="home-create">
-          <h2 id="create-prompt-label">今天想创作什么？</h2>
+          <h2 id="create-prompt-label">今天想创作什么？</h2>{prompt ? <p className="draft-save-status" role="status">{promptSaved ? "描述已自动保存到此浏览器" : "草稿保存失败，请勿关闭页面"}</p> : null}
           <form className="composer composer--hero" onSubmit={submit}>
           <textarea aria-labelledby="create-prompt-label" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="描述视频主题、风格、时长，或直接粘贴网页链接…"/>
           <div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
-          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy} aria-label="创建视频任务" title="创建视频任务"><span>开始创作</span><ArrowUp weight="bold"/></button></div>
+          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value as typeof aspectRatio)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy || fileDraftStatus === "loading"} aria-label="创建视频任务" title="创建视频任务"><span>开始创作</span><ArrowUp weight="bold"/></button></div>
           </form>
+          {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加。</p> : files.length ? <p className="draft-save-status">{fileDraftStatus === "saved" ? "附件已保存" : "正在保存附件…"}</p> : null}
+          <CreationSettings value={settings} onChange={setSettings} selectedIds={libraryIds} onSelect={setLibraryIds}/>
           <div className="home-starters" aria-label="创作灵感"><span>试试这些方向</span>{starterIdeas.map(idea => <button key={idea.label} type="button" onClick={() => { setPrompt(idea.prompt); startCreating(); }}>{idea.label}<ArrowRight/></button>)}</div>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
         </section>
@@ -149,17 +194,17 @@ function StartScreen({ projects, loading, openError, models, selection, onSelect
             if (nextIndex < 0) return;
             event.preventDefault(); setFilter(projectFilters[nextIndex].id); document.getElementById(`project-filter-${projectFilters[nextIndex].id}`)?.focus();
           }}>{item.label}<span aria-hidden="true">{filterCounts[item.id]}</span></button>)}</div>
-          <div className="home-project-list" id="home-project-results" role="tabpanel" aria-labelledby={`project-filter-${filter}`}>
+          <div className="home-project-list" key={filter} id="home-project-results" role="tabpanel" aria-labelledby={`project-filter-${filter}`}>
             {visibleProjects.map(project => <article key={project.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(current => current === project.id ? "" : current); }} onKeyDown={event => { if (event.key === "Escape") { setOpenMenu(""); event.currentTarget.querySelector<HTMLButtonElement>(".home-project-menu-button")?.focus(); } }}>
-              <button className="home-project-open" onClick={() => onOpen(project.id)}>
+              <button className="home-project-open" disabled={openingProjectId === project.id} aria-busy={openingProjectId === project.id} onClick={() => onOpen(project.id)}>
                 <span className="home-project-cover">{covers[project.id] ? <img src={covers[project.id]} alt=""/> : <FilmSlate/>}</span>
-                <span className="home-project-copy"><b title={project.title}>{project.title}</b><small className={`home-status home-status--${projectGroup(project)}`}><i/>{project.statusLabel}</small></span>
+                <span className="home-project-copy"><b title={project.title}>{project.title}</b><small className={`home-status home-status--${projectGroup(project)}`}><i/>{openingProjectId === project.id ? "正在打开…" : projectStatus(project)}</small></span>
                 <time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time>
                 <span className="home-project-ratio">{project.aspectRatio}</span>
-                <ArrowRight className="home-project-arrow"/>
+                {openingProjectId === project.id ? <CircleNotch className="home-project-loading spin"/> : <ArrowRight className="home-project-arrow"/>}
               </button>
               <button className="home-project-menu-button" aria-label={`项目操作 ${project.title}`} aria-expanded={openMenu === project.id} onClick={() => setOpenMenu(current => current === project.id ? "" : project.id)}><DotsThree weight="bold"/></button>
-              {openMenu === project.id ? <div className="home-project-menu"><button onClick={() => onOpen(project.id)}><ArrowRight/>打开项目</button><button disabled={Boolean(project.activeTurnId)} onClick={() => void removeProject(project)}><Trash/>删除项目</button></div> : null}
+              {menuPresence.value === project.id ? <div ref={menuPresence.ref} inert={menuPresence.exiting} aria-hidden={menuPresence.exiting || undefined} className="home-project-menu"><button onClick={() => onOpen(project.id)}><ArrowRight/>打开项目</button><button disabled={Boolean(project.activeTurnId)} onClick={() => void removeProject(project)}><Trash/>删除项目</button></div> : null}
             </article>)}
             {loading ? <div className="home-project-message">正在读取项目…</div> : null}
             {!loading && !visibleProjects.length ? <div className="home-project-empty"><CheckCircle/><b>{projects.length ? "没有符合条件的项目" : "还没有视频项目"}</b><span>{projects.length ? "试试其他关键词，或切换项目状态。" : "从上方描述你的第一个视频想法。"}</span>{projects.length ? <button className="home-reset-filters" onClick={() => { setSearch(""); setFilter("all"); }}>查看全部项目</button> : null}</div> : null}
@@ -176,17 +221,11 @@ const starterIdeas = [
   { label: "网页转视频", prompt: "把这个网页制作成一条 30 秒的视频，提炼关键内容，保留页面的品牌风格。网页链接：" },
 ];
 
-type ProjectFilter = "all" | "active" | "review" | "completed";
+type ProjectFilter = "all" | "active" | "review" | "completed" | "failed";
 
 const projectFilters: { id: ProjectFilter; label: string }[] = [
-  { id: "all", label: "全部" }, { id: "active", label: "制作中" }, { id: "review", label: "待确认" }, { id: "completed", label: "已完成" },
+  { id: "all", label: "全部" }, { id: "active", label: "制作中" }, { id: "review", label: "待确认" }, { id: "completed", label: "已完成" }, { id: "failed", label: "待恢复" },
 ];
-
-function projectGroup(project: ProjectRecord): Exclude<ProjectFilter, "all"> {
-  if (project.status === "completed" || project.statusLabel.includes("完成")) return "completed";
-  if (project.activeTurnId || ["starting", "queued", "running"].includes(project.status)) return "active";
-  return "review";
-}
 
 function formatHomeTime(timestamp: number) {
   const date = new Date(timestamp);

@@ -1,3 +1,4 @@
+import { useMotionPresence } from "../hooks/useMotionPresence";
 import { Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
@@ -14,6 +15,7 @@ type CreateMode = "list" | "design" | "clone";
 export function VoiceSelector({ value, onChange, disabled = false }: { value: string; onChange: (voiceId: string) => void | Promise<void>; disabled?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const presence = useMotionPresence(open ? true : null);
   const [mode, setMode] = useState<CreateMode>("list");
   const [voices, setVoices] = useState<string[]>(["default"]);
   const [uploaded, setUploaded] = useState<UploadedVoice[]>([]);
@@ -56,7 +58,7 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
 
   async function choose(voiceId: string) {
     setWorking(voiceId); setError("");
-    try { await onChange(voiceId); setMode("list"); setOpen(false); }
+    try { await onChange(voiceId); setMode("list"); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "音色设置失败"); }
     finally { setWorking(""); }
   }
@@ -90,12 +92,12 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
     finally { setWorking(""); }
   }
 
-  return <div className="voice-selector" ref={root}>
+  return <div className="voice-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); } }}>
     <button type="button" className="voice-trigger" disabled={disabled} onClick={() => { setOpen(current => !current); setMode("list"); }} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
       <Waveform/><span>{currentName}</span><i>⌄</i>
     </button>
-    {open ? <section className="voice-menu" role="dialog" aria-label="项目旁白音色">
-      <header><div><small>项目旁白</small><b>{mode === "list" ? "选择旁白音色" : mode === "design" ? "生成新音色" : "克隆参考音色"}</b></div><button type="button" aria-label="关闭音色库" onClick={() => setOpen(false)}><X/></button></header>
+    {presence.value ? <section ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="voice-menu" role="dialog" aria-label="项目旁白音色">
+      <header><div><small>项目旁白</small><b>{mode === "list" ? "选择旁白音色" : mode === "design" ? "生成新音色" : "克隆参考音色"}</b></div><button type="button" aria-label="关闭音色库" onClick={() => { setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); }}><X/></button></header>
       {mode === "list" ? <>
         <div className="voice-list">
           {voices.map(voice => {

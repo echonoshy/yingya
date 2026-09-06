@@ -1,6 +1,7 @@
+import { feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
-import { agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, mediaSceneSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
-import type { CreateProjectInput, TurnInput } from "./types";
+import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, mediaSceneSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
+import type { CreateProjectInput, TurnInput, MediaScene } from "./types";
 import { createClientRequestId } from "./requestId";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
@@ -50,6 +51,7 @@ const imageUploadSchema = z.object({ url: z.string(), hyperframesPath: z.string(
 const threadStartedSchema = z.object({ threadId: z.string() });
 
 export const api = {
+  uploadFeedbackAsset: async (id: string, uploadId: string, file: Blob) => { const body = new FormData(); body.append("uploadId", uploadId); body.append("file", file, "frame.png"); return request(`/api/agent-projects/${id}/feedback-assets`, feedbackAssetSchema, { method: "POST", body }); },
   listProjects: () => request("/api/agent-projects", z.array(projectRecordSchema)),
   getProject: (id: string) => request(`/api/agent-projects/${id}`, projectDetailSchema),
   renameProject: (id: string, title: string) => request(`/api/agent-projects/${id}`, projectRecordSchema, { method: "PATCH", body: JSON.stringify({ title }) }),
@@ -73,6 +75,7 @@ export const api = {
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),
   uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
   getProjectMedia: (id: string) => request(`/api/agent-projects/${id}/media`, agentMediaSchema),
+  importScenes: (id: string, scenes: MediaScene[]) => request(`/api/agent-projects/${id}/scenes`, z.array(mediaSceneSchema), { method: "POST", body: JSON.stringify({ scenes }) }),
   setSceneAssets: (id: string, sceneId: string, assetIds: string[]) => request(`/api/agent-projects/${id}/scenes/${sceneId}`, mediaSceneSchema, { method: "PATCH", body: JSON.stringify({ assetIds }) }),
   studio: (id: string) => request(`/api/agent-projects/${id}/studio`, studioSchema, { method: "POST", body: "{}" }),
   heartbeatStudio: (id: string) => request(`/api/agent-projects/${id}/studio/heartbeat`, studioSchema, { method: "POST", body: "{}" }),
@@ -81,6 +84,8 @@ export const api = {
   eventLog: (id: string, before?: number, limit = 500) => request(`/api/agent-projects/${id}/event-log?${new URLSearchParams({ ...(before ? { before: String(before) } : {}), limit: String(limit) })}`, eventPageSchema),
   readProjectFile: (id: string, path: string) => requestText(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),
   fileUrl: (id: string, path: string) => `/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`,
+  searchAudio: (query: string, type: "music" | "sound_effects") => request(`/api/heygen/audio?${new URLSearchParams({ query, type, limit: "20" })}`, z.object({ data: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), audioUrl: z.string(), duration: z.number(), type: z.string() })), hasMore: z.boolean().default(false) })),
+  importAudio: (id: string, input: { id: string; query: string; type: string }) => request(`/api/agent-projects/${id}/heygen/audio`, mediaAssetSchema, { method: "POST", body: JSON.stringify(input) }),
   listVoices: () => request("/api/voices", voiceListSchema),
   designVoice: (input: { name: string; description: string }) => request("/api/voices/design", uploadedVoiceSchema, { method: "POST", body: JSON.stringify(input) }),
   cloneVoice: (input: { name: string; description: string; refText: string; audio: File; authorized: boolean }) => {
@@ -92,6 +97,12 @@ export const api = {
   listImages: () => request("/api/assets/images", imageLibrarySchema),
   listAssetLibrary: () => request("/api/assets/library", assetLibrarySchema),
   uploadLibraryAsset: async (file: File, folderId?: string) => { const body = new FormData(); body.append("file", file); if (folderId) body.append("folderId", folderId); return request("/api/assets/library", assetLibraryItemSchema, { method: "POST", body }); },
+  importLibraryAsset: (id: string, projectId: string) => request(`/api/assets/library/${encodeURIComponent(id)}/projects/${projectId}`, uploadSchema, { method: "POST", body: "{}" }),
+  getLibraryUsage: (id: string) => request(`/api/assets/library/${encodeURIComponent(id)}/usage`, z.array(z.object({ projectId: z.string(), projectTitle: z.string(), addedAt: z.number() }))),
+  renameLibraryAsset: (id: string, name: string) => requestVoid(`/api/assets/library/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deleteLibraryAsset: (id: string) => requestVoid(`/api/assets/library/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  renameAssetFolder: (id: string, name: string) => requestVoid(`/api/assets/folders/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deleteAssetFolder: (id: string) => requestVoid(`/api/assets/folders/${id}`, { method: "DELETE" }),
   moveLibraryAsset: (id: string, folderId?: string) => requestVoid(`/api/assets/library/${id}`, { method: "PATCH", body: JSON.stringify({ folderId }) }),
   listAssetFolders: () => request("/api/assets/folders", z.array(assetFolderSchema)),
   createAssetFolder: (name: string) => request("/api/assets/folders", assetFolderSchema, { method: "POST", body: JSON.stringify({ name }) }),

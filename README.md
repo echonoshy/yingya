@@ -36,8 +36,13 @@ attempts, and unique completed outputs survive browser and service restarts.
 
 The project-owned `yingya-video-agent` skill enforces a production-plan
 checkpoint before composition work and a draft checkpoint before final render.
-It also requires HyperFrames lint, validate, and inspect gates and durable Draft
-snapshots. Agent projects are the application's single supported project model.
+Planning includes a text scene outline in `scenes.json`; production measures
+narration before aligning scene timing and captions. Local revisions reuse
+unaffected media. One HyperFrames `check` gate covers lint, runtime, layout,
+motion, and contrast before durable Draft snapshots are registered. The backend
+installs the complete workflow and explainer skill bundles, including their
+references, at startup. Agent projects are the application's single supported
+project model.
 
 For day-to-day development, run both services in named tmux sessions:
 
