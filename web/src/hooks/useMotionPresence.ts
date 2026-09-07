@@ -22,8 +22,9 @@ export function useMotionPresence<T>(value: T | null) {
     const positions = entering ? movement : [...movement].reverse();
     if (continuing) positions[0] = continuing.transform;
     const duration = entering ? panel ? "--motion-slow" : "--motion-standard" : "--motion-quick";
-    const animation = animateElement(element, opacity, duration);
-    const slide = animateElement(target, positions.map(transform => ({ transform })), duration);
+    const easing = entering ? "--ease-sprout" : "--ease-exit";
+    const animation = animateElement(element, opacity, duration, easing);
+    const slide = animateElement(target, positions.map(transform => ({ transform })), duration, easing);
     if (!entering) {
       if (animation) void animation.finished.then(() => { if (!cancelled) setRetained(null); }).catch(() => undefined);
       else setRetained(null);

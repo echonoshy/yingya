@@ -1,5 +1,5 @@
 import { ActionDialog } from "./ActionDialog";
-import { Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform } from "@phosphor-icons/react";
+import { CaretDown, Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { UploadedVoice } from "../types";
@@ -88,7 +88,7 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
 
   return <div className="voice-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open && !working) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); } }}>
     <button type="button" className="voice-trigger" disabled={disabled} onClick={() => { setOpen(current => !current); setMode("list"); }} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
-      <Waveform/><span>{currentName}</span><i>⌄</i>
+      <Waveform/><span>{currentName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
     </button>
     {open ? <ActionDialog title="旁白音色" busy={Boolean(working)} onClose={() => setOpen(false)}><section className="voice-menu">
 

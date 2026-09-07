@@ -1,6 +1,6 @@
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { useMotionPresence } from "../hooks/useMotionPresence";
-import { CaretRight, Check } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, Check } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CodexModel, ModelSelection } from "../types";
 
@@ -57,7 +57,7 @@ export function ModelSelector({ models, value, onChange }: {
     }
     if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
     <button type="button" className="model-trigger" onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
-      {displayName} · {effortName}<span>⌄</span>
+      <span className="model-trigger-label">{displayName} · {effortName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
     </button>
     {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={position}>
       <div className="model-menu-primary" role="group" aria-label="模型">

@@ -1,6 +1,7 @@
+import { SelectionIndicator } from "./components/SelectionIndicator";
 import { useMotionPresence } from "./hooks/useMotionPresence";
 import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, WifiHigh, X } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { useDraftFiles } from "./hooks/useDraftFiles";
 import { CreationSettings, creationBrief, creationSettingsSchema, defaultCreationSettings } from "./components/CreationSettings";
 import { z } from "zod";
@@ -190,13 +191,13 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
         </section>
         <section className="home-projects">
           <header><div className="home-project-heading"><h2>最近项目</h2><span aria-live="polite">{loading ? "正在读取…" : `${visibleProjects.length} 个项目`}</span></div><label className="home-project-search"><MagnifyingGlass/><input type="search" aria-label="搜索项目" placeholder="搜索项目名称" value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button type="button" aria-label="清除搜索" onClick={() => setSearch("")}><X/></button> : null}</label></header>
-          <div className="project-filters" role="tablist" aria-label="筛选项目">{projectFilters.map((item, index) => <button key={item.id} id={`project-filter-${item.id}`} role="tab" aria-controls="home-project-results" aria-selected={filter === item.id} tabIndex={filter === item.id ? 0 : -1} className={filter === item.id ? "active" : ""} onClick={() => setFilter(item.id)} onKeyDown={event => {
+          <div className="project-filters" role="tablist" aria-label="筛选项目"><SelectionIndicator value={filter}/>{projectFilters.map((item, index) => <button key={item.id} id={`project-filter-${item.id}`} role="tab" aria-controls="home-project-results" aria-selected={filter === item.id} tabIndex={filter === item.id ? 0 : -1} className={filter === item.id ? "active" : ""} onClick={() => setFilter(item.id)} onKeyDown={event => {
             const nextIndex = event.key === "ArrowRight" ? (index + 1) % projectFilters.length : event.key === "ArrowLeft" ? (index + projectFilters.length - 1) % projectFilters.length : event.key === "Home" ? 0 : event.key === "End" ? projectFilters.length - 1 : -1;
             if (nextIndex < 0) return;
             event.preventDefault(); setFilter(projectFilters[nextIndex].id); document.getElementById(`project-filter-${projectFilters[nextIndex].id}`)?.focus();
           }}>{item.label}<span aria-hidden="true">{filterCounts[item.id]}</span></button>)}</div>
           <div className="home-project-list" key={filter} id="home-project-results" role="tabpanel" aria-labelledby={`project-filter-${filter}`}>
-            {visibleProjects.map(project => <article key={project.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(current => current === project.id ? "" : current); }} onKeyDown={event => { if (event.key === "Escape") { setOpenMenu(""); event.currentTarget.querySelector<HTMLButtonElement>(".home-project-menu-button")?.focus(); } }}>
+            {visibleProjects.map((project, index) => <article style={{ "--item-index": Math.min(index, 5) } as CSSProperties} key={project.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(current => current === project.id ? "" : current); }} onKeyDown={event => { if (event.key === "Escape") { setOpenMenu(""); event.currentTarget.querySelector<HTMLButtonElement>(".home-project-menu-button")?.focus(); } }}>
               <button className="home-project-open" disabled={openingProjectId === project.id} aria-busy={openingProjectId === project.id} onClick={() => onOpen(project.id)}>
                 <ProjectCover poster={project.posterUrl} fallback={covers[project.id]}/>
                 <span className="home-project-copy"><b title={project.title}>{project.title}</b><small className={`home-status home-status--${projectGroup(project)}`}><i/>{openingProjectId === project.id ? "正在打开…" : projectStatus(project)}</small></span>
@@ -238,5 +239,5 @@ function formatHomeTime(timestamp: number) {
 function ProjectCover({ poster, fallback }: { poster?: string; fallback?: string }) {
   const [failed, setFailed] = useState<string[]>([]);
   const url = [poster, fallback].find(value => value && !failed.includes(value));
-  return <span className="home-project-cover">{url ? <img loading="lazy" src={url} alt="" onError={() => setFailed(current => [...current, url])}/> : <FilmSlate/>}</span>;
+  return <span className="home-project-cover">{url ? <img loading="lazy" src={url} alt="" onError={() => setFailed(current => [...current, url])}/> : <FilmSlate/>}<span className="home-project-cover-action" aria-hidden="true"><ArrowRight/>打开作品</span></span>;
 }

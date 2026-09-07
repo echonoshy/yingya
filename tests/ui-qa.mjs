@@ -822,10 +822,73 @@ async function assertDesignRepairs(browser) {
   console.log("Design repair QA passed: desktop voice, keyboard model selection, project file links, typed image preview, export focus, 1024px portrait, mobile feedback and asset filters");
 }
 
+async function assertSelectionMotion(browser) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, reducedMotion: "no-preference" });
+  await installApiMock(page);
+  await page.goto(baseUrl);
+  const filters = page.locator(".project-filters");
+  await filters.getByRole("tab").first().waitFor();
+  async function aligned(selector, line = false) {
+    await page.waitForFunction(({ selector, line }) => {
+      const parent = document.querySelector(selector);
+      const target = parent?.querySelector("button.active")?.getBoundingClientRect();
+      const marker = parent?.querySelector(".selection-indicator")?.getBoundingClientRect();
+      return target && marker && marker.width > 0 && Math.abs(marker.left - target.left - (line ? 12 : 0)) < 1 && Math.abs(marker.width - target.width + (line ? 24 : 0)) < 1;
+    }, { selector, line });
+  }
+  await aligned(".project-filters");
+  await filters.getByRole("tab").nth(1).click();
+  // Pause the marker mid-flight, then change destination to verify visual continuity.
+  const before = await filters.locator(".selection-indicator").evaluate(el => {
+    el.getAnimations().forEach(a => { a.pause(); a.currentTime = 65; });
+    return el.getBoundingClientRect().left;
+  });
+  await filters.getByRole("tab").nth(3).evaluate(el => el.click());
+  const after = await filters.locator(".selection-indicator").evaluate(el => {
+    el.getAnimations().forEach(a => { a.pause(); a.currentTime = 0; });
+    return el.getBoundingClientRect().left;
+  });
+  if (Math.abs(before - after) > 1) throw new Error("Selection jumped when interrupted");
+  await filters.locator(".selection-indicator").evaluate(el => el.getAnimations().forEach(a => a.finish()));
+  await aligned(".project-filters");
+  for (const width of [390, 320, 1440]) {
+    await page.setViewportSize({ width, height: 960 });
+    await aligned(".project-filters");
+  }
+  await filters.getByRole("tab").first().click();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await aligned(".project-filters");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const voice = page.locator(".voice-trigger");
+  await voice.click();
+  await page.getByRole("dialog").waitFor();
+  await page.keyboard.press("Escape");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.locator(".action-dialog").waitFor({ state: "detached" });
+  if (!(await voice.evaluate(el => el === document.activeElement))) throw new Error("Animated dialog did not restore focus");
+  await voice.click();
+  if (await page.getByRole("dialog").evaluate(el => el.getAnimations().length)) throw new Error("Reduced-motion dialog still animates");
+  await page.keyboard.press("Escape");
+  await page.locator(".action-dialog").waitFor({ state: "detached" });
+  await page.locator(".home-project-open").first().click();
+  await aligned(".canvas-tabs", true);
+  await page.getByRole("tab", { name: /^素材/ }).click();
+  await aligned(".canvas-tabs", true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await aligned(".workspace-tabs");
+  await page.locator(".workspace-tabs").getByRole("button", { name: "预览" }).click();
+  await aligned(".workspace-tabs");
+  await page.setViewportSize({ width: 320, height: 740 });
+  await aligned(".workspace-tabs");
+  await page.close();
+  console.log("Selection motion QA passed: interrupted motion, responsive alignment, live reduced-motion switch, modal focus and mobile tabs");
+}
+
 let browser;
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
+  await assertSelectionMotion(browser);
   await assertDesignRepairs(browser);
   await assertMotionFeedback(browser);
   await assertFunctionalEnhancements(browser);
