@@ -629,7 +629,8 @@ button:not(:disabled) { cursor: pointer; }
 .model-trigger { height: 38px; padding: 0 12px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-750); color: var(--muted); font: 11px var(--font-mono); cursor: pointer; }
 .model-trigger span { margin-left: 5px; }
 .model-menu { position: absolute; bottom: 45px; left: 0; z-index: 20; display: grid; grid-template-columns: 230px 150px; overflow: hidden; border: 1px solid var(--prey-600); border-radius: var(--radius-button); background: var(--prey-800); box-shadow: 0 22px 60px rgba(0, 0, 0, .48); transform-origin: left bottom; animation: menu-in var(--motion-standard) var(--ease-sprout) both; }
-.model-menu-primary, .model-menu-secondary { padding: 6px; }
+.model-menu { max-height: var(--model-menu-available-height); }
+.model-menu-primary, .model-menu-secondary { min-height: 0; overflow-y: auto; padding: 6px; }
 .model-menu-secondary { border-left: 1px solid var(--prey-700); }
 .model-menu button { width: 100%; min-height: 40px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: var(--radius-control); background: transparent; font-size: 12px; text-align: left; }
 .model-menu button:hover { color: var(--text); }

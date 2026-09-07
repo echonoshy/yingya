@@ -17,10 +17,11 @@ import { VoiceSelector } from "./components/VoiceSelector";
 import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "./types";
 import { readModelSelection, readStringSetting, writeModelSelection, writeStringSetting } from "./storage";
 import { createClientRequestId } from "./requestId";
+import { includeAstra } from "./models";
 
-const fallbackModels: CodexModel[] = [
+const fallbackModels: CodexModel[] = includeAstra([
   ["gpt-5.6-terra", "GPT-5.6 Terra", "均衡的质量与速度"], ["gpt-5.6-sol", "GPT-5.6 Sol", "复杂创作与高质量推理"], ["gpt-5.6-luna", "GPT-5.6 Luna", "快速迭代"],
-].map(([model, displayName, description], index) => ({ id: model, model, displayName, description, hidden: false, supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map(reasoningEffort => ({ reasoningEffort, description: "" })), defaultReasoningEffort: "medium", isDefault: index === 0 }));
+].map(([model, displayName, description], index) => ({ id: model, model, displayName, description, hidden: false, supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map(reasoningEffort => ({ reasoningEffort, description: "" })), defaultReasoningEffort: "medium", isDefault: index === 0 })));
 
 function savedSelection(): ModelSelection {
   return readModelSelection({ model: "gpt-5.6-terra", reasoningEffort: "high" });
@@ -34,7 +35,7 @@ export function App() {
   const saveVoice = (next: string) => { setVoiceId(next); writeStringSetting("yingya-voice-id", next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
   const updateActiveProject = useCallback((detail: ProjectDetail) => { setActive(detail); setProjects(current => current.map(project => project.id === detail.id ? projectSummary(detail) : project)); }, []);
-  useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(value.data)).catch(() => undefined); }, [refreshProjects]);
+  useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(includeAstra(value.data))).catch(() => undefined); }, [refreshProjects]);
   const open = (id: string) => navigate({ section: "create", projectId: id });
   useEffect(() => {
     let cancelled = false;

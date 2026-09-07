@@ -1,6 +1,6 @@
 import { useMotionPresence } from "../hooks/useMotionPresence";
 import { CaretRight, Check } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { CodexModel, ModelSelection } from "../types";
 
 const effortLabels: Record<string, string> = {
@@ -46,7 +46,7 @@ export function ModelSelector({ models, value, onChange }: {
     <button type="button" className="model-trigger" onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
       {displayName} · {effortName}<span>⌄</span>
     </button>
-    {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu">
+    {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={{ "--model-menu-available-height": `${Math.max(120, (root.current?.getBoundingClientRect().top ?? 400) - 16)}px` } as CSSProperties}>
       <div className="model-menu-primary">
         {models.map(model => <button
           type="button"
