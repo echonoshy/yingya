@@ -13,7 +13,6 @@ import { assetLibraryItemSchema } from "../schemas";
 import { workflowState } from "../projectState";
 import { AudioLibrary } from "./AudioLibrary";
 import { VersionComparison } from "./VersionComparison";
-import { StoryboardPanel } from "./StoryboardPanel";
 import { api } from "../api";
 import type { AgentEvent, AgentMedia, AgentMessage, Artifact, AssetFolder, AssetLibraryItem, CodexModel, ModelSelection, ProjectDetail } from "../types";
 import { buildTimeline, type TimelineActivity } from "./eventTimeline";
@@ -28,7 +27,7 @@ import { LiveHyperFramesPreview as ManagedLiveHyperFramesPreview, RenderPanel as
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 type ConversationEntry = { kind: "message"; item: AgentMessage; createdAt: number } | { kind: "activity"; item: TimelineActivity; createdAt: number };
-type CanvasTab = "preview" | "storyboard" | "assets" | "artifacts";
+type CanvasTab = "preview" | "assets" | "artifacts";
 
 export function AgentWorkspace({ project, models, selection, onSelection, onVoice, onProject, onRename, onBack }: { project: ProjectDetail; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onVoice: (voiceId: string) => void | Promise<void>; onProject: (value: ProjectDetail) => void; onRename: (id: string, title: string) => Promise<void>; onBack: () => void }) {
   const [text, setText, textSaved] = useSavedState(`yingya-draft-text:${project.id}`, z.string(), ""); const [files, setFiles, fileDraftStatus] = useDraftFiles(project.id); const [contexts, setContexts] = useSavedState(`yingya-draft-context:${project.id}`, z.array(z.string()), []); const [interrupt, setInterrupt] = useState(false); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<CanvasTab>(() => savedCanvasTab(project.id)); const fileRef = useRef<HTMLInputElement>(null); const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -194,7 +193,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   }
 
   const checkpointSuperseded = running || project.queue.length > 0 || project.status === "queued";
-  const visibleCheckpoint = project.manifest.checkpoint && !checkpointSuperseded && project.manifest.checkpoint.id !== dismissedCheckpoint ? project.manifest.checkpoint : undefined;
+  const visibleCheckpoint = project.manifest.checkpoint?.kind === "plan" && !checkpointSuperseded && project.manifest.checkpoint.id !== dismissedCheckpoint ? project.manifest.checkpoint : undefined;
   const checkpointPresence = useMotionPresence(visibleCheckpoint?.id ?? null);
   const lastCheckpoint = useRef(visibleCheckpoint);
   if (visibleCheckpoint) lastCheckpoint.current = visibleCheckpoint;
@@ -224,7 +223,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   return <div className={`workspace workspace--canvas workspace-mobile--${mobilePanel}`} style={workspaceStyle}>
     <header className="project-header"><div className="project-header-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div><button className="project-back" onClick={onBack}><CaretLeft/>所有项目</button><div className="project-heading">{editingTitle ? <form className="thread-title-editor" onSubmit={saveTitle}><input aria-label="项目标题" autoFocus maxLength={48} value={titleDraft} onChange={event => setTitleDraft(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { setEditingTitle(false); setTitleError(""); } }}/><button aria-label="保存项目标题" disabled={!titleDraft.trim() || renaming}><Check/></button><button type="button" aria-label="取消修改标题" onClick={() => { setEditingTitle(false); setTitleError(""); }}><X/></button></form> : <button className="thread-title-button" aria-label={`修改项目标题：${project.title}`} title="修改项目标题" onClick={() => { setTitleDraft(project.title); setTitleError(""); setEditingTitle(true); }}><h1>{project.title}</h1><PencilSimple/></button>}<span className={`project-state project-state--${project.status}`}>{state.label}</span></div><div className="project-header-actions"><ConnectionBadge state={connectionState}/><span className="spec-chip">{project.aspectRatio}</span><button className="export-button" onClick={() => { selectCanvasTab("preview"); setMobilePanel("canvas"); }}><DownloadSimple/>导出</button></div></header>
     <div className="workspace-splitter workspace-splitter--thread" role="separator" aria-label="调整创作对话宽度" aria-orientation="vertical" aria-valuemin={380} aria-valuemax={620} aria-valuenow={threadWidth} tabIndex={0} onKeyDown={event => resizeWithKeyboard(event, threadWidth, setThreadWidth, "yingya-thread-width", 380, 620, 1)} onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={dragThread} onPointerUp={event => finishResize(event, "yingya-thread-width", threadWidth)} onPointerCancel={event => finishResize(event, "yingya-thread-width", threadWidth)}/>
-    <nav className="workspace-tabs" aria-label="工作区视图"><button className={mobilePanel === "thread" ? "active" : ""} onClick={() => setMobilePanel("thread")}>对话</button>{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button key={tab} className={mobilePanel === "canvas" && canvasTab === tab ? "active" : ""} onClick={() => { setMobilePanel("canvas"); selectCanvasTab(tab); }}>{canvasTabLabel(tab)}</button>)}</nav>
+    <nav className="workspace-tabs" aria-label="工作区视图"><button className={mobilePanel === "thread" ? "active" : ""} onClick={() => setMobilePanel("thread")}>对话</button>{(["preview", "assets", "artifacts"] as CanvasTab[]).map(tab => <button key={tab} className={mobilePanel === "canvas" && canvasTab === tab ? "active" : ""} onClick={() => { setMobilePanel("canvas"); selectCanvasTab(tab); }}>{canvasTabLabel(tab)}</button>)}</nav>
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "与创作助手继续完善视频"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
       <section className="timeline" aria-label="创作消息" tabIndex={0} ref={timelineRef} onScroll={onScroll}><div className="timeline-inner" ref={contentRef}>
@@ -389,7 +388,7 @@ function ArtifactCanvas({ onFeedback, feedbackDisabled, project, activeTab, prev
     return () => animation?.cancel();
   }, [activeTab, preview?.artifact.id]);
   function navigateTab(event: KeyboardEvent<HTMLDivElement>) {
-    const tabs: CanvasTab[] = ["preview", "storyboard", "assets", "artifacts"];
+    const tabs: CanvasTab[] = ["preview", "assets", "artifacts"];
     const index = tabs.indexOf(activeTab);
     const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
     if (next < 0) return;
@@ -451,7 +450,7 @@ function ArtifactCanvas({ onFeedback, feedbackDisabled, project, activeTab, prev
 
   return <aside className="artifact-canvas">
     {annotation ? <VideoAnnotationEditor {...annotation} onAdd={onFeedback} onClose={() => setAnnotation(null)}/> : null}
-    <header><div className="canvas-version"><span className="canvas-label">{activeTab === "preview" ? "预览版本" : "当前版本"}</span>{project.manifest.versions.length ? <select aria-label="视频版本" disabled={activeTab !== "preview"} value={activeTab === "preview" ? versionId : project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" ref={tabListRef} onKeyDown={navigateTab} role="tablist" aria-label="项目工作台">{(["preview", "storyboard", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" id={`canvas-tab-${tab}`} aria-controls="canvas-content" tabIndex={activeTab === tab ? 0 : -1} aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{project.manifest.dirty ? <span className="dirty-chip">修改待检查</span> : null}</div></header>
+    <header><div className="canvas-version"><span className="canvas-label">{activeTab === "preview" ? "预览版本" : "当前版本"}</span>{project.manifest.versions.length ? <select aria-label="视频版本" disabled={activeTab !== "preview"} value={activeTab === "preview" ? versionId : project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" ref={tabListRef} onKeyDown={navigateTab} role="tablist" aria-label="项目工作台">{(["preview", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" id={`canvas-tab-${tab}`} aria-controls="canvas-content" tabIndex={activeTab === tab ? 0 : -1} aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{project.manifest.dirty ? <span className="dirty-chip">修改待检查</span> : null}</div></header>
     {rollbackError ? <p className="form-error" role="alert">{rollbackError}</p> : null}
     <div className="canvas-content" id="canvas-content" role="tabpanel" aria-labelledby={`canvas-tab-${activeTab}`} ref={contentRef}>
     {preview ? <InlineArtifactPreview preview={preview} onClose={onClosePreview}/> : <>
@@ -468,7 +467,6 @@ function ArtifactCanvas({ onFeedback, feedbackDisabled, project, activeTab, prev
         {version ? <VersionComparison project={project} current={version}/> : null}
         {version ? <PersistentRenderPanel project={project} version={version} onRefresh={onRefresh}/> : null}
       </div><PreviewAssetInspector media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])}/></section> : null}
-      {activeTab === "storyboard" ? <StoryboardPanel project={project} media={media} onContext={onContext} onCompose={onCompose} onRefresh={onRefresh}/> : null}
       {activeTab === "assets" ? <><AudioLibrary projectId={project.id} onRefresh={onRefresh} onCompose={onCompose}/><ProjectAssetsPanel media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])} onSelectFolder={onSelectAssets}/></> : null}
       {activeTab === "artifacts" ? <section className="artifact-list"><div className="section-heading"><h3>全部产物</h3><span>{project.manifest.artifacts.length}</span></div>{project.manifest.artifacts.map(artifact => <div className="artifact-row" key={artifact.id}><button className="artifact-open" onClick={() => onPreview(artifact)}><span>{artifact.kind.includes("report") ? <Check/> : <File/>}</span><div><b>{artifact.label}</b><small>{artifact.path}</small></div><Eye/></button><button className="artifact-context" aria-label={`加入反馈 ${artifact.label}`} title="加入反馈" onClick={() => onContext(`${version?.label ?? "项目"} · ${artifact.label}`)}>+</button></div>)}{!project.manifest.artifacts.length ? <div className="artifact-empty"><File/><b>还没有项目产物</b><p>生成完成后，视频与检查报告会显示在这里。</p></div> : null}</section> : null}
     </>}
@@ -496,8 +494,8 @@ function InlineArtifactPreview({ preview, onClose }: { preview: { artifact: Arti
 }
 
 function formatTimestamp(seconds: number) { const minutes = Math.floor(seconds / 60); return `${String(minutes).padStart(2, "0")}:${(seconds % 60).toFixed(1).padStart(4, "0")}`; }
-function canvasTabLabel(tab: CanvasTab) { return ({ preview: "预览", storyboard: "分镜", assets: "素材", artifacts: "产物" } as const)[tab]; }
-function savedCanvasTab(projectId: string): CanvasTab { const value = readStringSetting(`yingya-canvas-tab:${projectId}`, "preview"); return value === "storyboard" || value === "assets" || value === "artifacts" ? value : "preview"; }
+function canvasTabLabel(tab: CanvasTab) { return ({ preview: "预览", assets: "素材", artifacts: "产物" } as const)[tab]; }
+function savedCanvasTab(projectId: string): CanvasTab { const value = readStringSetting(`yingya-canvas-tab:${projectId}`, "preview"); return value === "assets" || value === "artifacts" ? value : "preview"; }
 function savedVersionId(project: ProjectDetail) { const fallback = project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id ?? ""; const saved = readStringSetting(`yingya-version:${project.id}`, fallback); return project.manifest.versions.some(version => version.id === saved) ? saved : fallback; }
 function restoreVideoTime(video: HTMLVideoElement, key: string) { const saved = readNumberSetting(key, 0); if (saved > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(saved, Math.max(0, video.duration - .1)); }
 function saveVideoTime(video: HTMLVideoElement, key: string) { if (video.readyState >= 1 && Number.isFinite(video.currentTime) && video.currentTime >= 0) writeNumberSetting(key, video.currentTime); }

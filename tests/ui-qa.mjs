@@ -332,7 +332,9 @@ async function assertDraftCheckpoint(browser) {
   await installApiMock(page, draft);
   await page.goto(baseUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
-  await page.locator(".checkpoint-card").getByRole("heading", { name: "草稿视频已就绪" }).waitFor();
+  await page.locator(".artifact-canvas").waitFor();
+  if (await page.locator(".checkpoint-card").count()) throw new Error("Draft review must use the preview and export workspace without a duplicate checkpoint card");
+  if (await page.getByRole("tab", { name: "分镜", exact: true }).count()) throw new Error("Storyboard tab should be removed");
   const renderPanel = page.getByLabel("导出视频");
   await renderPanel.waitFor();
   if (await page.locator(".artifact-canvas > header select").inputValue() !== "draft-3") throw new Error("The newest current draft should be selected automatically");
@@ -647,12 +649,13 @@ async function assertFunctionalEnhancements(browser) {
   await page.reload();
   await composer.waitFor();
   if (await composer.inputValue() !== "这个项目独有的修改草稿") throw new Error("Project draft or direct project route was lost");
-  await page.locator(".canvas-tabs").getByRole("tab", { name: "分镜", exact: true }).click();
-  await page.locator(".scene-editor-list").getByText("产品登场", { exact: false }).waitFor();
-  await page.getByRole("button", { name: "保存分镜结构" }).click();
-  await page.getByRole("button", { name: "关联素材", exact: true }).waitFor();
-  await page.getByRole("button", { name: "修改这一镜" }).click();
-  if (!(await composer.inputValue()).includes("scene-one")) throw new Error("Per-scene action did not address the actual scene");
+  await page.evaluate(projectId => localStorage.setItem(`yingya-canvas-tab:${projectId}`, JSON.stringify({ version: 1, value: "storyboard" })), seed.id);
+  await page.reload();
+  await page.locator('#canvas-tab-preview[aria-selected="true"]').waitFor();
+  if (await page.getByRole("tab", { name: "分镜", exact: true }).count()) throw new Error("Removed storyboard tab should not reappear from saved state");
+  await page.locator("#canvas-tab-preview").focus();
+  await page.keyboard.press("ArrowRight");
+  await page.locator('#canvas-tab-assets[aria-selected="true"]').waitFor();
   await page.locator(".canvas-tabs").getByRole("tab", { name: "素材", exact: true }).click();
   await page.getByText("查找配乐与音效", { exact: true }).click();
   await page.getByLabel("搜索描述").fill("轻快钢琴");
@@ -660,13 +663,6 @@ async function assertFunctionalEnhancements(browser) {
   await page.getByLabel("试听 轻快钢琴").waitFor();
   await page.getByRole("button", { name: "加入项目并描述用途" }).click();
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="修改描述"]')?.value.includes("assets/audio/music-test.mp3"));
-  await page.locator(".canvas-tabs").getByRole("tab", { name: "分镜", exact: true }).click();
-  await page.getByRole("button", { name: "关联素材", exact: true }).click();
-  await page.locator(".scene-asset-editor").getByLabel("轻快钢琴").check();
-  await page.getByRole("button", { name: "保存关联", exact: true }).click();
-  await page.locator(".scene-asset-chips").getByText("轻快钢琴", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "应用到视频" }).click();
-  if (!(await composer.inputValue()).includes("music-test")) throw new Error("Saved scene asset association was not applied to the edit request");
   await page.locator(".canvas-tabs").getByRole("tab", { name: "预览", exact: true }).click();
   await page.getByText("比较版本与修改说明", { exact: true }).click();
   await page.locator(".version-comparison video").nth(1).waitFor();
@@ -678,9 +674,10 @@ async function assertFunctionalEnhancements(browser) {
   await page.locator(".artifact-canvas > header select").selectOption("draft-2");
   if (await page.locator(".time-feedback-row input").first().inputValue() !== "新版保留的意见") throw new Error("Version feedback was lost when switching versions");
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.locator(".workspace-tabs").getByRole("button", { name: "分镜", exact: true }).click();
-  if (await page.evaluate(() => document.documentElement.scrollWidth) > 320) throw new Error("Storyboard overflows at 320px");
-  await page.screenshot({ path: "/tmp/yingya-features-storyboard-320.png", fullPage: true });
+  if (await page.locator(".workspace-tabs").getByRole("button", { name: "分镜", exact: true }).count()) throw new Error("Mobile navigation should not show storyboard");
+  await page.locator(".workspace-tabs").getByRole("button", { name: "预览", exact: true }).click();
+  if (await page.evaluate(() => document.documentElement.scrollWidth) > 320) throw new Error("Preview overflows at 320px");
+  await page.screenshot({ path: "/tmp/yingya-features-preview-320.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.goBack();
@@ -718,7 +715,7 @@ async function assertFunctionalEnhancements(browser) {
   const payload = (await turn).postDataJSON();
   if (!payload.text.includes("目标时长：30 秒") || !payload.attachments.includes("assets/inbox/document-1")) throw new Error("Creation settings or library files were not sent to the project");
   await creation.close();
-  console.log("Feature QA passed: persisted text/files/settings, direct links, tasks, scene extraction/editing/associations, audio, version comparison/feedback, and asset/folder management");
+  console.log("Feature QA passed: persisted text/files/settings, direct links, tasks, conversation editing, retired storyboard navigation, audio, version comparison/feedback, and asset/folder management");
 }
 
 async function assertMotionFeedback(browser) {
