@@ -145,9 +145,6 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     const projectMatch = pathname.match(/^\/api\/agent-projects\/([^/]+)$/);
     if (projectMatch && method === "GET") return json(route, current.id === projectMatch[1] ? current : seed);
     if (pathname.endsWith("/index.html") && pathname.includes("/files/")) return route.fulfill({ status: 200, contentType: "text/html", body: '<section id="scene-one" class="scene" data-start="0" data-duration="5"><h1>产品登场</h1><p class="caption">介绍核心功能</p></section>' });
-    if (pathname.endsWith("/scenes") && method === "POST") { media.scenes = request.postDataJSON().scenes; return json(route, media.scenes); }
-    const sceneMatch = pathname.match(/\/scenes\/([^/]+)$/);
-    if (sceneMatch && method === "PATCH") { const scene = media.scenes.find(item => item.id === sceneMatch[1]); scene.assetIds = request.postDataJSON().assetIds; return json(route, scene); }
     if (pathname === "/api/heygen/audio") return json(route, { data: [{ id: "music-test", name: "轻快钢琴", description: "温暖的钢琴配乐", audioUrl: "/assets/uploads/music.mp3", duration: 30, type: "music" }], hasMore: false });
     if (pathname.endsWith("/heygen/audio") && method === "POST") { const asset = { id: "music-test", name: "轻快钢琴", url: "/assets/uploads/music.mp3", hyperframesPath: "assets/audio/music-test.mp3", kind: "music", source: "heygen", mediaType: "audio/mpeg", createdAt: now }; media.assets.push(asset); return json(route, asset); }
     if (pathname.endsWith("/assets") && method === "POST") return json(route, { path: "assets/inbox/reference.pdf", name: "参考文件.pdf" });
@@ -802,10 +799,15 @@ async function assertDesignRepairs(browser) {
   await page.getByRole("button", { name: "导出", exact: true }).click();
   await page.waitForFunction(() => document.activeElement?.classList.contains("export-destination"));
   await page.locator("#canvas-tab-artifacts").click();
+  const imageGroup = page.getByRole("button", { name: "画面与封面 1", exact: true });
+  if (await imageGroup.getAttribute("aria-expanded") !== "false") throw new Error("Secondary artifact groups should start collapsed");
+  await imageGroup.focus();
+  await page.keyboard.press("Enter");
   await page.getByRole("button", { name: /关键帧总览.*snapshots/ }).click();
   await page.waitForFunction(() => document.querySelector("img.artifact-media")?.naturalWidth > 0);
   if (await page.locator(".artifact-source").count()) throw new Error("Image artifact was decoded as source text");
   await page.getByRole("button", { name: "返回项目产物" }).click();
+  if (await imageGroup.getAttribute("aria-expanded") !== "true") throw new Error("Returning from preview lost the expanded artifact group");
   await page.locator("#canvas-tab-preview").click();
   await page.setViewportSize({ width: 1024, height: 768 });
   const stage = await page.locator(".video-stage").boundingBox();

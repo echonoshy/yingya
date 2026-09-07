@@ -15,3 +15,10 @@ export function includeAstra(models: CodexModel[]): CodexModel[] {
   // Older Codex catalogs may omit Astra. Prefer server metadata when available.
   return models.some(model => model.model === astra.model) ? models : [...models, astra];
 }
+
+/** Pin Astra in menus while keeping the catalog's defaults and relative order intact. */
+export function prioritizeAstra(models: CodexModel[]): CodexModel[] {
+  const index = models.findIndex(model => model.model === astra.model);
+  if (index <= 0) return models;
+  return [models[index], ...models.slice(0, index), ...models.slice(index + 1)];
+}

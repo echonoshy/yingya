@@ -88,9 +88,14 @@ motion assertions, and configuration are source files.
 
 Rendered MP4 files and inspection snapshots are outputs. Product projects keep
 them inside their own ignored `data/video-projects/<project-id>/` directory.
-Test runs should use a temporary directory or an ignored project-local output
+Test runs should use a temporary directory or an ignored fixture-local output
 directory; do not add generated media to the repository unless a visual
 regression test explicitly defines it as a reviewed baseline.
+
+One-off QA scripts, screenshots, logs, and exploratory design exports belong in
+temporary directories. Keep current product guidance in `docs/`; do not retain
+superseded audit reports or design iterations there. Current brand assets live in `web/public/brand/`: `yingya-ghost.png` is
+the product logo; `yingya-favicon.svg` is the theme-aware browser icon.
 
 ## Cleanup policy
 
@@ -102,11 +107,14 @@ Safe to regenerate:
 - `.runtime/huggingface/`
 - `.runtime/models/VoxCPM2/.cache/`
 - `.runtime/codex-home/cache/`, `tmp/`, and copied `generated_images/`
-- project-local HyperFrames renders and inspection snapshots
+- test-fixture HyperFrames renders and inspection snapshots
 
 Review before removing:
 
 - `data/`, because it contains user inputs and generated project source
+- project renders, inspection snapshots, and exports, because manifests,
+  conversation links, and version history can reference these files even when
+  their source is reproducible
 - `.runtime/codex-home/`, because it contains credentials and task state
 - `.runtime/models/` and `.runtime/voxcpm2-vllm/`, because rebuilding them is
   expensive and is not yet fully automated by this repository

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { includeAstra } from "./models";
+import { includeAstra, prioritizeAstra } from "./models";
 
 describe("includeAstra", () => {
   it("adds Astra to an older catalog without changing existing defaults", () => {
@@ -16,5 +16,20 @@ describe("includeAstra", () => {
     const [astra] = includeAstra([]);
     const models = [{ ...astra, id: "server-astra", defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Server setting" }] }];
     expect(includeAstra(models)).toBe(models);
+  });
+});
+
+
+describe("prioritizeAstra", () => {
+  it("pins the server entry without changing other order, metadata or defaults", () => {
+    const [astra] = includeAstra([]);
+    const terra = { ...astra, model: "gpt-5.6-terra", isDefault: true };
+    const sol = { ...astra, model: "gpt-5.6-sol" };
+    const catalog = [terra, astra, sol];
+    expect(prioritizeAstra(catalog)).toEqual([astra, terra, sol]);
+    expect(catalog).toEqual([terra, astra, sol]);
+    expect(prioritizeAstra(catalog)[0]).toBe(astra);
+    expect(prioritizeAstra(catalog)[1].isDefault).toBe(true);
+    expect(prioritizeAstra([terra, sol])).toEqual([terra, sol]);
   });
 });

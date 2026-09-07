@@ -1,9 +1,0 @@
-Generation mode: built-in image_gen
-
-Use case: logo-brand.
-Asset type: one original little ghost avatar / brand mascot icon for Yingya.
-Input image: visual reference for the user's preferred compact black ghost-like character, soft silhouette and simple eyes. Create a distinct original character inspired by that personality.
-Primary request: a lovable tiny floating ghost, a single solid near-black silhouette, with a large softly rounded head flowing into a short asymmetric wavy lower body. A little rounded tail sweeps gently toward the left, suggesting a ghost drifting to the right. Two small clean white oval eye cutouts, close together in the upper face, subtly looking right; no mouth. Friendly, curious, quietly playful, not spooky. Make it feel like a memorable avatar with character, not a generic Halloween bedsheet ghost. Carefully balanced organic curves; chunky cohesive silhouette; restrained asymmetry. No arms, no feet, no accessories, no detached dots. Keep eyes large enough to read at favicon size.
-Style: crisp flat vector-like logo artwork, monochrome solid graphite #24262b on pure white, smooth edges, no gradients, no shading, no texture, no 3D, no shadows.
-Composition: exactly one icon, centered in a square 1024x1024 image, occupying approximately 70% of canvas width with generous balanced margins. No app tile or enclosing shape. No text, no watermark, no presentation board.
-Avoid: plants, sprouts, leaves, seeds, play triangles, video camera symbols, literal film imagery, scary expressions, skulls, fangs, emoji styling. The ghost character itself is the whole identity.

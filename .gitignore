@@ -13,6 +13,11 @@ data/*
 !data/README.md
 artifacts/*
 
+# One-off design generations and historical QA evidence are not product source.
+output/
+docs/design-audit/
+design-qa.md
+
 # HyperFrames outputs are reproducible from composition sources.
 **/renders/
 **/snapshots/

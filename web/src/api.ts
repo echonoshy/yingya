@@ -1,7 +1,7 @@
 import { feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
-import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, mediaSceneSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
-import type { CreateProjectInput, TurnInput, MediaScene } from "./types";
+import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
+import type { CreateProjectInput, TurnInput } from "./types";
 import { createClientRequestId } from "./requestId";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
@@ -75,8 +75,6 @@ export const api = {
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),
   uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
   getProjectMedia: (id: string) => request(`/api/agent-projects/${id}/media`, agentMediaSchema),
-  importScenes: (id: string, scenes: MediaScene[]) => request(`/api/agent-projects/${id}/scenes`, z.array(mediaSceneSchema), { method: "POST", body: JSON.stringify({ scenes }) }),
-  setSceneAssets: (id: string, sceneId: string, assetIds: string[]) => request(`/api/agent-projects/${id}/scenes/${sceneId}`, mediaSceneSchema, { method: "PATCH", body: JSON.stringify({ assetIds }) }),
   studio: (id: string) => request(`/api/agent-projects/${id}/studio`, studioSchema, { method: "POST", body: "{}" }),
   heartbeatStudio: (id: string) => request(`/api/agent-projects/${id}/studio/heartbeat`, studioSchema, { method: "POST", body: "{}" }),
   stopStudio: (id: string) => requestVoid(`/api/agent-projects/${id}/studio`, { method: "DELETE" }),

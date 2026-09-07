@@ -1,3 +1,4 @@
+import { prioritizeAstra } from "../models";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { useMotionPresence } from "../hooks/useMotionPresence";
 import { CaretDown, CaretRight, Check } from "@phosphor-icons/react";
@@ -21,6 +22,7 @@ export function ModelSelector({ models, value, onChange }: {
   value: ModelSelection;
   onChange: (value: ModelSelection) => void;
 }) {
+  const menuModels = useMemo(() => prioritizeAstra(models), [models]);
   const [open, setOpen] = useState(false);
   const presence = useMotionPresence(open ? true : null);
   const root = useRef<HTMLDivElement>(null);
@@ -56,12 +58,12 @@ export function ModelSelector({ models, value, onChange }: {
       items[next]?.focus();
     }
     if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
-    <button type="button" className="model-trigger" onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
+    <button type="button" className="model-trigger" title={`${displayName} · ${effortName}`} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
       <span className="model-trigger-label">{displayName} · {effortName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
     </button>
     {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={position}>
       <div className="model-menu-primary" role="group" aria-label="模型">
-        {models.map(model => <button
+        {menuModels.map(model => <button
           type="button"
           role="menuitemradio"
           aria-checked={value.model === model.model}

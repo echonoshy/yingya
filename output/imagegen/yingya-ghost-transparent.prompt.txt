@@ -1,7 +1,0 @@
-Generation mode: built-in image_gen
-Reference: output/imagegen/yingya-ghost-v3.png
-
-Use case: background-extraction. This is a production export of an already approved logo, NOT a redesign. Preserve the reference ghost's exact silhouette, proportions, left tail, three lower lobes, two oval eyes, eye placement, expression and graphite color. Remove only the white background, including the white inside both eyes, making them truly transparent alpha. Flatten the ghost body to a uniform solid graphite #24262b without any texture. Tightly frame this same single ghost in a square canvas with about 5% transparent margin per side, ready to be used as a small website icon. Absolutely no new shapes, no change of character, no shadows or glow, no white outline, no checkerboard pixels, no text. Output PNG with actual transparent alpha background.
-
-Production asset: web/public/brand/yingya-ghost.png (256px export)
-Favicon: web/public/brand/yingya-favicon.svg (embedded PNG, white in dark color scheme)
