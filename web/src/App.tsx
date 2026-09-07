@@ -163,7 +163,7 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
   if (busy) return <ProjectCreationPendingView prompt={prompt.trim()} fileCount={files.length} stage={creationStage}/>;
   return <div className="home-layout">
     <aside className="home-nav">
-      <div className="home-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div>
+      <div className="home-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div>
       <button className="home-new-button" onClick={startCreating}><Plus weight="bold"/>新建视频</button>
       <nav aria-label="映芽功能">
         <button className="active" aria-current="page" onClick={startCreating}><FilmSlate/>视频创作</button>

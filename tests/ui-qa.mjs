@@ -57,7 +57,7 @@ function json(route, body, status = 200) {
 async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {}) {
   let projects = [seed];
   let current = structuredClone(seed);
-  let libraryImages = [{ id: "image-1", url: "/brand/invideo-favicon-white.ico", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
+  let libraryImages = [{ id: "image-1", url: "/brand/yingya-ghost.png", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
   let assetFolders = [{ id: "folder-brand", name: "品牌素材", createdAt: now }];
   let libraryAssets = [
     { ...libraryImages[0], category: "image", folderId: "folder-brand" },
@@ -83,7 +83,7 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (pathname === "/api/codex/threads" && method === "POST") return json(route, { threadId: "image-thread-1" });
     if (pathname === "/api/codex/threads/image-thread-1/images" && method === "POST") {
       const input = request.postDataJSON();
-      libraryImages = [{ id: "image-2", url: "/brand/invideo-favicon-white.ico", hyperframesPath: "assets/generated/image-2.png", mimeType: "image/png", prompt: input.prompt, sourceName: null, kind: "generated", createdAt: now + 1 }, ...libraryImages];
+      libraryImages = [{ id: "image-2", url: "/brand/yingya-ghost.png", hyperframesPath: "assets/generated/image-2.png", mimeType: "image/png", prompt: input.prompt, sourceName: null, kind: "generated", createdAt: now + 1 }, ...libraryImages];
       libraryAssets = [{ ...libraryImages[0], category: "image", folderId: null }, ...libraryAssets];
       return json(route, { threadId: "image-thread-1", turnId: "image-turn-1", status: "completed", text: "", images: [{ id: "image-2", url: libraryImages[0].url, hyperframesPath: libraryImages[0].hyperframesPath, mimeType: "image/png", revisedPrompt: input.prompt }] });
     }

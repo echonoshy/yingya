@@ -253,7 +253,7 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
 
   return <div className="asset-library-layout">
     <aside className="asset-workshop-nav">
-      <div className="asset-workshop-brand"><img src="/brand/invideo-favicon-black.ico" alt=""/><b>映芽</b></div>
+      <div className="asset-workshop-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div>
       <nav className="asset-product-nav" aria-label="映芽功能"><button onClick={onCreate}><FilmSlate/>视频创作</button><button className="active"><Images/>素材工坊</button></nav>
       <div className="asset-folder-heading"><span>文件夹</span><button aria-label="新建文件夹" aria-expanded={folderFormOpen} onClick={() => setFolderFormOpen(current => !current)}><Plus/></button></div>
       {folderFormOpen ? <form className="asset-folder-form" onSubmit={createFolder}><label htmlFor="asset-folder-name">新建文件夹</label><input id="asset-folder-name" autoFocus value={folderName} maxLength={40} onChange={event => setFolderName(event.target.value)} placeholder="文件夹名称"/><div><button type="button" onClick={() => setFolderFormOpen(false)}>取消</button><button disabled={!folderName.trim() || creatingFolder}>{creatingFolder ? <CircleNotch className="spin"/> : "创建"}</button></div></form> : null}
