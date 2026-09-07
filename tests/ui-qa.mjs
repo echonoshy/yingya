@@ -473,7 +473,7 @@ async function assertDesktop(browser) {
   const finalReply = page.getByText("预览已完成，请选择下一步：", { exact: false });
   await finalReply.waitFor();
   await page.locator(".message--assistant ol > li").first().waitFor();
-  const planLink = page.locator('.message--assistant a[href="plans/production.md"]');
+  const planLink = page.locator(`.message--assistant a[href="/api/agent-projects/${record.id}/files/plans/production.md"]`);
   await planLink.getByText("查看制作方案", { exact: true }).waitFor();
   const activityTop = await page.locator(".activity-item").first().evaluate(element => element.getBoundingClientRect().top);
   const replyTop = await finalReply.evaluate(element => element.getBoundingClientRect().top);
@@ -482,12 +482,12 @@ async function assertDesktop(browser) {
   if (await page.locator(".activity-item pre, .activity-item > p").count()) throw new Error("Raw tool output should not appear in the conversation");
   await page.getByText("画面结构已经确认，接下来整理制作文件。", { exact: true }).waitFor();
   await page.getByTitle("旁白音色：默认音色").click();
-  const voiceDialog = page.getByRole("dialog", { name: "项目旁白音色" });
+  const voiceDialog = page.getByRole("dialog", { name: "旁白音色" });
   await voiceDialog.getByText("映芽讲解", { exact: true }).waitFor();
   await voiceDialog.getByRole("button", { name: "描述生成" }).click();
   await voiceDialog.getByPlaceholder("例如：温暖女声").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-voice-design.png", fullPage: true });
-  await voiceDialog.getByRole("button", { name: "关闭音色库" }).click();
+  await voiceDialog.getByRole("button", { name: "关闭对话框" }).click();
   await page.locator(".canvas-tabs").getByRole("tab", { name: "素材", exact: true }).click();
   await page.getByRole("heading", { name: "参考文件", exact: true }).waitFor();
   await page.getByText("产品定格镜头.mp4", { exact: true }).waitFor();
@@ -571,12 +571,12 @@ async function assertCreateAndMobile(browser) {
   await installApiMock(page, detail, { creationDelayMs: 700 });
   await page.goto(baseUrl);
   await page.getByTitle("旁白音色：默认音色").click();
-  const voiceDialog = page.getByRole("dialog", { name: "项目旁白音色" });
+  const voiceDialog = page.getByRole("dialog", { name: "旁白音色" });
   await voiceDialog.waitFor();
   const voiceBox = await voiceDialog.boundingBox();
   if (!voiceBox || voiceBox.x < 0 || voiceBox.x + voiceBox.width > 360 || voiceBox.y < 0 || voiceBox.y + voiceBox.height > 800) throw new Error(`Mobile voice dialog is outside the viewport: ${JSON.stringify(voiceBox)}`);
   await page.screenshot({ path: "/tmp/yingya-ui-voice-mobile.png", fullPage: true });
-  await voiceDialog.getByRole("button", { name: "关闭音色库" }).click();
+  await voiceDialog.getByRole("button", { name: "关闭对话框" }).click();
   const prompt = page.getByPlaceholder("描述视频主题、风格、时长，或直接粘贴网页链接…");
   await prompt.fill("网站产品宣传片");
   const createRequest = page.waitForRequest(request => request.url().endsWith("/api/agent-projects") && request.method() === "POST");
@@ -664,7 +664,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.getByRole("button", { name: "加入项目并描述用途" }).click();
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="修改描述"]')?.value.includes("assets/audio/music-test.mp3"));
   await page.locator(".canvas-tabs").getByRole("tab", { name: "预览", exact: true }).click();
-  await page.getByText("比较版本与修改说明", { exact: true }).click();
+  await page.getByText("比较版本", { exact: true }).click();
   await page.locator(".version-comparison video").nth(1).waitFor();
   if (await page.locator(".version-comparison video").count() !== 2) throw new Error("Version comparison did not show two versions");
   await page.getByRole("button", { name: "添加时间点" }).click();
@@ -775,10 +775,58 @@ async function assertMotionFeedback(browser) {
   console.log("Motion QA passed: history position, latest navigation, server queue feedback, draft/error continuity, interrupted menu motion and reduced motion");
 }
 
+async function assertDesignRepairs(browser) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
+  const seed = { ...structuredClone(detail), queue: [], queueDepth: 0, queuePaused: false,
+    manifest: { ...structuredClone(manifest), phase: "draft_review", dirty: true, checkpoint: { id: "review", kind: "draft", title: "审阅草稿", summary: "", artifactIds: [] }, currentDraft: "draft-1", versions: [{ id: "draft-1", label: "草稿 1", sourcePath: "index.html", videoPath: "renders/draft.mp4", createdAt: now }], artifacts: [{ id: "sheet", kind: "snapshot", label: "关键帧总览", path: "snapshots/contact-sheet.jpg", metadata: {} }] },
+    messages: [{ id: "reply", role: "assistant", text: `[打开视频](/home/lake/workspace/yingya/data/video-projects/${record.id}/renders/draft.mp4)`, attachments: [], context: [], status: "completed", createdAt: now }],
+  };
+  await installApiMock(page, seed);
+  await page.route("**/files/snapshots/contact-sheet.jpg", route => route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64") }));
+  await page.goto(baseUrl);
+  await page.getByTitle("旁白音色：默认音色").click();
+  await page.getByRole("button", { name: "描述生成", exact: true }).click();
+  await page.getByPlaceholder("例如：温暖女声").fill("可见的音色表单");
+  const dialog = await page.getByRole("dialog", { name: "旁白音色", exact: true }).boundingBox();
+  if (!dialog || dialog.y < 0 || dialog.y + dialog.height > 960) throw new Error("Voice creation escaped the desktop viewport");
+  await page.keyboard.press("Escape");
+  await page.locator(".model-trigger").click();
+  await page.keyboard.press("ArrowDown");
+  if (await page.evaluate(() => document.activeElement?.getAttribute("role")) !== "menuitemradio") throw new Error("Model keyboard navigation did not enter its options");
+  await page.keyboard.press("Escape");
+  await page.goto(`${baseUrl}/#/projects/${seed.id}`);
+  await page.locator(".video-stage video").waitFor();
+  const link = page.getByRole("link", { name: "打开视频", exact: true });
+  if (await link.getAttribute("href") !== `/api/agent-projects/${seed.id}/files/renders/draft.mp4`) throw new Error("Historical file URL was not resolved through the project API");
+  if (await page.locator(".dirty-chip").count()) throw new Error("Draft review should not show an unscoped dirty warning");
+  await page.getByRole("button", { name: "导出", exact: true }).click();
+  await page.waitForFunction(() => document.activeElement?.classList.contains("export-destination"));
+  await page.locator("#canvas-tab-artifacts").click();
+  await page.getByRole("button", { name: /关键帧总览.*snapshots/ }).click();
+  await page.waitForFunction(() => document.querySelector("img.artifact-media")?.naturalWidth > 0);
+  if (await page.locator(".artifact-source").count()) throw new Error("Image artifact was decoded as source text");
+  await page.getByRole("button", { name: "返回项目产物" }).click();
+  await page.locator("#canvas-tab-preview").click();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const stage = await page.locator(".video-stage").boundingBox();
+  if (!stage || stage.width < 240) throw new Error(`Portrait preview was squeezed: ${JSON.stringify(stage)}`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "预览", exact: true }).click();
+  await page.getByRole("button", { name: "描述修改", exact: true }).click();
+  await page.getByRole("textbox", { name: "修改描述" }).fill("从预览继续修改");
+  await page.getByRole("button", { name: "所有项目", exact: true }).click();
+  await page.getByRole("button", { name: "素材工坊", exact: true }).click();
+  await page.locator(".asset-media-tabs").getByRole("button", { name: /^视频/ }).click();
+  if (await page.locator(".asset-inspector").isVisible()) throw new Error("Mobile category navigation opened an unsolicited inspector");
+  await page.close();
+  console.log("Design repair QA passed: desktop voice, keyboard model selection, project file links, typed image preview, export focus, 1024px portrait, mobile feedback and asset filters");
+}
+
 let browser;
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
+  await assertDesignRepairs(browser);
   await assertMotionFeedback(browser);
   await assertFunctionalEnhancements(browser);
   await assertAssetWorkshop(browser);

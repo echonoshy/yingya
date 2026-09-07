@@ -241,10 +241,14 @@ pub struct MediaScene {
 #[serde(rename_all = "camelCase")]
 pub struct MediaAsset {
     pub id: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub url: String,
+    #[serde(alias = "path")]
     pub hyperframes_path: String,
     pub kind: String,
+    #[serde(default)]
     pub source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_type: Option<String>,
@@ -254,6 +258,7 @@ pub struct MediaAsset {
     pub provider_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default)]
     pub created_at: u64,
 }
 
@@ -875,10 +880,33 @@ impl AgentProjectStore {
 
     pub async fn media(&self, project_id: &str) -> Result<AgentMedia, String> {
         let directory = self.project_dir(project_id)?;
-        let _: AgentProjectRecord = read_json(&directory.join("project.json")).await?;
+        let record: AgentProjectRecord = read_json(&directory.join("project.json")).await?;
+        let mut assets: Vec<MediaAsset> =
+            read_json_or_default(&directory.join("assets.json")).await?;
+        for asset in &mut assets {
+            if asset.name.is_empty() {
+                asset.name = Path::new(&asset.hyperframes_path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("未命名素材")
+                    .to_owned();
+            }
+            if asset.url.is_empty() {
+                asset.url = format!(
+                    "/api/agent-projects/{project_id}/files/{}",
+                    asset.hyperframes_path
+                );
+            }
+            if asset.source.is_empty() {
+                asset.source = "project".to_owned();
+            }
+            if asset.created_at == 0 {
+                asset.created_at = record.created_at;
+            }
+        }
         Ok(AgentMedia {
             scenes: read_json_or_default(&directory.join("scenes.json")).await?,
-            assets: read_json_or_default(&directory.join("assets.json")).await?,
+            assets,
         })
     }
 
@@ -2015,6 +2043,27 @@ mod tests {
             .unwrap();
         assert!(store.import_scenes(&project.id, vec![scene]).await.is_err());
         assert_eq!(store.media(&project.id).await.unwrap().scenes.len(), 1);
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn legacy_media_paths_remain_readable_without_rewriting_project_data() {
+        let root = std::env::temp_dir().join(format!("yingya-legacy-media-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let project = store.create(&request()).await.unwrap();
+        let path = store.project_dir(&project.id).unwrap().join("assets.json");
+        let original = serde_json::json!([{ "id": "voice-1", "kind": "audio", "path": "assets/narration.wav", "voiceId": "default", "durationSeconds": 12.0 }]);
+        write_json(&path, &original).await.unwrap();
+        let media = store.media(&project.id).await.unwrap();
+        assert_eq!(media.assets.len(), 1);
+        assert_eq!(media.assets[0].name, "narration.wav");
+        assert_eq!(media.assets[0].hyperframes_path, "assets/narration.wav");
+        assert!(media.assets[0].url.ends_with("/files/assets/narration.wav"));
+        assert_eq!(media.assets[0].created_at, project.created_at);
+        assert_eq!(
+            read_json::<serde_json::Value>(&path).await.unwrap(),
+            original
+        );
         fs::remove_dir_all(root).await.unwrap();
     }
 

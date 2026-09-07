@@ -7,6 +7,12 @@ description: Plan, produce, revise, and recover Yingya video projects with timed
 
 This is Yingya's outer production workflow. Work inside the current project directory. Conversation carries decisions; `.yingya/manifest.json` is the only UI workflow manifest. Keep the user informed in concise Chinese about the current production step, usable result, and any blocker.
 
+## Communicate in the product's language
+
+User-facing progress and final replies should lead with the usable result, the change made, and the next decision. Use concise Chinese such as “草稿已生成”“旁白已调整”“请确认制作方案”. Mention the version when asking for feedback or presenting an export. Link to project-relative artifact paths (for example `[查看草稿](renders/draft-1.mp4)`); do not expose an absolute filesystem path as a website route.
+
+Keep manifest fields, shell commands, raw validation JSON, and detailed logs in the registered report artifacts. Summarize whether checks passed and disclose actual limitations or failures; never hide a failed check behind a simplified success message. Include technical details in the reply when the user asks for them or needs them to resolve a blocker. Do not repeat a draft confirmation card in prose after the UI already presents the decision.
+
 ## Start from the actual project
 
 Read the request, supplied context and attachments, root manifest, `.yingya/plan.md`, `scenes.json`, `assets.json`, `DESIGN.md`, and `.yingya/voice.json` when present. Read other existing planning files only when relevant; missing legacy `BRIEF.md`, `SCRIPT.md`, `STORYBOARD.md`, or `frame.md` is not a blocker. Preserve user edits, scene IDs, asset links, and unrelated files.

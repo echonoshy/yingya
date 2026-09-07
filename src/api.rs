@@ -516,6 +516,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "/api/agent-projects/{project_id}/files/{*path}",
             get(agent_project_file),
         )
+        .route(
+            "/api/agent-projects/{project_id}/poster",
+            get(agent_project_poster),
+        )
         .route("/api/{*path}", any(api_not_found))
         .nest_service("/assets", ServeDir::new(static_assets))
         .fallback_service(ServeDir::new(web_dist).not_found_service(ServeFile::new(web_index)))
@@ -614,6 +618,8 @@ async fn list_agent_projects(State(state): State<AppState>) -> Result<Json<Vec<V
         );
         let review_label = if active || failed {
             None
+        } else if manifest.phase == "briefing" {
+            Some("等待补充要求")
         } else if project.queue_depth == 0 {
             manifest
                 .checkpoint
@@ -626,16 +632,46 @@ async fn list_agent_projects(State(state): State<AppState>) -> Result<Json<Vec<V
                     }
                 })
                 .or(if manifest.dirty {
-                    Some("修改待检查")
+                    Some(
+                        if manifest
+                            .versions
+                            .iter()
+                            .any(|version| !version.video_path.is_empty())
+                        {
+                            "修改待检查"
+                        } else {
+                            "制作待检查"
+                        },
+                    )
                 } else {
                     None
                 })
         } else if manifest.dirty {
-            Some("修改待检查")
+            Some(
+                if manifest
+                    .versions
+                    .iter()
+                    .any(|version| !version.video_path.is_empty())
+                {
+                    "修改待检查"
+                } else {
+                    "制作待检查"
+                },
+            )
         } else {
             None
         };
         let mut summary = json!(project);
+        if manifest
+            .versions
+            .iter()
+            .any(|version| !version.video_path.is_empty())
+        {
+            summary["posterUrl"] = json!(format!(
+                "/api/agent-projects/{}/poster?v={}",
+                project.id, project.updated_at
+            ));
+        }
         if let Some(label) = review_label {
             summary["workflowStatus"] = json!("review");
             summary["workflowLabel"] = json!(label);
@@ -2671,6 +2707,104 @@ async fn mark_agent_studio_dirty(
         .await
         .map_err(ApiError::Project)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Posters are derived read-only from the latest draft and cached outside project files.
+async fn agent_project_poster(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+) -> Result<Response, ApiError> {
+    static POSTER_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let manifest = state
+        .agent_projects
+        .manifest(&project_id)
+        .await
+        .map_err(ApiError::Project)?;
+    let version = manifest
+        .versions
+        .iter()
+        .find(|version| {
+            Some(&version.id) == manifest.current_draft.as_ref() && !version.video_path.is_empty()
+        })
+        .or_else(|| {
+            manifest
+                .versions
+                .iter()
+                .rev()
+                .find(|version| !version.video_path.is_empty())
+        })
+        .ok_or_else(|| ApiError::BadRequest("暂无草稿封面".to_owned()))?;
+    let root = fs::canonicalize(
+        state
+            .agent_projects
+            .project_dir(&project_id)
+            .map_err(ApiError::Project)?,
+    )
+    .await?;
+    let source = fs::canonicalize(
+        state
+            .agent_projects
+            .resolve_relative(&project_id, &version.video_path)
+            .map_err(ApiError::Project)?,
+    )
+    .await?;
+    if !source.starts_with(&root) {
+        return Err(ApiError::BadRequest(
+            "project file escapes workspace".to_owned(),
+        ));
+    }
+    let metadata = fs::metadata(&source).await?;
+    let key = format!(
+        "{project_id}:{}:{}:{:?}",
+        version.video_path,
+        metadata.len(),
+        metadata.modified().ok()
+    );
+    let digest = format!("{:x}", Sha256::digest(key.as_bytes()));
+    let cache = state.root.join(".runtime/posters");
+    fs::create_dir_all(&cache).await?;
+    let target = cache.join(format!("{digest}.jpg"));
+    let _guard = POSTER_LOCK.lock().await;
+    if !fs::try_exists(&target).await? {
+        let temporary = cache.join(format!("{digest}-{}.jpg", Uuid::new_v4()));
+        let output = tokio::time::timeout(
+            Duration::from_secs(15),
+            Command::new("ffmpeg")
+                .kill_on_drop(true)
+                .args(["-v", "error", "-nostdin", "-i"])
+                .arg(&source)
+                .args([
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    "thumbnail=30,scale=640:360:force_original_aspect_ratio=decrease",
+                    "-threads",
+                    "1",
+                    "-y",
+                ])
+                .arg(&temporary)
+                .output(),
+        )
+        .await;
+        match output {
+            Ok(Ok(result)) if result.status.success() => {
+                fs::rename(&temporary, &target).await?;
+            }
+            _ => {
+                let _ = fs::remove_file(&temporary).await;
+                return Err(ApiError::BadRequest("封面暂时无法生成".to_owned()));
+            }
+        }
+    }
+    let bytes = fs::read(target).await?;
+    Ok((
+        [
+            (CONTENT_TYPE, "image/jpeg"),
+            (axum::http::header::CACHE_CONTROL, "private, max-age=300"),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 async fn agent_project_file(

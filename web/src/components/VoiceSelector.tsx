@@ -1,5 +1,5 @@
-import { useMotionPresence } from "../hooks/useMotionPresence";
-import { Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform, X } from "@phosphor-icons/react";
+import { ActionDialog } from "./ActionDialog";
+import { Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { UploadedVoice } from "../types";
@@ -15,7 +15,6 @@ type CreateMode = "list" | "design" | "clone";
 export function VoiceSelector({ value, onChange, disabled = false }: { value: string; onChange: (voiceId: string) => void | Promise<void>; disabled?: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const presence = useMotionPresence(open ? true : null);
   const [mode, setMode] = useState<CreateMode>("list");
   const [voices, setVoices] = useState<string[]>(["default"]);
   const [uploaded, setUploaded] = useState<UploadedVoice[]>([]);
@@ -44,11 +43,6 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
   useEffect(() => {
     if (!open) return;
     void load();
-    const close = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
   }, [load, open]);
 
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
@@ -92,12 +86,12 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
     finally { setWorking(""); }
   }
 
-  return <div className="voice-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); } }}>
+  return <div className="voice-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open && !working) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); } }}>
     <button type="button" className="voice-trigger" disabled={disabled} onClick={() => { setOpen(current => !current); setMode("list"); }} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
       <Waveform/><span>{currentName}</span><i>⌄</i>
     </button>
-    {presence.value ? <section ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="voice-menu" role="dialog" aria-label="项目旁白音色">
-      <header><div><small>项目旁白</small><b>{mode === "list" ? "选择旁白音色" : mode === "design" ? "生成新音色" : "克隆参考音色"}</b></div><button type="button" aria-label="关闭音色库" onClick={() => { setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); }}><X/></button></header>
+    {open ? <ActionDialog title="旁白音色" busy={Boolean(working)} onClose={() => setOpen(false)}><section className="voice-menu">
+
       {mode === "list" ? <>
         <div className="voice-list">
           {voices.map(voice => {
@@ -105,7 +99,7 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
             const label = voice === "default" ? "默认音色" : detail?.name ?? voice;
             return <div className={`voice-row ${value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? "active" : ""}`} key={voice}>
               <button type="button" className="voice-choice" disabled={Boolean(working)} onClick={() => void choose(voice)}>
-                <span><SpeakerHigh/></span><div><b>{label}</b><small>{detail?.speaker_description ?? (voice === "default" ? "VoxCPM2 基础音色" : "已保存的项目音色")}</small></div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
+                <span><SpeakerHigh/></span><div><b>{label}</b><small>{detail?.speaker_description ?? (voice === "default" ? "适合日常讲解的基础音色" : "已保存的项目音色")}</small></div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
               </button>
               <button type="button" className="voice-preview" aria-label={`试听 ${label}`} disabled={Boolean(previewing)} onClick={() => void preview(voice)}>{previewing === voice ? <CircleNotch className="spin"/> : <Play weight="fill"/>}</button>
             </div>;
@@ -132,6 +126,6 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
         <button type="button" className="voice-back" onClick={() => setMode("list")}>返回音色列表</button>
       </div>}
       {error ? <p className="voice-error" role="alert">{error}</p> : null}
-    </section> : null}
+    </section></ActionDialog> : null}
   </div>;
 }

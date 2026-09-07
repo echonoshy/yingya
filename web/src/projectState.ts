@@ -18,8 +18,9 @@ export function workflowState(project: ProjectDetail) {
   const running = projectGroup(project) === "active";
   const hasVideo = project.manifest.versions.some(version => version.videoPath) || project.manifest.artifacts.some(artifact => artifact.kind.includes("video"));
   const checkpoint = !running && !project.queue.length ? project.manifest.checkpoint : undefined;
-  const label = running || projectGroup(project) === "failed" ? projectStatus(project) : checkpoint ? (checkpoint.kind === "plan" ? "制作方案待确认" : "草稿待确认") : project.manifest.dirty ? "修改待检查" : projectStatus(project);
-  return { running, hasVideo, checkpoint, label };
+  const sourceNotice = hasVideo && project.manifest.dirty && !checkpoint && !running ? "源文件有更新，当前草稿可能尚未包含这些修改。" : "";
+  const label = running || projectGroup(project) === "failed" ? projectStatus(project) : project.manifest.phase === "briefing" ? "等待补充要求" : checkpoint ? (checkpoint.kind === "plan" ? "制作方案待确认" : "草稿待确认") : project.manifest.dirty ? (hasVideo ? "修改待检查" : "制作待检查") : projectStatus(project);
+  return { running, hasVideo, checkpoint, label, sourceNotice };
 }
 
 export function projectSummary(project: ProjectDetail): ProjectRecord {

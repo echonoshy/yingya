@@ -100,10 +100,10 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const visibleProjects = projects.filter(project => (filter === "all" || projectGroup(project) === filter) && project.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const filterCounts = Object.fromEntries(projectFilters.map(item => [item.id, projects.filter(project => item.id === "all" || projectGroup(project) === item.id).length]));
-  const coverProjectIds = projects.slice(0, 12).map(project => project.id).join(",");
+  const coverProjectIds = projects.map(project => `${project.id}:${project.updatedAt}`).join(",");
   useEffect(() => {
     let cancelled = false;
-    void Promise.all(coverProjectIds.split(",").filter(Boolean).map(id => ({ id })).map(async project => {
+    void Promise.all(coverProjectIds.split(",").filter(Boolean).map(entry => ({ id: entry.split(":")[0] })).map(async project => {
       try {
         const media = await api.getProjectMedia(project.id);
         const image = media.assets.find(asset => asset.mediaType?.startsWith("image/") || asset.kind === "image");
@@ -198,7 +198,7 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
           <div className="home-project-list" key={filter} id="home-project-results" role="tabpanel" aria-labelledby={`project-filter-${filter}`}>
             {visibleProjects.map(project => <article key={project.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(current => current === project.id ? "" : current); }} onKeyDown={event => { if (event.key === "Escape") { setOpenMenu(""); event.currentTarget.querySelector<HTMLButtonElement>(".home-project-menu-button")?.focus(); } }}>
               <button className="home-project-open" disabled={openingProjectId === project.id} aria-busy={openingProjectId === project.id} onClick={() => onOpen(project.id)}>
-                <span className="home-project-cover">{covers[project.id] ? <img src={covers[project.id]} alt=""/> : <FilmSlate/>}</span>
+                <ProjectCover poster={project.posterUrl} fallback={covers[project.id]}/>
                 <span className="home-project-copy"><b title={project.title}>{project.title}</b><small className={`home-status home-status--${projectGroup(project)}`}><i/>{openingProjectId === project.id ? "正在打开…" : projectStatus(project)}</small></span>
                 <time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time>
                 <span className="home-project-ratio">{project.aspectRatio}</span>
@@ -233,4 +233,10 @@ function formatHomeTime(timestamp: number) {
   const today = new Date();
   const sameDay = date.toDateString() === today.toDateString();
   return `${sameDay ? "今天" : date.toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })} ${date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+}
+
+function ProjectCover({ poster, fallback }: { poster?: string; fallback?: string }) {
+  const [failed, setFailed] = useState<string[]>([]);
+  const url = [poster, fallback].find(value => value && !failed.includes(value));
+  return <span className="home-project-cover">{url ? <img loading="lazy" src={url} alt="" onError={() => setFailed(current => [...current, url])}/> : <FilmSlate/>}</span>;
 }
