@@ -42,6 +42,19 @@ authentication or a trusted reverse proxy in front of it on untrusted networks.
 
 ## Generate speech
 
+Yingya narration uses the saved project voice from `.yingya/voice.json`.
+The CLI rejects a conflicting `--voice` instead of silently switching speakers.
+For `default`, it calls the Yingya backend's `/api/voices/resolve` endpoint
+(`YINGYA_API_BASE`, default `http://127.0.0.1:8797`) to obtain a persisted reference
+voice. All segments and revisions reuse that sample and its transcript. Named
+voices also send their saved `ref_text`; a missing voice fails without fallback.
+The raw VoxCPM2 `voice: default` API remains unconditioned and is for smoke tests
+or creating the first reference only, not multi-segment production narration.
+
+Voice design in the installed VoxCPM2 adapter uses a parenthesized description
+at the start of `input`, for example `(温暖清晰的青年女声)你好。`.
+`task_type: VoiceDesign` and `instructions` do not control this adapter.
+
 ```bash
 ./deploy/voxcpm2/smoke-test.sh
 ```

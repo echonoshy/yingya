@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -62,7 +62,7 @@ function parseCli() {
       text: { type: "string" },
       output: { type: "string" },
       model: { type: "string", default: "voxcpm2" },
-      voice: { type: "string", default: "default" },
+      voice: { type: "string" },
       format: { type: "string", default: "wav" },
       stream: { type: "boolean", default: false },
       force: { type: "boolean", default: false },
@@ -122,10 +122,32 @@ async function main() {
   await ensureOutputIsAvailable(output, args.force);
   await mkdir(dirname(output), { recursive: true });
 
+  let savedVoice;
+  try {
+    savedVoice = JSON.parse(await readFile(resolve(".yingya/voice.json"), "utf8")).voiceId;
+    if (typeof savedVoice !== "string" || !savedVoice.trim()) throw new Error("Invalid project voiceId");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (savedVoice && args.voice && savedVoice.toLowerCase() !== args.voice.toLowerCase()) {
+    throw new Error(`Project voice is ${savedVoice}; change it in Yingya before using ${args.voice}`);
+  }
+  const selectedVoice = savedVoice ?? args.voice ?? "default";
+  let voice;
+  if (selectedVoice.toLowerCase() === "default") {
+    // The backend creates and persists one reference, including concurrent calls.
+    voice = JSON.parse((await request(process.env.YINGYA_API_BASE ?? "http://127.0.0.1:8797", "/api/voices/resolve", { voiceId: "default" })).toString("utf8"));
+  } else {
+    const catalog = JSON.parse((await request(args["base-url"], "/v1/audio/voices")).toString("utf8"));
+    voice = catalog.uploaded_voices?.find(item => item.name.toLowerCase() === selectedVoice.toLowerCase());
+    if (!voice) throw new Error(`Saved voice ${selectedVoice} is unavailable; refusing an unanchored fallback`);
+  }
+
   const payload = {
     model: args.model,
     input: args.text,
-    voice: args.voice,
+    voice: voice.name,
+    ...(voice.ref_text ? { ref_text: voice.ref_text } : {}),
     response_format: args.format,
     ...(args.stream ? { stream: true, stream_format: "audio" } : {}),
   };

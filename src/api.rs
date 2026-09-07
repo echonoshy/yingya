@@ -425,6 +425,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/voices", get(list_voices).post(clone_voice))
         .route("/api/voices/design", post(design_voice))
         .route("/api/voices/preview", post(preview_voice))
+        .route("/api/voices/resolve", post(resolve_voice))
         .route(
             "/api/agent-projects",
             get(list_agent_projects).post(create_agent_project),
@@ -723,7 +724,7 @@ async fn rename_agent_project(
 }
 
 async fn list_voices(State(state): State<AppState>) -> Result<Json<VoiceList>, ApiError> {
-    Ok(Json(state.voices.list().await?))
+    Ok(Json(state.voices.list_visible().await?))
 }
 
 async fn design_voice(
@@ -825,6 +826,14 @@ async fn preview_voice(
     }
     let audio = state.voices.synthesize(&voice_id, text).await?;
     Ok(([(CONTENT_TYPE, "audio/wav")], audio).into_response())
+}
+
+async fn resolve_voice(
+    State(state): State<AppState>,
+    Json(request): Json<VoicePreviewRequest>,
+) -> Result<Json<UploadedVoice>, ApiError> {
+    let voice_id = validate_voice_name(&request.voice_id)?;
+    Ok(Json(state.voices.resolve(&voice_id).await?))
 }
 
 fn validate_voice_name(value: &str) -> Result<String, ApiError> {

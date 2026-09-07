@@ -4,7 +4,7 @@
   "private": true,
   "description": "映芽 · Yingya，通过对话创作视频，让想法长成影像。",
   "scripts": {
-    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:services && npm run web:build && npm run test:hyperframes && npm run test:ui",
+    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:services && npm run web:build && npm run test:hyperframes && npm run test:ui",
     "format:check": "cargo fmt --all -- --check",
     "lint:rust": "cargo clippy --all-targets -- -D warnings",
     "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test:web": "vitest run web/src",
     "test:heygen": "node --test tests/heygen-audio.test.mjs",
+    "test:tts": "node --test tests/voxcpm2-client.test.mjs",
     "test:rust": "cargo test --all-targets",
     "test:hyperframes": "npm --prefix tests/fixtures/hyperframes-smoke run check",
     "test:ui": "node tests/ui-qa.mjs",

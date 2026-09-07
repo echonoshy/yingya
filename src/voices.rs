@@ -1,4 +1,4 @@
-use std::{env, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 
 use reqwest::{Client, Response, multipart};
 use serde::{Deserialize, Serialize};
@@ -8,11 +8,13 @@ use thiserror::Error;
 const DEFAULT_API_BASE: &str = "http://127.0.0.1:8791";
 const DESIGN_SAMPLE: &str =
     "每一个想法，都值得被清晰而有温度地表达。这里是映芽，为你的画面带来稳定的声音。";
+const FIXED_DEFAULT_VOICE: &str = "yingya-default-narrator";
 
 #[derive(Clone)]
 pub struct VoiceClient {
     client: Client,
     base_url: String,
+    default_voice_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -66,6 +68,7 @@ impl VoiceClient {
                 .unwrap_or_else(|_| DEFAULT_API_BASE.to_owned())
                 .trim_end_matches('/')
                 .to_owned(),
+            default_voice_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -83,18 +86,64 @@ impl VoiceClient {
     }
 
     pub async fn synthesize(&self, voice: &str, text: &str) -> Result<Vec<u8>, VoiceError> {
+        let voice = self.resolve(voice).await?;
         let response = self
             .client
             .post(format!("{}/v1/audio/speech", self.base_url))
             .json(&json!({
                 "model": "voxcpm2",
                 "input": text,
-                "voice": voice,
+                "voice": voice.name,
+                "ref_text": voice.ref_text,
                 "response_format": "wav"
             }))
             .send()
             .await?;
         Ok(checked(response).await?.bytes().await?.to_vec())
+    }
+
+    pub async fn list_visible(&self) -> Result<VoiceList, VoiceError> {
+        let mut voices = self.list().await?;
+        // The persisted reference is represented by the existing default option.
+        voices.voices.retain(|name| name != FIXED_DEFAULT_VOICE);
+        voices
+            .uploaded_voices
+            .retain(|voice| voice.name != FIXED_DEFAULT_VOICE);
+        Ok(voices)
+    }
+
+    pub async fn resolve(&self, voice: &str) -> Result<UploadedVoice, VoiceError> {
+        // Serialize lazy creation so parallel scene requests share one reference.
+        let _guard = if voice.eq_ignore_ascii_case("default") {
+            Some(self.default_voice_lock.lock().await)
+        } else {
+            None
+        };
+        let name = if voice.eq_ignore_ascii_case("default") {
+            FIXED_DEFAULT_VOICE
+        } else {
+            voice
+        };
+        if let Some(saved) = self
+            .list()
+            .await?
+            .uploaded_voices
+            .into_iter()
+            .find(|item| item.name.eq_ignore_ascii_case(name))
+        {
+            return Ok(saved);
+        }
+        if voice.eq_ignore_ascii_case("default") {
+            return self
+                .create_design(
+                    FIXED_DEFAULT_VOICE,
+                    "自然清晰的中文旁白，语速适中，语气平稳",
+                )
+                .await;
+        }
+        Err(VoiceError::Service(format!(
+            "音色“{voice}”没有可用的参考音频，请重新上传或创建音色"
+        )))
     }
 
     pub async fn create_design(
@@ -107,9 +156,10 @@ impl VoiceClient {
             .post(format!("{}/v1/audio/speech", self.base_url))
             .json(&json!({
                 "model": "voxcpm2",
-                "input": DESIGN_SAMPLE,
-                "task_type": "VoiceDesign",
-                "instructions": description,
+                // VoxCPM2 encodes voice control in text; this adapter ignores
+                // Qwen-style task_type/instructions fields.
+                "input": design_text(description),
+                "voice": "default",
                 "response_format": "wav"
             }))
             .send()
@@ -171,6 +221,10 @@ impl VoiceClient {
     }
 }
 
+fn design_text(description: &str) -> String {
+    format!("({description}){DESIGN_SAMPLE}")
+}
+
 async fn checked(response: Response) -> Result<Response, VoiceError> {
     if response.status().is_success() {
         return Ok(response);
@@ -188,4 +242,121 @@ async fn checked(response: Response) -> Result<Response, VoiceError> {
         })
         .unwrap_or(body);
     Err(VoiceError::Service(format!("HTTP {status}: {detail}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        Json, Router,
+        extract::{Multipart, State},
+        routing::{get, post},
+    };
+    use tokio::sync::Mutex;
+
+    #[derive(Clone, Default)]
+    struct MockTts {
+        voices: Arc<Mutex<Vec<UploadedVoice>>>,
+        requests: Arc<Mutex<Vec<Value>>>,
+    }
+
+    async fn catalog(State(state): State<MockTts>) -> Json<VoiceList> {
+        let uploaded_voices = state.voices.lock().await.clone();
+        Json(VoiceList {
+            voices: vec!["default".into()],
+            uploaded_voices,
+        })
+    }
+
+    async fn speech(State(state): State<MockTts>, Json(body): Json<Value>) -> Vec<u8> {
+        state.requests.lock().await.push(body);
+        b"reference-audio".to_vec()
+    }
+
+    async fn upload(State(state): State<MockTts>, mut form: Multipart) -> Json<Value> {
+        let mut body = json!({});
+        while let Some(field) = form.next_field().await.unwrap() {
+            let name = field.name().unwrap().to_owned();
+            if name != "audio_sample" {
+                body[&name] = json!(field.text().await.unwrap());
+            }
+        }
+        let voice: UploadedVoice = serde_json::from_value(body).unwrap();
+        state.voices.lock().await.push(voice.clone());
+        Json(json!({"voice": voice}))
+    }
+
+    async fn mock_client() -> (VoiceClient, MockTts, tokio::task::JoinHandle<()>) {
+        let state = MockTts::default();
+        let app = Router::new()
+            .route("/v1/audio/voices", get(catalog).post(upload))
+            .route("/v1/audio/speech", post(speech))
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = VoiceClient {
+            client: Client::new(),
+            base_url: format!("http://{}", listener.local_addr().unwrap()),
+            default_voice_lock: Arc::new(Mutex::new(())),
+        };
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (client, state, task)
+    }
+
+    #[tokio::test]
+    async fn design_encodes_control_in_text_and_cloning_reuses_transcript() {
+        let (client, state, task) = mock_client().await;
+        client
+            .create_design("女性1", "温暖清晰的青年女声")
+            .await
+            .unwrap();
+        client.synthesize("女性1", "第一段旁白").await.unwrap();
+        let requests = state.requests.lock().await;
+        assert_eq!(
+            requests[0]["input"],
+            format!("(温暖清晰的青年女声){DESIGN_SAMPLE}")
+        );
+        assert!(requests[0].get("task_type").is_none());
+        assert_eq!(requests[1]["voice"], "女性1");
+        assert_eq!(requests[1]["ref_text"], DESIGN_SAMPLE);
+        assert_eq!(requests[1]["input"], "第一段旁白");
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn concurrent_default_segments_create_one_persisted_reference() {
+        let (client, state, task) = mock_client().await;
+        let (first, second) = tokio::join!(
+            client.synthesize("default", "第一段"),
+            client.synthesize("default", "第二段")
+        );
+        first.unwrap();
+        second.unwrap();
+        assert_eq!(state.voices.lock().await.len(), 1);
+        // A fresh client after restart resolves the saved reference as well.
+        let restarted = VoiceClient {
+            default_voice_lock: Arc::new(Mutex::new(())),
+            ..client.clone()
+        };
+        restarted
+            .synthesize("default", "修改后的第三段")
+            .await
+            .unwrap();
+        let requests = state.requests.lock().await;
+        assert_eq!(requests.len(), 4);
+        for request in requests.iter().skip(1) {
+            assert_eq!(request["voice"], FIXED_DEFAULT_VOICE);
+            assert_eq!(request["ref_text"], DESIGN_SAMPLE);
+        }
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn missing_saved_voice_never_falls_back_to_default() {
+        let (client, state, task) = mock_client().await;
+        assert!(client.synthesize("已删除的音色", "第一段").await.is_err());
+        assert!(state.requests.lock().await.is_empty());
+        task.abort();
+    }
 }

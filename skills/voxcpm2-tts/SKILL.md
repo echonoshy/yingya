@@ -43,6 +43,13 @@ Use the local service at `http://127.0.0.1:8791`. It serves the model name
    back to `default` or design a fresh voice for each audio segment unless the
    user explicitly changes the project voice.
 
+   Run the client from the project working directory. It reads
+   `.yingya/voice.json` and rejects a conflicting `--voice`. For `default`,
+   it resolves a persisted reference through Yingya at `http://127.0.0.1:8797`
+   (`YINGYA_API_BASE` overrides this address). All segments and revisions reuse
+   the reference audio and its saved transcript. If resolution fails, report
+   the error; do not bypass it with an unconditioned synthesis call.
+
 4. Report the absolute output path. If the user asks to hear it, render the
    local audio file in the response.
 
@@ -67,6 +74,13 @@ loopback endpoint unless the user explicitly asks to expose it to a network.
 ## Direct API contract
 
 Other services can send JSON to `POST /v1/audio/speech`:
+
+For production narration, use the client above. The raw `default` below is
+unconditioned generation, suitable only for an initial reference or smoke test;
+it does not identify a fixed speaker. Named voices should send their saved
+`ref_text` alongside `voice`. With this installed VoxCPM2 adapter, voice-design
+control belongs in parentheses before the spoken text, not `instructions` or
+`task_type`. Prefer Yingya's voice-design endpoint to create and save a voice.
 
 ```json
 {
