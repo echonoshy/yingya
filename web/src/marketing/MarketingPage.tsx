@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Check, Copy, Pause, Play, Plus, X } from '@phosphor-icons/react';
 import { categories, examples, posterPath, videoPath, type Category, type VideoExample } from './examples';
+import { BrandLogo as Brand } from './BrandLogo';
 import './marketing.css';
 
 const sourceUrl = 'https://hyperframes.heygen.com/examples';
-
-function Brand() {
-  return <a className="marketing-brand" href="/" aria-label="映芽首页"><img src="/brand/yingya-ghost.png" alt="" width="40" height="40" /><span>映芽</span></a>;
-}
 
 function HeroReel({ onOpen, suspended }: { onOpen: (example: VideoExample) => void; suspended: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);

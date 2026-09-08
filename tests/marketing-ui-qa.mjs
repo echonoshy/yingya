@@ -17,6 +17,31 @@ try {
   assert.equal(await page.locator('.marketing-example').count(), 6);
   assert.equal(requests.some(url => url.includes('/api/')), false, 'Public homepage must not require authentication or load workspace data');
   assert.equal(await page.locator('vite-error-overlay').count(), 0);
+  const logo = page.locator('.marketing-header .marketing-brand-toy');
+  async function checkLogoPassage() {
+    const nav = await page.locator('.marketing-header nav').boundingBox();
+    await logo.click();
+    assert.equal(await logo.locator('text').count(), 2, 'Wordmark uses one copy of each character');
+    // The visible mouth and its mask must stay aligned while text crosses it.
+    // There is one copy of each character, so no foreground/background handoff.
+    for (const progress of [.24, .3, .71, .82]) {
+      const deltas = await logo.evaluate((el, progress) => {
+        for (const animation of el.getAnimations({ subtree: true })) {
+          animation.pause();
+          animation.currentTime = Number(animation.effect.getTiming().duration) * progress;
+        }
+        const opening = el.querySelector('.brand-mouth-opening').getScreenCTM();
+        const mask = el.querySelector('.brand-mouth-mask').getScreenCTM();
+        return ['a', 'b', 'c', 'd', 'e', 'f'].map(key => Math.abs(opening[key] - mask[key]));
+      }, progress);
+      assert.ok(deltas.every(delta => delta < .01), 'Text must not jump or double at the lip');
+    }
+    assert.deepEqual(await page.locator('.marketing-header nav').boundingBox(), nav, 'Logo animation keeps navigation in place');
+    await logo.evaluate(el => el.getAnimations({ subtree: true }).forEach(animation => animation.finish()));
+    await page.waitForFunction(() => document.querySelector('.marketing-header .marketing-brand-toy').dataset.playing === 'false');
+    assert.equal(await logo.evaluate(el => el.getAnimations({ subtree: true }).length), 0);
+  }
+  await checkLogoPassage();
   await page.waitForFunction(() => document.querySelector('.marketing-main-film video').currentTime > 0.1);
   await page.getByRole('button', { name: '暂停品牌演示', exact: true }).click();
   assert.equal(await page.locator('.marketing-main-film video').evaluate(video => video.paused), true);
@@ -59,6 +84,7 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('.marketing-example img')].every(img => img.complete && img.naturalWidth > 0));
   for (const width of [768, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
+    await checkLogoPassage();
     const dimensions = await page.locator('.marketing-page').evaluate(el => ({ client: el.clientWidth, scroll: el.scrollWidth }));
     assert.ok(dimensions.scroll <= dimensions.client, `No horizontal overflow at ${width}px`);
     await page.getByRole('button', { name: '播放：给品牌，一个记忆点', exact: true }).click();
@@ -71,6 +97,8 @@ try {
   await page.locator('#marketing-title').waitFor();
   assert.equal(await page.locator('.marketing-main-film video').evaluate(video => video.paused), true);
   assert.equal(await page.locator('.marketing-page').evaluate(el => getComputedStyle(el).scrollBehavior), 'auto');
+  await logo.click();
+  assert.equal(await logo.locator('[data-brand-mouth]').evaluateAll(elements => elements.every(el => getComputedStyle(el).opacity === '0')), true, 'Reduced motion keeps the mouth hidden');
   // Mock auth only for navigation; never create a real account during UI QA.
   await page.route('**/api/auth/me', route => route.fulfill({ status: 401, contentType: 'application/json', body: '{}' }));
   await page.getByRole('link', { name: '登录', exact: true }).click();
@@ -82,7 +110,7 @@ try {
   await page.locator('#login-email').waitFor();
   assert.equal(await page.locator('#marketing-title').count(), 0, 'Legacy project links route to the workspace login');
   assert.deepEqual(errors, []);
-  console.log('Marketing QA passed: public entry, media playback/pause/seek, all six videos, filters, copy, dialog focus/Escape, workflow, FAQ, 768/390/320px, reduced motion, login/home and legacy project routing.');
+  console.log('Marketing QA passed: public entry, logo mouth continuity, media playback/pause/seek, all six videos, filters, copy, dialog focus/Escape, workflow, FAQ, 768/390/320px, reduced motion, login/home and legacy project routing.');
   await context.close();
 } finally {
   await browser.close();

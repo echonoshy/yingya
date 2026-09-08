@@ -164,3 +164,19 @@
   .marketing-page { scroll-behavior: auto; }
   .marketing-page *, .marketing-page *::before, .marketing-page *::after { animation: none !important; transition: none !important; }
 }
+
+/* One SVG scene keeps the mascot, mouth and wordmark in a shared coordinate space. */
+.marketing-page .marketing-brand-toy { position: relative; isolation: isolate; border: 0; padding: 0; width: 96px; height: 48px; min-height: 44px; background: transparent; border-radius: var(--radius-control); overflow: visible; }
+.marketing-brand-toy .brand-scene { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.brand-scene [data-brand-pose] { transform-origin: 20px 28px; }
+.brand-scene [data-brand-mouth] { transform-origin: 78px 60px; opacity: 0; }
+.brand-scene .brand-body { fill: var(--primary); }
+.brand-scene .brand-eyes { fill: var(--canvas); transform-origin: 70px 35px; }
+.brand-scene text { font-family: var(--font-ui); font-size: var(--text-title); font-weight: 700; }
+.brand-scene .brand-letters { fill: var(--text); }
+.marketing-footer .marketing-brand-toy { width: 80px; }
+@media (max-width: 767px) {
+  .marketing-page .marketing-brand-toy { width: 80px; height: 44px; }
+}
+
+.brand-scene .brand-mouth-opening { fill: var(--canvas); }
