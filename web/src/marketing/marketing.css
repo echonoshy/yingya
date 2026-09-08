@@ -1,0 +1,166 @@
+.marketing-page { height: 100dvh; overflow-y: auto; overflow-x: hidden; background: var(--canvas); color: var(--text); font: var(--text-body)/var(--leading-body) var(--font-ui); scroll-behavior: smooth; scroll-padding-top: 100px; }
+.marketing-page :is(h1,h2,h3,p) { margin: 0; }
+.marketing-page :is(a,button,summary) { -webkit-tap-highlight-color: transparent; }
+.marketing-page a { color: inherit; text-decoration: none; }
+.marketing-page button { font: var(--weight-medium) var(--text-control)/var(--leading-ui) var(--font-ui); color: inherit; cursor: pointer; }
+.marketing-page :is(a,button,summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+.marketing-page button:disabled { cursor: default; opacity: .65; }
+.marketing-page :is(h1,h2) { font-weight: var(--weight-emphasis); font-size: var(--text-display); letter-spacing: -.02em; line-height: 1.45; text-wrap: balance; }
+.marketing-header { position: sticky; top: 0; z-index: 10; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.marketing-header-inner { height: 76px; max-width: 1328px; margin: auto; padding: 0 40px; display: flex; align-items: center; gap: 44px; }
+.marketing-brand { display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0; font-size: var(--text-title); font-weight: 700; line-height: 1; }
+.marketing-brand img { object-fit: contain; }
+.marketing-header nav { display: flex; gap: 36px; margin-left: auto; font-size: var(--text-control); font-weight: var(--weight-medium); }
+.marketing-header nav a { padding: 12px 0; color: var(--muted); transition: color var(--motion-quick); }
+.marketing-header nav a:hover { color: var(--text); }
+.marketing-login, .marketing-primary, .marketing-secondary, .marketing-text-link { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; font: var(--weight-medium) var(--text-body)/var(--leading-ui) var(--font-ui); border: 0; border-radius: var(--radius-control); padding: 12px 24px; text-decoration: none; transition: background var(--motion-quick), transform var(--motion-quick); }
+.marketing-page .marketing-login, .marketing-page .marketing-primary { background: var(--primary); color: var(--canvas); }
+.marketing-login { min-height: 40px; padding: 9px 20px; font-size: var(--text-control); }
+.marketing-page .marketing-primary:hover, .marketing-page .marketing-login:hover { background: var(--primary-hover); }
+.marketing-primary:active, .marketing-login:active, .marketing-secondary:active { transform: translateY(1px); }
+.marketing-primary svg, .marketing-login svg, .marketing-secondary svg { width: 18px; height: 18px; }
+.marketing-hero { padding-top: 56px; }
+.marketing-hero-copy { padding: 0 24px; text-align: center; }
+.marketing-hero-copy > p { margin-top: 18px; color: var(--muted); font-size: var(--text-body); }
+.marketing-hero-actions { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 28px; }
+.marketing-text-link { padding-inline: 16px; }
+.marketing-text-link svg { width: 18px; height: 18px; }
+.marketing-text-link:hover { background: var(--surface); }
+.marketing-reel { margin-top: 40px; overflow: hidden; }
+.marketing-filmstrip { display: grid; grid-template-columns: minmax(260px,1fr) min(64vw, 832px) minmax(260px,1fr); gap: 20px; width: max(100%, 1240px); position: relative; left: 50%; transform: translateX(-50%); align-items: center; }
+.marketing-main-film { position: relative; aspect-ratio: 16/9; overflow: hidden; border-radius: var(--radius-panel); background: var(--primary); }
+.marketing-main-film video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.marketing-film-controls { position: absolute; bottom: 0; inset-inline: 0; display: flex; align-items: center; justify-content: space-between; padding: 16px; }
+.marketing-film-controls button { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--canvas) 30%, transparent); border-radius: var(--radius-control); color: var(--canvas); background: color-mix(in srgb, var(--primary) 78%, transparent); min-height: 40px; }
+.marketing-film-controls svg { width: 16px; height: 16px; }
+.marketing-side-film { position: relative; width: 100%; height: 86%; padding: 0; border: 0; overflow: hidden; border-radius: var(--radius-panel); background: var(--surface-inset); }
+.marketing-side-film img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--motion-slow) var(--ease-sprout); }
+.marketing-side-film:hover img { transform: scale(1.025); }
+.marketing-side-film > span { position: absolute; bottom: 16px; left: 16px; display: inline-flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--canvas); border-radius: var(--radius-control); }
+.marketing-page .marketing-reel-caption { text-align: center; margin-top: 16px; font-size: var(--text-caption); color: var(--dim); }
+.marketing-section { max-width: 1232px; margin: 0 auto; padding: 92px 40px; }
+.marketing-section-heading > p { margin-top: 14px; color: var(--muted); }
+.marketing-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 30px 0 28px; }
+.marketing-filters button { min-height: 40px; padding: 8px 20px; border-radius: var(--radius-control); background: var(--surface); border: 1px solid transparent; }
+.marketing-filters button:hover { background: var(--surface-hover); }
+.marketing-filters button[aria-pressed="true"] { background: var(--selection); border-color: var(--selection-line); color: var(--accent-text); }
+.marketing-gallery { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 34px 24px; }
+.marketing-gallery .marketing-example { text-align: left; display: block; background: transparent; border: 0; padding: 0; min-width: 0; border-radius: var(--radius-control); }
+.marketing-example-image { aspect-ratio: 16/9; background: var(--surface-inset); overflow: hidden; border-radius: var(--radius-panel); position: relative; border: 1px solid var(--line); }
+.marketing-example-image img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--motion-slow) var(--ease-sprout); }
+.marketing-example:hover img, .marketing-example:focus-visible img { transform: scale(1.025); }
+.marketing-play-icon { position: absolute; bottom: 12px; right: 12px; display: grid; place-items: center; height: 32px; width: 32px; border-radius: 50%; background: var(--canvas); color: var(--primary); }
+.marketing-example-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.marketing-example h3 { font-size: var(--text-body); font-weight: var(--weight-emphasis); }
+.marketing-example-caption > svg { color: var(--dim); flex-shrink: 0; }
+.marketing-example > p { margin-top: 5px; color: var(--muted); font-size: var(--text-control); font-weight: var(--weight-regular); }
+.marketing-page .marketing-source { margin-top: 30px; color: var(--dim); font-size: var(--text-caption); }
+.marketing-source a, .marketing-footer > a { display: inline-flex; align-items: center; gap: 4px; }
+.marketing-source a { text-decoration: underline; text-underline-offset: 3px; }
+.marketing-workflow { background: var(--background); }
+.marketing-workflow-inner { max-width: 1232px; margin: auto; padding: 80px 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center; }
+.marketing-steps { display: grid; gap: 8px; margin-top: 28px; }
+.marketing-steps button { display: flex; align-items: flex-start; gap: 16px; padding: 16px 12px; border: 1px solid transparent; background: transparent; border-radius: var(--radius-control); text-align: left; transition: background var(--motion-standard); }
+.marketing-steps button:hover { background: var(--surface-hover); }
+.marketing-steps button[aria-pressed="true"] { background: var(--canvas); border-color: var(--line); }
+.marketing-step-number { display: grid; place-items: center; flex: 0 0 32px; height: 32px; border: 1px solid var(--line-strong); border-radius: 50%; font-size: var(--text-body); }
+.marketing-steps button[aria-pressed="true"] .marketing-step-number { background: var(--selection); color: var(--accent-text); border-color: var(--selection-line); }
+.marketing-steps strong { display: block; font-size: var(--text-body); font-weight: var(--weight-emphasis); margin-bottom: 5px; }
+.marketing-steps button > span > span { display: block; font-size: var(--text-control); color: var(--muted); font-weight: var(--weight-regular); }
+.marketing-conversation { min-width: 0; background: var(--canvas); border-radius: var(--radius-panel); padding: 28px; }
+.marketing-conversation-label { font-size: var(--text-caption); color: var(--dim); margin-bottom: 24px; }
+.marketing-page .marketing-message-user { padding: 16px 20px; background: var(--background); border-radius: var(--radius-control); margin-left: 36px; font-size: var(--text-control); }
+.marketing-message-assistant { display: flex; align-items: flex-start; gap: 12px; margin: 24px 0; min-height: 54px; font-size: var(--text-control); }
+.marketing-message-assistant img { object-fit: contain; }
+.marketing-workflow-preview { aspect-ratio: 16/9; overflow: hidden; border-radius: var(--radius-control); position: relative; background: var(--primary); }
+.marketing-workflow-preview img { width: 100%; height: 100%; object-fit: cover; }
+.marketing-workflow-preview strong { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; text-align: center; color: var(--canvas); font-size: var(--text-title); font-weight: var(--weight-emphasis); animation: marketing-reveal var(--motion-standard) var(--ease-sprout); }
+.marketing-faq { max-width: 1008px; padding-top: 88px; padding-bottom: 28px; }
+.marketing-faq h2 { margin-bottom: 30px; }
+.marketing-faq details { border-bottom: 1px solid var(--line); }
+.marketing-faq summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 72px; padding: 18px 0; cursor: pointer; list-style: none; font-weight: var(--weight-medium); }
+.marketing-faq summary::-webkit-details-marker { display: none; }
+.marketing-faq summary svg { flex-shrink: 0; width: 20px; height: 20px; transition: transform var(--motion-quick); }
+.marketing-faq details[open] summary svg { transform: rotate(45deg); }
+.marketing-faq details p { color: var(--muted); margin-bottom: 24px; max-width: 720px; }
+.marketing-closing { padding: 72px 24px 84px; text-align: center; }
+.marketing-closing h2 { font-size: var(--text-title); margin-bottom: 28px; }
+.marketing-footer { margin: auto; padding: 28px 40px; border-top: 1px solid var(--line); max-width: 1232px; display: flex; gap: 28px; align-items: center; }
+.marketing-footer .marketing-brand { font-size: var(--text-section); }
+.marketing-footer .marketing-brand img { width: 30px; height: 30px; }
+.marketing-footer > p, .marketing-footer > a { font-size: var(--text-caption); color: var(--dim); }
+.marketing-footer > a { margin-left: auto; }
+.marketing-mobile-break { display: none; }
+.marketing-skip, .marketing-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.marketing-skip:focus { position: fixed; top: 10px; left: 10px; width: auto; height: auto; padding: 10px 20px; clip-path: none; z-index: 30; background: var(--canvas); }
+.marketing-dialog { padding: 0; border: 1px solid var(--line); border-radius: var(--radius-panel); width: min(860px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); overflow: auto; background: var(--canvas); color: var(--text); box-shadow: var(--shadow-popover); }
+.marketing-dialog::backdrop { background: color-mix(in srgb, var(--primary) 56%, transparent); }
+.marketing-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 24px; }
+.marketing-dialog header p { font-size: var(--text-caption); color: var(--dim); }
+.marketing-dialog h2 { font-size: var(--text-section); margin-top: 4px; letter-spacing: 0; }
+.marketing-dialog .marketing-close { flex-shrink: 0; display: grid; place-items: center; width: 40px; height: 40px; background: var(--background); border: 0; border-radius: var(--radius-control); }
+.marketing-close svg { width: 20px; height: 20px; }
+.marketing-dialog > video { width: 100%; display: block; aspect-ratio: 16/9; background: var(--primary); }
+.marketing-dialog-body { padding: 24px; }
+.marketing-dialog h3 { font-size: var(--text-body); font-weight: var(--weight-emphasis); }
+.marketing-dialog .marketing-example-prompt { margin-top: 12px; font-size: var(--text-control); color: var(--muted); user-select: text; }
+.marketing-dialog-actions { display: flex; gap: 12px; margin-top: 24px; }
+.marketing-page .marketing-secondary { background: var(--background); font-size: var(--text-control); }
+.marketing-dialog .marketing-dialog-note { margin-top: 14px; color: var(--dim); font-size: var(--text-caption); min-height: 22px; }
+.marketing-dialog .marketing-media-error { color: var(--danger); padding: 16px 24px 0; }
+@keyframes marketing-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (min-width: 1600px) { .marketing-filmstrip { max-width: 1800px; } }
+@media (max-width: 1024px) {
+  .marketing-workflow-inner { gap: 32px; padding-inline: 32px; }
+  .marketing-gallery { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .marketing-section { padding-inline: 32px; }
+  .marketing-conversation { padding: 20px; }
+}
+@media (max-width: 767px) {
+  .marketing-header-inner { height: 64px; padding: 0 20px; gap: 20px; }
+  .marketing-header nav { gap: 0; }
+  .marketing-header nav a:not(:first-child) { display: none; }
+  .marketing-brand { font-size: var(--text-section); gap: 6px; }
+  .marketing-brand img { width: 32px; height: 32px; }
+  .marketing-login { padding: 8px 14px; }
+  .marketing-login svg { display: none; }
+  .marketing-hero { padding-top: 44px; }
+  .marketing-hero-copy { padding-inline: 20px; }
+  .marketing-mobile-break { display: block; }
+  .marketing-hero-copy > p { max-width: 290px; margin-inline: auto; margin-top: 18px; }
+  .marketing-hero-actions { gap: 8px; margin-top: 24px; }
+  .marketing-primary, .marketing-text-link { padding-inline: 18px; }
+  .marketing-filmstrip { width: auto; display: block; left: auto; transform: none; margin: 0 16px; }
+  .marketing-side-film { display: none; }
+  .marketing-reel { margin-top: 32px; }
+  .marketing-film-controls { padding: 8px; }
+  .marketing-film-controls button { padding: 8px; min-height: 36px; font-size: var(--text-caption); }
+  .marketing-film-controls button:last-child span { display: none; }
+  .marketing-section { padding: 60px 20px; }
+  .marketing-section-heading h2, .marketing-workflow h2, .marketing-faq h2 { font-size: var(--text-title); letter-spacing: 0; }
+  .marketing-section-heading p { max-width: 280px; }
+  .marketing-filters { gap: 6px; margin-block: 24px; }
+  .marketing-filters button { padding-inline: 12px; }
+  .marketing-gallery { gap: 28px 16px; }
+  .marketing-workflow-inner { grid-template-columns: 1fr; gap: 28px; padding: 52px 20px; }
+  .marketing-workflow h2 br { display: none; }
+  .marketing-steps { margin-top: 22px; }
+  .marketing-conversation { padding: 24px; }
+  .marketing-faq { padding-bottom: 0; }
+  .marketing-faq summary { font-size: var(--text-control); min-height: 64px; }
+  .marketing-closing { padding: 64px 20px; }
+  .marketing-footer { padding: 24px 20px; flex-wrap: wrap; gap: 20px; }
+  .marketing-footer > p { display: none; }
+  .marketing-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+  .marketing-dialog > header, .marketing-dialog-body { padding: 18px; }
+  .marketing-dialog-actions { flex-wrap: wrap; gap: 8px; }
+  .marketing-dialog-actions > * { flex: 1; padding: 10px 12px; white-space: nowrap; font-size: var(--text-control); }
+}
+@media (max-width: 480px) {
+  .marketing-gallery { grid-template-columns: 1fr; }
+  .marketing-header-inner { gap: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marketing-page { scroll-behavior: auto; }
+  .marketing-page *, .marketing-page *::before, .marketing-page *::after { animation: none !important; transition: none !important; }
+}

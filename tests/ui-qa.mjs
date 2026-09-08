@@ -5,6 +5,7 @@ import { once } from "node:events";
 const host = "127.0.0.1";
 const port = 4174;
 const baseUrl = process.env.YINGYA_UI_QA_URL ?? `http://${host}:${port}`;
+const workspaceUrl = `${baseUrl}/app`;
 const preview = process.env.YINGYA_UI_QA_URL ? null : spawn(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--config", "web/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
   cwd: new URL("..", import.meta.url),
   stdio: ["ignore", "pipe", "pipe"],
@@ -181,7 +182,7 @@ async function assertLiveHyperFramesPreview(browser) {
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   page.on("request", request => { if (request.url().endsWith("/studio/dirty")) dirtyRequests += 1; });
   await installApiMock(page, production);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.getByTitle("HyperFrames 实时画面").waitFor();
   await page.frameLocator('iframe[title="HyperFrames 实时画面"]').getByText("Agent 正在更新 Composition", { exact: true }).waitFor();
@@ -199,7 +200,7 @@ async function assertLiveHyperFramesPreview(browser) {
 
   const mobile = await browser.newPage({ viewport: { width: 900, height: 844 }, reducedMotion: "reduce" });
   await installApiMock(mobile, production);
-  await mobile.goto(baseUrl);
+  await mobile.goto(workspaceUrl);
   await mobile.getByRole("button", { name: /^秋季新品短片/ }).click();
   await mobile.setViewportSize({ width: 390, height: 844 });
   const liveButton = mobile.getByRole("button", { name: "预览", exact: true });
@@ -234,7 +235,7 @@ async function assertAssetWorkshop(browser) {
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByRole("button", { name: "素材工坊", exact: true }).click();
   await page.getByLabel("搜索素材").waitFor();
   await page.getByRole("heading", { name: "素材工坊", exact: true }).waitFor();
@@ -294,7 +295,7 @@ async function assertAssetWorkshop(browser) {
 
   const mobile = await browser.newPage({ viewport: { width: 360, height: 800 }, reducedMotion: "reduce" });
   await installApiMock(mobile);
-  await mobile.goto(baseUrl);
+  await mobile.goto(workspaceUrl);
   await mobile.getByRole("button", { name: "素材工坊", exact: true }).click();
   await mobile.getByLabel("搜索素材").waitFor();
   await mobile.locator(".asset-mixed-grid").waitFor();
@@ -326,7 +327,7 @@ async function assertDraftCheckpoint(browser) {
     },
   };
   await installApiMock(page, draft);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.locator(".artifact-canvas").waitFor();
   if (await page.locator(".checkpoint-card").count()) throw new Error("Draft review must use the preview and export workspace without a duplicate checkpoint card");
@@ -370,7 +371,7 @@ async function assertWorkflowRecovery(browser) {
     manifest: { ...structuredClone(manifest), phase: "briefing", dirty: true, checkpoint: null, artifacts: [], versions: [], currentDraft: null },
   };
   await installApiMock(page, failed);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.getByText("制作流程已安全暂停").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
@@ -387,7 +388,7 @@ async function assertIncompleteWorkflowRecovery(browser) {
     manifest: { ...structuredClone(manifest), phase: "production", dirty: true, checkpoint: null, versions: [], currentDraft: null },
   };
   await installApiMock(page, incomplete);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   const recovery = page.getByRole("status");
   await recovery.getByText("检查已通过，草稿待封存", { exact: true }).waitFor();
@@ -414,7 +415,7 @@ async function assertWaitingInputPrompt(browser) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
     await installApiMock(page, waiting);
-    await page.goto(baseUrl);
+    await page.goto(workspaceUrl);
     await page.getByRole("button", { name: /^秋季新品短片/ }).click();
     if (viewport.name === "mobile") await page.setViewportSize(viewport);
     const prompt = page.getByLabel("等待你的确认");
@@ -439,8 +440,8 @@ async function assertDesktop(browser) {
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page, { ...structuredClone(detail), queueDepth: 0, queuePaused: false, queue: [] });
-  await page.goto(baseUrl);
-  if (page.url() !== `${baseUrl}/` || await page.title() !== "映芽 | 对话式动画视频制作工作台") throw new Error("Unexpected page identity");
+  await page.goto(workspaceUrl);
+  if (page.url() !== workspaceUrl || await page.title() !== "映芽 | 对话式动画视频制作工作台") throw new Error("Unexpected page identity");
   await page.getByRole("heading", { name: "把内容，做成会动的视频。", exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-home-desktop.png", fullPage: true });
   await page.getByRole("searchbox", { name: "搜索项目" }).fill("不存在的项目");
@@ -536,7 +537,7 @@ async function assertSupersededCheckpoint(browser) {
     ...structuredClone(detail), status: "running", statusLabel: "Codex 正在执行", activeTurnId: "turn-revision", queueDepth: 0, queuePaused: false, queue: [],
   };
   await installApiMock(page, revising);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   const eventStreamRequest = page.waitForRequest(request => request.url().includes("/events?after="));
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.getByRole("heading", { name: "秋季新品短片" }).waitFor();
@@ -548,7 +549,7 @@ async function assertSupersededCheckpoint(browser) {
 async function assertCheckpointHiddenAfterRevision(browser) {
   const page = await browser.newPage({ viewport: { width: 1200, height: 820 }, reducedMotion: "reduce" });
   await installApiMock(page, { ...structuredClone(detail), queueDepth: 0, queuePaused: false, queue: [] });
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   const checkpoint = page.locator(".checkpoint-card");
   await checkpoint.waitFor();
@@ -565,7 +566,7 @@ async function assertCreateAndMobile(browser) {
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page, detail, { creationDelayMs: 700 });
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByTitle("旁白音色：默认音色").click();
   const voiceDialog = page.getByRole("dialog", { name: "旁白音色" });
   await voiceDialog.waitFor();
@@ -611,7 +612,7 @@ async function assertFunctionalEnhancements(browser) {
   const seed = { ...structuredClone(detail), status: "completed", statusLabel: "已完成", workflowStatus: "review", workflowLabel: "修改待检查", queue: [], queueDepth: 0, queuePaused: false,
     manifest: { ...structuredClone(manifest), dirty: true, checkpoint: null, currentDraft: "draft-2", versions: [1, 2].map(n => ({ id: `draft-${n}`, label: `草稿 ${n}`, sourcePath: `.yingya/versions/draft-${n}`, videoPath: `.yingya/versions/draft-${n}/draft.mp4`, reportPath: null, createdAt: now + n })) } };
   await installApiMock(page, seed);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   const homePrompt = page.getByPlaceholder("粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…");
   await homePrompt.fill("保存这条未发送的创作想法");
   await page.locator('input[type=file]').first().setInputFiles({ name: "参考文件.pdf", mimeType: "application/pdf", buffer: Buffer.from("test reference") });
@@ -639,7 +640,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.keyboard.press("Escape");
   await page.unroute(projectListUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
-  await page.waitForURL(`**/#/projects/${seed.id}`);
+  await page.waitForURL(url => url.hash === `#/projects/${seed.id}`);
   const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
   await composer.fill("这个项目独有的修改草稿");
   await page.reload();
@@ -677,7 +678,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.goBack();
-  await page.waitForURL(`**/#/projects/${seed.id}`);
+  await page.waitForURL(url => url.hash === `#/projects/${seed.id}`);
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   if (await homePrompt.inputValue() !== "保存这条未发送的创作想法") throw new Error("Home and project drafts were mixed");
   await page.getByRole("button", { name: "素材工坊", exact: true }).click();
@@ -703,7 +704,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.close();
   const creation = await browser.newPage({ viewport: { width: 1200, height: 900 }, reducedMotion: "reduce" });
   await installApiMock(creation);
-  await creation.goto(baseUrl);
+  await creation.goto(workspaceUrl);
   await creation.getByPlaceholder("粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…").fill("展示我们的产品");
   await creation.getByText("创作设置与素材", { exact: true }).click();
   await creation.getByLabel("目标时长").selectOption("30 秒");
@@ -729,7 +730,7 @@ async function assertMotionFeedback(browser) {
   seed.queue = []; seed.queueDepth = 0;
   seed.messages = Array.from({ length: 20 }, (_, index) => ({ ...detail.messages[0], id: `motion-history-${index}`, text: `创作讨论 ${index}。${"保留画面与旁白的清晰层次。".repeat(12)}`, createdAt: now + 100 + index }));
   await installApiMock(page, seed);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.locator(".home-project-open").first().click();
   await page.waitForFunction(() => window.motionSources.length > 0);
   await page.waitForFunction(() => { const el = document.querySelector(".timeline"); return el && el.scrollHeight - el.clientHeight - el.scrollTop < 3; });
@@ -781,7 +782,7 @@ async function assertDesignRepairs(browser) {
   };
   await installApiMock(page, seed);
   await page.route("**/files/snapshots/contact-sheet.jpg", route => route.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64") }));
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   await page.getByTitle("旁白音色：默认音色").click();
   await page.getByRole("button", { name: "描述生成", exact: true }).click();
   await page.getByPlaceholder("例如：温暖女声").fill("可见的音色表单");
@@ -828,7 +829,7 @@ async function assertDesignRepairs(browser) {
 async function assertSelectionMotion(browser) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, reducedMotion: "no-preference" });
   await installApiMock(page);
-  await page.goto(baseUrl);
+  await page.goto(workspaceUrl);
   const filters = page.locator(".project-filters");
   await filters.getByRole("tab").first().waitFor();
   async function aligned(selector, line = false) {

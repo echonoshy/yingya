@@ -1,0 +1,1 @@
+{"name":"yingya-marketing-film","private":true,"scripts":{"check":"hyperframes lint . && hyperframes inspect . --at 2,5,9","render":"hyperframes render . --output ../../web/public/marketing/video/yingya-brand.mp4 --fps 30 --quality high --workers 2"}}

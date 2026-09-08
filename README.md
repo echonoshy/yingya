@@ -34,13 +34,28 @@ curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/codex/threads/THRE
   -d '{"prompt":"Reply with YINGYA_OK only."}'
 ```
 
-Open `http://127.0.0.1:8797/` and sign in with an email to enter your Yingya workspace.
+Open `http://127.0.0.1:8797/` for the public product homepage. The top-right login
+button opens `/app`, where you can sign in with an email to enter your workspace.
+Existing `/#/projects/<project-id>` and `/#/assets` links remain supported.
 This preview does not verify email ownership. Use it only with trusted testers.
 See [user sandboxes and usage](docs/USER_SANDBOX.md) for admin setup, isolation,
 usage accounting, and the handling of existing shared data.
 
 Authenticated users get their own projects, assets, voices, and Agent runtime.
 The default admin example in `.env.example` is `admin@yingya.local`.
+
+The homepage includes six playable examples, category filters, copyable creation
+briefs, a conversation workflow demo, and FAQs. Original Chinese brand/type films
+are authored in `examples/marketing-film/` and `examples/marketing-type/`;
+[media sources](web/public/marketing/SOURCES.md) identify the HyperFrames examples.
+Gallery videos load when opened. The hero pauses offscreen and does not autoplay
+when reduced motion is enabled.
+
+Run the marketing UI checks against the existing frontend tmux service:
+
+```bash
+YINGYA_UI_QA_URL=http://127.0.0.1:8798 node tests/marketing-ui-qa.mjs
+```
 
 The Yingya video Agent workspace uses the following flow. A new video
 project creates an isolated HyperFrames workspace under
