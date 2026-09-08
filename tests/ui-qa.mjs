@@ -66,7 +66,6 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     { id: "document-1", url: "/assets/uploads/brief.pdf", hyperframesPath: "assets/uploads/brief.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "品牌创作说明.pdf", kind: "uploaded", folderId: null, createdAt: now - 3 },
   ];
   const media = { scenes: [], assets: [] };
-  const libraryUsage = {};
   await page.route("**/mock-hyperframes-storyboard*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body style='margin:0;background:#1d1d1f;color:white;font:16px sans-serif;display:grid;place-items:center;height:100vh'><main><b>HyperFrames 实时画面</b><p>Agent 正在更新 Composition</p></main></body></html>" }));
   await page.route("**/assets/uploads/**", route => {
     const pathname = new URL(route.request().url()).pathname;
@@ -95,13 +94,10 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       libraryAssets = [created, ...libraryAssets];
       return json(route, created);
     }
-    const usageMatch = pathname.match(/^\/api\/assets\/library\/([^/]+)\/usage$/);
-    if (usageMatch) return json(route, libraryUsage[usageMatch[1]] ?? []);
     const importMatch = pathname.match(/^\/api\/assets\/library\/([^/]+)\/projects\/([^/]+)$/);
     if (importMatch) {
       const asset = libraryAssets.find(item => item.id === importMatch[1]);
       if (!asset) return json(route, { message: "素材不存在" }, 404);
-      libraryUsage[asset.id] = [{ projectId: importMatch[2], projectTitle: current.title, addedAt: now }];
       const path = `assets/inbox/${asset.id}`;
       if (!media.assets.some(item => item.id === asset.id)) media.assets.push({ id: asset.id, name: asset.sourceName || asset.prompt, url: asset.url, hyperframesPath: path, kind: asset.category, source: "library", mediaType: asset.mimeType, createdAt: now });
       return json(route, { path, name: asset.sourceName || asset.prompt });
@@ -233,6 +229,7 @@ async function assertLiveHyperFramesPreview(browser) {
 async function assertAssetWorkshop(browser) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
   const errors = [];
+  page.on("request", request => { if (/\/api\/assets\/library\/[^/]+\/usage$/.test(request.url())) errors.push("Removed asset usage endpoint was requested"); });
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page);
@@ -269,6 +266,7 @@ async function assertAssetWorkshop(browser) {
   await uploadRequest;
   await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).waitFor();
   await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
+  if (await page.getByRole("heading", { name: "使用位置", exact: true }).count() || await page.getByLabel("选择项目", { exact: true }).count()) throw new Error("Removed asset usage controls reappeared");
   const folderSelect = page.locator('select[aria-label="素材文件夹"]');
   await folderSelect.selectOption("");
   await folderSelect.selectOption({ label: "活动素材" });
@@ -350,7 +348,7 @@ async function assertDraftCheckpoint(browser) {
   if (await page.locator(".time-feedback-row").count() !== 2) throw new Error("Time feedback should support multiple entries");
   await page.screenshot({ path: "/tmp/yingya-ui-time-feedback.png", fullPage: true });
   await page.getByRole("button", { name: "添加到修改描述" }).click();
-  const composer = page.getByPlaceholder("描述修改，或继续推进视频…");
+  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
   const feedbackText = await composer.inputValue();
   if (!feedbackText.includes("Draft 3 时间点修改：") || !feedbackText.includes("放大标题并提高对比度") || !feedbackText.includes("让产品停留时间更长")) throw new Error(`Timed feedback was not added to the composer: ${feedbackText}`);
   const renderRequest = page.waitForRequest(request => request.url().endsWith("/render") && request.method() === "POST");
@@ -376,7 +374,7 @@ async function assertWorkflowRecovery(browser) {
   await page.getByText("制作流程已安全暂停").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
   await page.getByRole("button", { name: /重新生成制作方案/ }).click();
-  const composer = page.getByPlaceholder("描述修改，或继续推进视频…");
+  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
   if (await composer.inputValue() !== "重新生成制作方案") throw new Error("Recovery action did not populate the composer");
   await page.close();
 }
@@ -396,7 +394,7 @@ async function assertIncompleteWorkflowRecovery(browser) {
   if (await page.getByText("制作流程已安全暂停", { exact: true }).count()) throw new Error("Recoverable incomplete work should not be presented as a failed workflow");
   await page.screenshot({ path: "/tmp/yingya-ui-incomplete.png", fullPage: true });
   await recovery.getByRole("button", { name: "检查并恢复项目流程" }).click();
-  if (await page.getByPlaceholder("描述修改，或继续推进视频…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
+  if (await page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
   await page.close();
 }
 
@@ -441,8 +439,8 @@ async function assertDesktop(browser) {
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page, { ...structuredClone(detail), queueDepth: 0, queuePaused: false, queue: [] });
   await page.goto(baseUrl);
-  if (page.url() !== `${baseUrl}/` || await page.title() !== "映芽 | 视频创作工作台") throw new Error("Unexpected page identity");
-  await page.getByRole("heading", { name: "让想法，长成影像。", exact: true }).waitFor();
+  if (page.url() !== `${baseUrl}/` || await page.title() !== "映芽 | 对话式动画视频制作工作台") throw new Error("Unexpected page identity");
+  await page.getByRole("heading", { name: "把内容，做成会动的视频。", exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-home-desktop.png", fullPage: true });
   await page.getByRole("searchbox", { name: "搜索项目" }).fill("不存在的项目");
   await page.getByText("没有符合条件的项目", { exact: true }).waitFor();
@@ -453,9 +451,9 @@ async function assertDesktop(browser) {
   await page.getByRole("tab", { name: "全部", exact: true }).focus();
   await page.keyboard.press("End");
   if (await page.getByRole("tab", { name: "待恢复", exact: true }).getAttribute("aria-selected") !== "true") throw new Error("Keyboard project filtering failed");
-  await page.getByRole("button", { name: "产品宣传", exact: true }).click();
-  if (!(await page.getByRole("textbox", { name: "今天想创作什么？" }).inputValue()).includes("产品宣传视频")) throw new Error("Starter idea did not fill the composer");
-  await page.getByRole("tab", { name: "待确认" }).click();
+  await page.getByRole("button", { name: "产品演示", exact: true }).click();
+  if (!(await page.getByRole("textbox", { name: "想把什么内容做成视频？" }).inputValue()).includes("产品演示视频")) throw new Error("Starter idea did not fill the composer");
+  await page.getByRole("tab", { name: "待处理" }).click();
   await page.getByRole("button", { name: /^秋季新品短片/ }).waitFor();
   await page.getByRole("tab", { name: "全部" }).click();
   await page.getByRole("button", { name: "项目操作 秋季新品短片" }).click();
@@ -517,7 +515,7 @@ async function assertDesktop(browser) {
   await page.locator(".activity-item").getByText("修改文件", { exact: true }).waitFor();
   if (await page.getByText("检查 HyperFrames", { exact: true }).count()) throw new Error("Older tool operations should be hidden");
   await page.getByRole("button", { name: /直接渲染/ }).click();
-  const composer = page.getByPlaceholder("描述修改，或继续推进视频…");
+  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
   if (await composer.inputValue() !== "直接渲染") throw new Error("Quick reply did not populate the composer");
   if (!await composer.evaluate(element => element === document.activeElement)) throw new Error("Quick reply did not focus the composer");
   await composer.fill("");
@@ -553,7 +551,7 @@ async function assertCheckpointHiddenAfterRevision(browser) {
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   const checkpoint = page.locator(".checkpoint-card");
   await checkpoint.waitFor();
-  await page.getByPlaceholder("描述修改，或继续推进视频…").fill("调整画面构图后重新生成草稿");
+  await page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…").fill("调整画面构图后重新生成草稿");
   await page.getByRole("button", { name: "发送消息" }).click();
   await checkpoint.waitFor({ state: "hidden" });
   await page.close();
@@ -574,7 +572,7 @@ async function assertCreateAndMobile(browser) {
   if (!voiceBox || voiceBox.x < 0 || voiceBox.x + voiceBox.width > 360 || voiceBox.y < 0 || voiceBox.y + voiceBox.height > 800) throw new Error(`Mobile voice dialog is outside the viewport: ${JSON.stringify(voiceBox)}`);
   await page.screenshot({ path: "/tmp/yingya-ui-voice-mobile.png", fullPage: true });
   await voiceDialog.getByRole("button", { name: "关闭对话框" }).click();
-  const prompt = page.getByPlaceholder("描述视频主题、风格、时长，或直接粘贴网页链接…");
+  const prompt = page.getByPlaceholder("粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…");
   await prompt.fill("网站产品宣传片");
   const createRequest = page.waitForRequest(request => request.url().endsWith("/api/agent-projects") && request.method() === "POST");
   const turnRequest = page.waitForRequest(request => request.url().endsWith("/turns") && request.method() === "POST");
@@ -590,7 +588,7 @@ async function assertCreateAndMobile(browser) {
   const turnPayload = (await turnRequest).postDataJSON();
   if (!/^[0-9a-f-]{36}$/i.test(turnPayload.clientRequestId ?? "")) throw new Error("Turn request is missing a stable clientRequestId");
   await page.getByRole("heading", { name: "网站产品宣传片" }).waitFor();
-  const composer = page.getByPlaceholder("描述修改，或继续推进视频…");
+  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
   await composer.fill("加入品牌结尾");
   await page.getByRole("button", { name: "发送消息" }).click();
   await page.locator(".workspace").waitFor();
@@ -613,7 +611,7 @@ async function assertFunctionalEnhancements(browser) {
     manifest: { ...structuredClone(manifest), dirty: true, checkpoint: null, currentDraft: "draft-2", versions: [1, 2].map(n => ({ id: `draft-${n}`, label: `草稿 ${n}`, sourcePath: `.yingya/versions/draft-${n}`, videoPath: `.yingya/versions/draft-${n}/draft.mp4`, reportPath: null, createdAt: now + n })) } };
   await installApiMock(page, seed);
   await page.goto(baseUrl);
-  const homePrompt = page.getByPlaceholder("描述视频主题、风格、时长，或直接粘贴网页链接…");
+  const homePrompt = page.getByPlaceholder("粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…");
   await homePrompt.fill("保存这条未发送的创作想法");
   await page.locator('input[type=file]').first().setInputFiles({ name: "参考文件.pdf", mimeType: "application/pdf", buffer: Buffer.from("test reference") });
   await page.getByText("附件已保存", { exact: true }).waitFor();
@@ -641,7 +639,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.unroute(projectListUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.waitForURL(`**/#/projects/${seed.id}`);
-  const composer = page.getByPlaceholder("描述修改，或继续推进视频…");
+  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
   await composer.fill("这个项目独有的修改草稿");
   await page.reload();
   await composer.waitFor();
@@ -682,9 +680,11 @@ async function assertFunctionalEnhancements(browser) {
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   if (await homePrompt.inputValue() !== "保存这条未发送的创作想法") throw new Error("Home and project drafts were mixed");
   await page.getByRole("button", { name: "素材工坊", exact: true }).click();
+  await page.locator(".asset-folder-row", { hasText: "品牌素材" }).hover();
   await page.getByRole("button", { name: "重命名文件夹 品牌素材" }).click();
   await page.getByRole("dialog").getByLabel("新名称").fill("品牌参考");
   await page.getByRole("button", { name: "保存名称", exact: true }).click();
+  await page.locator(".asset-folder-row", { hasText: "品牌参考" }).hover();
   await page.getByRole("button", { name: "删除文件夹 品牌参考" }).click();
   await page.getByRole("dialog").getByText(/文件不会删除/).waitFor();
   await page.getByRole("dialog").getByRole("button", { name: "确认删除", exact: true }).click();
@@ -703,7 +703,7 @@ async function assertFunctionalEnhancements(browser) {
   const creation = await browser.newPage({ viewport: { width: 1200, height: 900 }, reducedMotion: "reduce" });
   await installApiMock(creation);
   await creation.goto(baseUrl);
-  await creation.getByPlaceholder("描述视频主题、风格、时长，或直接粘贴网页链接…").fill("展示我们的产品");
+  await creation.getByPlaceholder("粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…").fill("展示我们的产品");
   await creation.getByText("创作设置与素材", { exact: true }).click();
   await creation.getByLabel("目标时长").selectOption("30 秒");
   await creation.getByLabel("品牌创作说明.pdf", { exact: true }).check();

@@ -82,7 +82,7 @@ export function App() {
   const showAssets = () => navigate({ section: "assets" });
   const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
     : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showCreate}/>
-    : route.section === "assets" ? <AssetStudio projects={projects} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate} onOpen={open}/>
+    : route.section === "assets" ? <AssetStudio models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
     : <StartScreen openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
   return <>{surface}<TaskCenter projects={projects} offline={offline} onOpen={open}/></>;
 
@@ -174,19 +174,24 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
     <main className="home-main">
       <div className="home-scroll">
         <header className="home-header">
-          <div><h1>让想法，长成影像。</h1><p>从一句描述开始，在这里完成你的视频创作。</p></div>
+          <div><span className="home-positioning">对话式动画视频制作工作台</span><h1>把内容，做成<span className="home-title-phrase">会动的视频。</span></h1><p>从文案、网页和素材出发，制作产品演示、知识动画与品牌短片。<br/>用对话调整文字、画面和节奏，预览满意后导出成片。</p></div>
         </header>
         {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
         <section className="home-create">
-          <h2 id="create-prompt-label">今天想创作什么？</h2>{prompt ? <p className="draft-save-status" role="status">{promptSaved ? "描述已自动保存到此浏览器" : "草稿保存失败，请勿关闭页面"}</p> : null}
+          <h2 id="create-prompt-label">想把什么内容做成视频？</h2>{prompt ? <p className="draft-save-status" role="status">{promptSaved ? "描述已自动保存到此浏览器" : "草稿保存失败，请勿关闭页面"}</p> : null}
           <form className="composer composer--hero" onSubmit={submit}>
-          <textarea aria-labelledby="create-prompt-label" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="描述视频主题、风格、时长，或直接粘贴网页链接…"/>
+          <textarea aria-labelledby="create-prompt-label" aria-describedby="creation-workflow" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…"/>
           <div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
-          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value as typeof aspectRatio)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy || fileDraftStatus === "loading"} aria-label="创建视频任务" title="创建视频任务"><span>开始创作</span><ArrowUp weight="bold"/></button></div>
+          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value as typeof aspectRatio)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy || fileDraftStatus === "loading"} aria-label="创建视频任务" title="创建视频任务"><span>开始制作</span><ArrowUp weight="bold"/></button></div>
           </form>
           {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加。</p> : files.length ? <p className="draft-save-status">{fileDraftStatus === "saved" ? "附件已保存" : "正在保存附件…"}</p> : null}
           <CreationSettings value={settings} onChange={setSettings} selectedIds={libraryIds} onSelect={setLibraryIds}/>
-          <div className="home-starters" aria-label="创作灵感"><span>试试这些方向</span>{starterIdeas.map(idea => <button key={idea.label} type="button" onClick={() => { setPrompt(idea.prompt); startCreating(); }}>{idea.label}<ArrowRight/></button>)}</div>
+          <div className="home-starters" aria-label="创作方向"><span>从一个方向开始</span>{starterIdeas.map(idea => <button key={idea.label} type="button" onClick={() => { setPrompt(idea.prompt); startCreating(); }}>{idea.label}<ArrowRight/></button>)}</div>
+          <ol className="home-workflow" id="creation-workflow" aria-label="视频制作流程">
+            <li><span aria-hidden="true">1</span><div><b>确认方案</b><p>整理内容、素材与画面安排</p></div></li>
+            <li><span aria-hidden="true">2</span><div><b>预览与修改</b><p>编排动画，用对话逐步调整</p></div></li>
+            <li><span aria-hidden="true">3</span><div><b>导出成片</b><p>保留项目，随时回来继续改</p></div></li>
+          </ol>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
         </section>
         <section className="home-projects">
@@ -218,15 +223,17 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
 }
 
 const starterIdeas = [
-  { label: "产品宣传", prompt: "制作一条 30 秒的产品宣传视频，面向首次了解产品的用户。突出核心功能、使用场景和产品价值，风格简洁明亮。" },
-  { label: "知识讲解", prompt: "制作一条 60 秒的知识讲解视频，用通俗的语言和直观的动画解释一个知识点，包含开场问题、原理演示和总结。" },
-  { label: "网页转视频", prompt: "把这个网页制作成一条 30 秒的视频，提炼关键内容，保留页面的品牌风格。网页链接：" },
+  { label: "产品演示", prompt: "把我提供的产品截图和功能说明做成约 30 秒的产品演示视频，面向首次了解产品的人。用界面局部放大、重点标注和文字动画讲清核心操作与价值，保留品牌风格。先整理制作方案，缺少产品资料时请指出。产品介绍：" },
+  { label: "知识动画", prompt: "把下面的知识点做成约 60 秒的讲解动画，用文字、图形和流程演示解释原理，按开场问题、逐步讲解、总结组织内容，配中文旁白与字幕。先整理制作方案。知识点与参考内容：" },
+  { label: "数据故事", prompt: "把下面的数据做成约 30 秒的数据解读视频，用动态图表、数字强调和简短结论展示趋势，保留数据来源、单位和统计口径，不补造数字。先整理制作方案。数据与来源：" },
+  { label: "品牌短片", prompt: "用我提供的品牌文案、图片和视频素材制作约 15 秒的品牌短片，用动态排版、素材编排和节奏转场突出一个核心信息，保留品牌标识与配色。先整理制作方案，列出缺少的素材。品牌与内容：" },
+  { label: "网页转视频", prompt: "把下面的网页做成约 30 秒的介绍视频，提炼关键内容，用页面截图、局部聚焦和文字标注讲解，保留页面品牌风格。先检查网页是否可读取，再整理制作方案；无法读取时请告诉我需要哪些截图或文案。网页链接：" },
 ];
 
-type ProjectFilter = "all" | "active" | "review" | "completed" | "failed";
+type ProjectFilter = "all" | "active" | "review" | "ready" | "completed" | "failed";
 
 const projectFilters: { id: ProjectFilter; label: string }[] = [
-  { id: "all", label: "全部" }, { id: "active", label: "制作中" }, { id: "review", label: "待确认" }, { id: "completed", label: "已完成" }, { id: "failed", label: "待恢复" },
+  { id: "all", label: "全部" }, { id: "active", label: "制作中" }, { id: "review", label: "待处理" }, { id: "ready", label: "可导出" }, { id: "completed", label: "已导出" }, { id: "failed", label: "待恢复" },
 ];
 
 function formatHomeTime(timestamp: number) {

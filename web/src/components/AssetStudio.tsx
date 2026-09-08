@@ -1,21 +1,18 @@
 import { useMotionPresence } from "../hooks/useMotionPresence";
+import AssetDocumentPreview, { assetDocumentKind } from "./AssetDocumentPreview";
 import {
-  PencilSimple, Trash, ArrowRight, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
+  ArrowsOut, Minus, PencilSimple, Trash, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
   FilmSlate, FolderOpen, FolderSimple, Folders, Image as ImageIcon, Images,
   MagnifyingGlass, MusicNotes, Paperclip, Plus, Sparkle, SpeakerHigh, UploadSimple,
   VideoCamera, Waveform, X,
 } from "@phosphor-icons/react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { ActionDialog } from "./ActionDialog";
 import { api } from "../api";
-import { createClientRequestId } from "../requestId";
-import type { AssetFolder, AssetLibraryItem, ModelSelection, ProjectRecord } from "../types";
+import type { AssetFolder, AssetLibraryItem, ModelSelection } from "../types";
 import { ModelSelector } from "./ModelSelector";
 import { VoiceStudio } from "./VoiceStudio";
 
-type UsageRecord = { projectId: string; projectTitle: string; addedAt: number };
-type UsageIndex = Record<string, UsageRecord[]>;
-type GenerationJob = { id: string; prompt: string; state: "running" | "done" | "failed"; createdAt: number };
 type AssetTab = "all" | "image" | "video" | "audio" | "voice" | "document";
 type SourceFilter = "all" | "uploaded" | "generated";
 
@@ -50,8 +47,20 @@ function assetFormat(asset: AssetLibraryItem) {
   return subtype.replace("vnd.openxmlformats-officedocument.", "").toUpperCase();
 }
 
-export function AssetStudio({ projects, models, selection, voiceId, onSelection, onVoice, onCreate, onOpen }: { projects: ProjectRecord[]; models: Parameters<typeof ModelSelector>[0]["models"]; selection: ModelSelection; voiceId: string; onSelection: (value: ModelSelection) => void; onVoice: (value: string) => void; onCreate: () => void; onOpen: (id: string) => void }) {
+export function AssetStudio({ models, selection, voiceId, onSelection, onVoice, onCreate }: { models: Parameters<typeof ModelSelector>[0]["models"]; selection: ModelSelection; voiceId: string; onSelection: (value: ModelSelection) => void; onVoice: (value: string) => void; onCreate: () => void }) {
   const [tab, setTab] = useState<AssetTab>("all");
+  const [previewWidth, setPreviewWidth] = useState(360);
+  const [expandedAsset, setExpandedAsset] = useState<AssetLibraryItem | null>(null);
+  const browserRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  function resizePreview(width: number) {
+    const maximum = Math.max(280, Math.min(800, (browserRef.current?.clientWidth ?? 1040) - 240));
+    setPreviewWidth(Math.max(280, Math.min(maximum, width)));
+  }
+  function expandPreview(asset: AssetLibraryItem) {
+    browserRef.current?.querySelectorAll<HTMLMediaElement>(".asset-inspector video, .asset-inspector audio").forEach(media => media.pause());
+    setExpandedAsset(asset);
+  }
   const [assets, setAssets] = useState<AssetLibraryItem[]>([]);
   const [folders, setFolders] = useState<AssetFolder[]>([]);
   const [activeFolder, setActiveFolder] = useState("all");
@@ -63,10 +72,9 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   const [batchStatus, setBatchStatus] = useState("");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [usage, setUsage] = useState<UsageIndex>({});
-  const [targetProjectId, setTargetProjectId] = useState(projects[0]?.id ?? "");
-  const [adding, setAdding] = useState(false);
+  const [preferredSource, setSourceFilter] = useState<SourceFilter>("all");
+  const uploadOnly = tab === "video" || tab === "audio" || tab === "document";
+  const sourceFilter = uploadOnly ? "uploaded" : preferredSource;
   const [createKind, setCreateKind] = useState<"image" | "voice" | null>(null);
   const drawerPresence = useMotionPresence(createKind);
   const drawerRoot = useRef<HTMLDivElement>(null);
@@ -83,7 +91,6 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   const [inspectorOpen, setInspectorOpen] = useState(() => typeof window === "undefined" || window.innerWidth > 800);
   const [prompt, setPrompt] = useState("");
   const [references, setReferences] = useState<File[]>([]);
-  const [jobs, setJobs] = useState<GenerationJob[]>([]);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -91,9 +98,6 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   const uploadRef = useRef<HTMLInputElement>(null);
   const referenceRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [usageRetry, setUsageRetry] = useState(0);
-  const [usageLoading, setUsageLoading] = useState(false);
-  const [usageError, setUsageError] = useState("");
   const [management, setManagement] = useState<{ kind: "rename-asset" | "delete-asset" | "rename-folder" | "delete-folder"; id: string; name: string } | null>(null);
   const [managementName, setManagementName] = useState("");
   const [managementBusy, setManagementBusy] = useState(false);
@@ -115,14 +119,6 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
     const shortcut = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); searchRef.current?.focus(); } };
     window.addEventListener("keydown", shortcut); return () => window.removeEventListener("keydown", shortcut);
   }, []);
-  useEffect(() => {
-    if (!selectedId) return;
-    let cancelled = false; setUsageError(""); setUsageLoading(true);
-    void api.getLibraryUsage(selectedId).then(records => { if (!cancelled) setUsage(current => ({ ...current, [selectedId]: records })); }).catch(() => { if (!cancelled) setUsageError("使用位置暂时无法读取，请重试。"); }).finally(() => { if (!cancelled) setUsageLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedId, usageRetry]);
-
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,7 +132,6 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (!targetProjectId && projects[0]) setTargetProjectId(projects[0].id); }, [projects, targetProjectId]);
 
   const keyword = deferredQuery.trim().toLocaleLowerCase();
   const filtered = assets.filter(asset => {
@@ -146,10 +141,9 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
     const matchesFolder = activeFolder === "all" || (activeFolder === "unfiled" ? !asset.folderId : asset.folderId === activeFolder);
     return tab !== "voice" && matchesQuery && matchesType && matchesSource && matchesFolder;
   });
-  const selected = assets.find(asset => asset.id === selectedId) ?? null;
+  const selected = filtered.find(asset => asset.id === selectedId) ?? null;
   const batchSelectedSet = useMemo(() => new Set(batchSelectedIds), [batchSelectedIds]);
   const allFilteredSelected = filtered.length > 0 && filtered.every(asset => batchSelectedSet.has(asset.id));
-  const selectedUsage = selected ? usage[selected.id] ?? [] : [];
   const showInspector = inspectorOpen && Boolean(selected);
 
   async function uploadFiles(files: FileList | null) {
@@ -219,42 +213,27 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
 
   async function generate(event: FormEvent) {
     event.preventDefault(); if (!prompt.trim() || busy) return;
-    const job: GenerationJob = { id: createClientRequestId(), prompt: prompt.trim(), state: "running", createdAt: Date.now() };
-    setJobs(current => [job, ...current].slice(0, 3)); setBusy(true); setError("");
+    setBusy(true); setError("");
     try {
       const referenceImages = await Promise.all(references.map(async file => (await api.uploadImage(file)).url));
       const { threadId } = await api.startImageThread();
       await api.generateImage(threadId, { prompt: prompt.trim(), referenceImages, ...selection });
-      setJobs(current => current.map(item => item.id === job.id ? { ...item, state: "done" } : item));
-      setPrompt(""); setReferences([]); setCreateKind(null); await load();
+      setPrompt(""); setReferences([]); setCreateKind(null); setTab("image"); setSourceFilter("generated"); setActiveFolder("all"); setQuery(""); await load();
     } catch (reason) {
-      setJobs(current => current.map(item => item.id === job.id ? { ...item, state: "failed" } : item));
       setError(reason instanceof Error ? reason.message : "图片生成失败");
     } finally { setBusy(false); }
   }
 
-  async function addToProject() {
-    if (!selected || !targetProjectId || adding) return;
-    const project = projects.find(item => item.id === targetProjectId); if (!project) return;
-    setAdding(true); setError("");
-    try {
-      await api.importLibraryAsset(selected.id, project.id);
-      const records = await api.getLibraryUsage(selected.id);
-      setUsage(current => ({ ...current, [selected.id]: records }));
-      setUsageError("");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "添加到项目失败"); }
-    finally { setAdding(false); }
-  }
-
   function chooseTab(next: AssetTab) {
     setTab(next);
+    setCreateMenuOpen(false);
     if (window.innerWidth <= 800) setInspectorOpen(false);
   }
 
   return <div className="asset-library-layout">
     <aside className="asset-workshop-nav">
       <div className="asset-workshop-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div>
-      <nav className="asset-product-nav" aria-label="映芽功能"><button onClick={onCreate}><FilmSlate/>视频创作</button><button className="active"><Images/>素材工坊</button></nav>
+      <nav className="asset-product-nav" aria-label="映芽功能"><button onClick={onCreate}><FilmSlate/>视频创作</button><button className="active" aria-current="page"><Images/>素材工坊</button></nav>
       <div className="asset-folder-heading"><span>文件夹</span><button aria-label="新建文件夹" aria-expanded={folderFormOpen} onClick={() => setFolderFormOpen(current => !current)}><Plus/></button></div>
       {folderFormOpen ? <form className="asset-folder-form" onSubmit={createFolder}><label htmlFor="asset-folder-name">新建文件夹</label><input id="asset-folder-name" autoFocus value={folderName} maxLength={40} onChange={event => setFolderName(event.target.value)} placeholder="文件夹名称"/><div><button type="button" onClick={() => setFolderFormOpen(false)}>取消</button><button disabled={!folderName.trim() || creatingFolder}>{creatingFolder ? <CircleNotch className="spin"/> : "创建"}</button></div></form> : null}
       <nav className="asset-folder-list" aria-label="素材文件夹">
@@ -262,34 +241,48 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
         <button className={activeFolder === "unfiled" ? "active" : ""} onClick={() => setActiveFolder("unfiled")}><FolderSimple/><span>未整理</span><small>{assets.filter(asset => !asset.folderId).length}</small></button>
         {folders.map(folder => <div className="asset-folder-row" key={folder.id}><button className={activeFolder === folder.id ? "active" : ""} onClick={() => setActiveFolder(folder.id)}><FolderSimple/><span>{folder.name}</span><small>{assets.filter(asset => asset.folderId === folder.id).length}</small></button><button aria-label={`重命名文件夹 ${folder.name}`} title="重命名文件夹" onClick={() => manage("rename-folder", folder.id, folder.name)}><PencilSimple/></button><button aria-label={`删除文件夹 ${folder.name}`} title="删除文件夹" onClick={() => manage("delete-folder", folder.id, folder.name)}><Trash/></button></div>)}
       </nav>
-      <div className="asset-service-status"><span/><span>本地服务已连接</span></div>
     </aside>
     <main className="asset-main asset-main--library">
-      <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/><div className="asset-create-control"><button ref={createTriggerRef} className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div></header>
+      <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/>{!uploadOnly ? <div className="asset-create-control"><button ref={createTriggerRef} className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div> : null}</header>
       <nav className="asset-media-tabs" aria-label="素材类型">{typeTabs.map(item => { const Icon = item.icon; const count = item.id === "all" ? assets.length : item.id === "voice" ? undefined : assets.filter(asset => asset.category === item.id).length; return <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => chooseTab(item.id)}><Icon/>{item.label}{count !== undefined ? <small>{count}</small> : null}</button>; })}</nav>
       {tab === "voice" ? <div className="asset-voice-content"><VoiceStudio value={voiceId} onChange={onVoice}/></div> : <>
-        <div className={`asset-library-controls ${selectionMode ? "asset-library-controls--selecting" : ""}`}><nav aria-label="素材来源">{([ ["all", "全部来源"], ["uploaded", "已上传"], ["generated", "AI 生成"] ] as const).map(([id, label]) => <button key={id} className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)}>{id === "uploaded" ? <UploadSimple/> : id === "generated" ? <Sparkle/> : <Folders/>}{label}</button>)}</nav>{selectionMode ? <div className="asset-bulk-actions" role="toolbar" aria-label="批量整理素材"><strong>{batchSelectedIds.length} 项已选</strong><button type="button" aria-pressed={allFilteredSelected} onClick={() => setBatchSelectedIds(allFilteredSelected ? [] : filtered.map(asset => asset.id))}>{allFilteredSelected ? "取消全选" : "全选当前"}</button><select aria-label="批量移动到文件夹" value={batchTargetFolderId} onChange={event => setBatchTargetFolderId(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button className="asset-bulk-move" type="button" disabled={!batchSelectedIds.length || movingBatch} onClick={() => void moveBatch()}>{movingBatch ? <CircleNotch className="spin"/> : <FolderOpen/>}{movingBatch ? "正在移动" : "移动"}</button><button className="asset-bulk-cancel" type="button" onClick={closeSelectionMode}>取消</button></div> : <div className="asset-library-summary"><span>{filtered.length} 项素材</span><button type="button" onClick={() => { setSelectionMode(true); setBatchStatus(""); }}><Checks/>批量整理</button></div>}</div>
-        <div className={`asset-browser asset-browser--mixed ${showInspector ? "has-inspector" : ""}`}>
+        <div className={`asset-library-controls ${selectionMode ? "asset-library-controls--selecting" : ""}`}><nav aria-label="素材来源">{([ ["all", "全部来源"], ["uploaded", "已上传"], ["generated", "AI 生成"] ] as const).filter(([id]) => !uploadOnly || id === "uploaded").map(([id, label]) => <button key={id} className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)}>{id === "uploaded" ? <UploadSimple/> : id === "generated" ? <Sparkle/> : <Folders/>}{label}</button>)}</nav>{selectionMode ? <div className="asset-bulk-actions" role="toolbar" aria-label="批量整理素材"><strong>{batchSelectedIds.length} 项已选</strong><button type="button" aria-pressed={allFilteredSelected} onClick={() => setBatchSelectedIds(allFilteredSelected ? [] : filtered.map(asset => asset.id))}>{allFilteredSelected ? "取消全选" : "全选当前"}</button><select aria-label="批量移动到文件夹" value={batchTargetFolderId} onChange={event => setBatchTargetFolderId(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><button className="asset-bulk-move" type="button" disabled={!batchSelectedIds.length || movingBatch} onClick={() => void moveBatch()}>{movingBatch ? <CircleNotch className="spin"/> : <FolderOpen/>}{movingBatch ? "正在移动" : "移动"}</button><button className="asset-bulk-cancel" type="button" onClick={closeSelectionMode}>取消</button></div> : <div className="asset-library-summary"><span>{filtered.length} 项素材</span><button type="button" onClick={() => { setSelectionMode(true); setBatchStatus(""); }}><Checks/>批量整理</button></div>}</div>
+        <div ref={browserRef} style={{ "--asset-preview-width": `${previewWidth}px` } as CSSProperties} className={`asset-browser asset-browser--mixed ${showInspector ? "has-inspector" : ""}`}>
           <div className="asset-catalog">
+            {busy ? <p className="draft-save-status" role="status">正在生成图片，完成后会加入素材库。</p> : null}
             {error ? <p className="asset-page-error" role="alert">{error}</p> : null}
             {batchStatus ? <p className="asset-batch-status" role="status"><Check/>{batchStatus}</p> : null}
-            {filtered.length ? <div className="asset-mixed-grid">{filtered.map(asset => <AssetCard key={asset.id} asset={asset} folder={folders.find(folder => folder.id === asset.folderId)} inspected={asset.id === selectedId} checked={batchSelectedSet.has(asset.id)} selectionMode={selectionMode} used={Boolean(usage[asset.id]?.length)} onOpen={() => { setSelectedId(asset.id); setInspectorOpen(true); }} onToggle={() => toggleBatchSelection(asset.id)}/>)}</div> : null}
-            {!loading && !filtered.length ? <div className="asset-empty-state"><Folders/><h2>{query ? "没有匹配的素材" : "这个分类还没有素材"}</h2><p>{query ? "尝试更换关键词或筛选条件。" : "上传文件，或通过创建素材生成图片与音色。"}</p><button onClick={() => query ? setQuery("") : uploadRef.current?.click()}>{query ? "清除搜索" : "上传素材"}</button></div> : null}
+            {filtered.length ? <div className="asset-mixed-grid">{filtered.map(asset => <AssetCard key={asset.id} asset={asset} folder={folders.find(folder => folder.id === asset.folderId)} inspected={asset.id === selectedId} checked={batchSelectedSet.has(asset.id)} selectionMode={selectionMode} onOpen={() => { setSelectedId(asset.id); setInspectorOpen(true); }} onToggle={() => toggleBatchSelection(asset.id)}/>)}</div> : null}
+            {!loading && !filtered.length ? <div className={`asset-empty-state ${sourceFilter === "generated" && !keyword ? "asset-empty-state--generated" : ""}`}>
+              {keyword ? <MagnifyingGlass/> : sourceFilter === "generated" ? <Sparkle/> : <Folders/>}
+              <h2>{keyword ? "没有匹配的素材" : sourceFilter === "generated" ? "这里还没有 AI 生成的素材" : "这个分类还没有素材"}</h2>
+              <p>{keyword ? "尝试更换关键词或筛选条件。" : sourceFilter === "generated" ? "描述你想要的画面，生成图片后会自动保存到素材库。" : sourceFilter === "uploaded" ? "上传图片、视频、音频或文件，集中整理创作素材。" : "上传已有文件，或生成一张新的图片。"}</p>
+              <div className="asset-empty-actions">
+                <button onClick={() => keyword ? setQuery("") : sourceFilter === "generated" ? setCreateKind("image") : uploadRef.current?.click()}>{keyword ? "清除搜索" : sourceFilter === "generated" ? <><Sparkle/>生成图片</> : <><UploadSimple/>上传素材</>}</button>
+                {!keyword && sourceFilter === "all" ? <button onClick={() => setCreateKind("image")}><Sparkle/>生成图片</button> : null}
+              </div>
+            </div> : null}
             {loading ? <p className="asset-loading"><CircleNotch className="spin"/>正在读取素材…</p> : null}
           </div>
           {showInspector ? <aside className="asset-inspector">
-            <header><strong>{selected ? assetName(selected) : "素材详情"}</strong><button aria-label="关闭详情" onClick={() => setInspectorOpen(false)}><X/></button></header>
+            <div className="asset-preview-resizer" role="separator" aria-label="调整预览宽度" aria-orientation="vertical" aria-valuemin={280} aria-valuemax={Math.max(280, Math.min(800, (browserRef.current?.clientWidth ?? 1040) - 240))} aria-valuenow={previewWidth} tabIndex={0}
+              onPointerDown={event => { drag.current = { x: event.clientX, width: event.currentTarget.parentElement?.getBoundingClientRect().width ?? previewWidth }; event.currentTarget.setPointerCapture(event.pointerId); event.preventDefault(); }}
+              onPointerMove={event => { if (drag.current) resizePreview(drag.current.width + drag.current.x - event.clientX); }}
+              onPointerUp={event => { drag.current = null; event.currentTarget.releasePointerCapture(event.pointerId); }}
+              onLostPointerCapture={() => { drag.current = null; }}
+              onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); resizePreview(event.key === "Home" ? 280 : event.key === "End" ? 800 : previewWidth + (event.key === "ArrowLeft" ? 24 : -24)); } }}/>
+
+            <header><strong>{selected ? assetName(selected) : "素材详情"}</strong><button aria-label="放大预览" title="放大预览" onClick={() => selected && expandPreview(selected)}><ArrowsOut/></button><button aria-label="关闭详情" onClick={() => setInspectorOpen(false)}><X/></button></header>
             {selected ? <><AssetPreview asset={selected}/>
               {selected.prompt ? <section><h3>提示词</h3><p>{selected.prompt}</p></section> : null}
               <section><h3>信息</h3><dl><div><dt>类型</dt><dd>{assetTypeLabel(selected)}（{assetFormat(selected)}）</dd></div><div><dt>来源</dt><dd>{selected.kind === "generated" ? <><Sparkle/>AI 生成</> : <><UploadSimple/>已上传</>}</dd></div><div><dt>文件夹</dt><dd><select aria-label="素材文件夹" value={selected.folderId ?? ""} onChange={event => void moveSelected(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></dd></div><div><dt>添加时间</dt><dd>{formatDate(selected.createdAt)}</dd></div></dl></section>
               <div className="asset-manage-actions"><button onClick={() => manage("rename-asset", selected.id, assetName(selected))}><PencilSimple/>重命名素材</button><button onClick={() => manage("delete-asset", selected.id, assetName(selected))}><Trash/>删除素材</button></div>
-              <section className="asset-usage-section"><div className="asset-section-title"><h3>使用位置</h3><span>{usageLoading ? "读取中" : usageError ? "未知" : selectedUsage.length}</span></div><p className="draft-save-status">记录通过素材库加入的项目；早期导入可能尚未登记。</p>{usageError ? <div role="status"><p className="form-error">{usageError}</p><button type="button" onClick={() => setUsageRetry(value => value + 1)}>重新读取使用位置</button></div> : null}{selectedUsage.map(item => <button className="asset-usage-row" key={item.projectId} onClick={() => onOpen(item.projectId)}><FolderSimple/><span><b>{item.projectTitle}</b><small>{formatDate(item.addedAt)}</small></span><ArrowRight/></button>)}<div className="asset-add-project"><select value={targetProjectId} onChange={event => setTargetProjectId(event.target.value)} aria-label="选择项目"><option value="">选择项目</option>{projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}</select><button onClick={() => void addToProject()} disabled={!targetProjectId || adding}>{adding ? <CircleNotch className="spin"/> : <Plus/>}添加</button></div></section>
-              {jobs.length ? <section><div className="asset-section-title"><h3>生成任务</h3><span>{jobs.length}</span></div>{jobs.map(job => <div className="asset-job" key={job.id}><ImageIcon/><span><b>{job.prompt}</b><small>{job.state === "running" ? "生成中" : job.state === "done" ? "已完成" : "失败"}</small></span>{job.state === "running" ? <CircleNotch className="spin"/> : job.state === "done" ? <Check/> : <X/>}</div>)}</section> : null}
               <a className="asset-download" href={selected.url} download={fileNameFor(selected)}><DownloadSimple/>下载文件</a></> : <div className="asset-empty-state"><FileIcon/><p>选择一项素材查看详情</p></div>}
           </aside> : null}
         </div>
       </>}
     </main>
+    {expandedAsset ? <ExpandedAssetPreview key={expandedAsset.id} asset={expandedAsset} onClose={() => setExpandedAsset(null)}/> : null}
     {management ? <ActionDialog title={management.kind.startsWith("rename") ? "修改名称" : "确认删除"} busy={managementBusy} onClose={() => setManagement(null)}><form onSubmit={applyManagement}><p>{management.name}</p>{management.kind.startsWith("rename") ? <label>新名称<input autoFocus value={managementName} maxLength={management.kind.endsWith("folder") ? 40 : 120} onChange={event => setManagementName(event.target.value)}/></label> : <p>{management.kind === "delete-folder" ? "文件夹将被删除，其中的素材会移到“未整理”，文件不会删除。" : "将从素材库删除此文件。已导入项目的独立副本会保留，此操作不能撤销。"}</p>}{managementError ? <p className="form-error" role="alert">{managementError}</p> : null}<footer><button type="button" disabled={managementBusy} onClick={() => setManagement(null)}>取消</button><button className={management.kind.startsWith("delete") ? "danger-action" : "primary-button"} disabled={managementBusy || (management.kind.startsWith("rename") && !managementName.trim())}>{managementBusy ? "正在处理…" : management.kind.startsWith("rename") ? "保存名称" : "确认删除"}</button></footer></form></ActionDialog> : null}
     {drawerPresence.value ? <div ref={node => { drawerRoot.current = node; drawerPresence.ref(node); }} inert={drawerPresence.exiting} aria-hidden={drawerPresence.exiting || undefined} onKeyDown={event => {
       if (event.key === "Escape") { event.stopPropagation(); setCreateKind(null); }
@@ -302,9 +295,9 @@ export function AssetStudio({ projects, models, selection, voiceId, onSelection,
   </div>;
 }
 
-function AssetCard({ asset, folder, inspected, checked, selectionMode, used, onOpen, onToggle }: { asset: AssetLibraryItem; folder?: AssetFolder; inspected: boolean; checked: boolean; selectionMode: boolean; used: boolean; onOpen: () => void; onToggle: () => void }) {
+function AssetCard({ asset, folder, inspected, checked, selectionMode, onOpen, onToggle }: { asset: AssetLibraryItem; folder?: AssetFolder; inspected: boolean; checked: boolean; selectionMode: boolean; onOpen: () => void; onToggle: () => void }) {
   const name = assetName(asset);
-  return <article className={`asset-card-item ${inspected ? "inspected" : ""} ${checked ? "batch-selected" : ""}`}><button className="asset-card-open" aria-pressed={selectionMode ? checked : undefined} aria-label={selectionMode ? `${checked ? "取消选择" : "选择"}素材 ${name}` : undefined} onClick={selectionMode ? onToggle : onOpen}><AssetThumb asset={asset}/><b title={name}>{name}</b><small><span className={`asset-source asset-source--${asset.kind}`}>{asset.kind === "generated" ? <Sparkle/> : <UploadSimple/>}{asset.kind === "generated" ? "AI 生成" : "已上传"}</span> · {formatDate(asset.createdAt)}</small><em><FolderSimple/>{folder?.name ?? "未整理"}{used ? " · 项目中" : ""}</em></button>{selectionMode ? <span className="asset-card-check" aria-hidden="true">{checked ? <Check weight="bold"/> : null}</span> : null}</article>;
+  return <article className={`asset-card-item ${inspected ? "inspected" : ""} ${checked ? "batch-selected" : ""}`}><button className="asset-card-open" aria-pressed={selectionMode ? checked : undefined} aria-label={selectionMode ? `${checked ? "取消选择" : "选择"}素材 ${name}` : undefined} onClick={selectionMode ? onToggle : onOpen}><AssetThumb asset={asset}/><b title={name}>{name}</b><small><span className={`asset-source asset-source--${asset.kind}`}>{asset.kind === "generated" ? <Sparkle/> : <UploadSimple/>}{asset.kind === "generated" ? "AI 生成" : "已上传"}</span></small><em><FolderSimple/>{folder?.name ?? "未整理"}</em></button>{selectionMode ? <span className="asset-card-check" aria-hidden="true">{checked ? <Check weight="bold"/> : null}</span> : null}</article>;
 }
 
 function AssetThumb({ asset }: { asset: AssetLibraryItem }) {
@@ -319,5 +312,17 @@ function AssetPreview({ asset }: { asset: AssetLibraryItem }) {
   if (asset.category === "image") return <div className="asset-preview"><img src={asset.url} alt={assetName(asset)}/><span>{assetFormat(asset)}</span></div>;
   if (asset.category === "video") return <div className="asset-preview asset-preview--media"><video src={asset.url} controls preload="metadata"/><span>{assetFormat(asset)}</span></div>;
   if (asset.category === "audio") return <div className="asset-preview asset-preview--audio"><FileAudio/><audio src={asset.url} controls/><span>{assetFormat(asset)}</span></div>;
+  const documentKind = assetDocumentKind(asset);
+  if (documentKind) return <AssetDocumentPreview key={`${asset.id}:${asset.url}`} asset={asset} kind={documentKind}/>;
   return <div className="asset-preview asset-preview--file">{asset.category === "document" ? <FileText/> : <FileIcon/>}<b>{assetName(asset)}</b><span>{assetFormat(asset)}</span></div>;
+}
+
+function ExpandedAssetPreview({ asset, onClose }: { asset: AssetLibraryItem; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
+  return <ActionDialog title={assetName(asset)} className="asset-expanded-dialog" onClose={onClose}>
+    {asset.category === "image" ? <>
+      <div className="asset-zoom-controls" role="group" aria-label="图片缩放"><button aria-label="缩小图片" disabled={zoom <= 0.5} onClick={() => setZoom(value => Math.max(0.5, value - 0.25))}><Minus/></button><button onClick={() => setZoom(1)} aria-label="适应窗口">{Math.round(zoom * 100)}% · 重置</button><button aria-label="放大图片" disabled={zoom >= 3} onClick={() => setZoom(value => Math.min(3, value + 0.25))}><Plus/></button></div>
+      <div className="asset-expanded-image"><img src={asset.url} alt={assetName(asset)} style={{ width: `${zoom * 100}%`, maxHeight: zoom <= 1 ? "100%" : "none", objectFit: "contain" }}/></div>
+    </> : <div className="asset-expanded-content"><AssetPreview asset={asset}/></div>}
+  </ActionDialog>;
 }

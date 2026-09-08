@@ -93,7 +93,7 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
         <button type="button" aria-label="断开 Studio" title="断开 Studio" onClick={() => void disconnect()}><LinkBreak/></button>
       </div> : null}
     </div>
-    {!available ? <div className="live-preview-state"><Code/><b>制作方案确认后开放</b><span>确认方向后，映芽会创建 HyperFrames Composition 并在这里实时显示。</span></div>
+    {!available ? <div className="live-preview-state"><Code/><b>制作方案确认后开放</b><span>确认方案后，映芽会编排文字、图形与素材，在这里预览动画。</span></div>
       : state === "connecting" || state === "reconnecting" ? <div className="live-preview-state"><CircleNotch className="spin"/><b>{connectionLabel}</b><span>首次打开需要启动本地 HyperFrames 服务。</span></div>
       : error ? <div className="live-preview-state live-preview-state--error"><Warning/><b>实时画面暂不可用</b><span>{error}</span><button type="button" onClick={() => { setError(""); setState("reconnecting"); setShouldConnect(true); }}>重新连接</button></div>
       : session ? <div className={`live-preview-frame ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}><iframe key={reloadKey} title="HyperFrames 实时画面" src={previewUrl} allow="autoplay; fullscreen"/></div>
@@ -138,7 +138,7 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
 
   return <section className="render-panel" aria-label="导出视频">
     <header><b>导出视频</b>{finalVideo ? <span className="render-ready"><Check/>已有成片</span> : null}</header>
-    {finalVideo ? <p className="render-existing-spec">可下载文件：{version?.label} · {downloadSpec}<br/><span>{finalVideo.path.split("/").at(-1)}</span></p> : null}
+    {finalVideo ? <p className="render-existing-spec">可下载文件：{version?.label.replace(/草稿/g, "视频")} · {downloadSpec}<br/><span>{finalVideo.path.split("/").at(-1)}</span></p> : null}
     <p className="render-hint">以下设置用于下一次渲染，不会改变已有下载文件。</p>
     {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.message}</p></div> : null}
     <div className="render-options">
@@ -186,5 +186,5 @@ function formatJobTime(value: number) {
 }
 
 function versionLabel(project: ProjectDetail, versionId: string) {
-  return project.manifest.versions.find(version => version.id === versionId)?.label ?? versionId;
+  return project.manifest.versions.find(version => version.id === versionId)?.label.replace(/草稿/g, "视频") ?? versionId;
 }

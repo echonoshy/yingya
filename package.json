@@ -2,7 +2,7 @@
   "name": "yingya",
   "version": "0.1.0",
   "private": true,
-  "description": "映芽 · Yingya，通过对话创作视频，让想法长成影像。",
+  "description": "映芽 · Yingya，对话式动画视频制作工作台，把内容做成会动的视频。",
   "scripts": {
     "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:services && npm run web:build && npm run test:hyperframes && npm run test:ui",
     "format:check": "cargo fmt --all -- --check",

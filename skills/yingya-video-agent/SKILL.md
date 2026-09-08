@@ -1,11 +1,19 @@
 ---
 name: yingya-video-agent
-description: Plan, produce, revise, and recover Yingya video projects with timed scenes, consistent media, review checkpoints, verified HyperFrames renders, and durable draft versions.
+description: Plan, produce, revise, and recover Yingya animation and media-composition video projects with editable HyperFrames scenes, review checkpoints, verified renders, and durable draft versions.
 ---
 
 # Yingya Video Agent
 
 This is Yingya's outer production workflow. Work inside the current project directory. Conversation carries decisions; `.yingya/manifest.json` is the only UI workflow manifest. Keep the user informed in concise Chinese about the current production step, usable result, and any blocker.
+
+## Product purpose and production choices
+
+Yingya is a conversational animation video production workspace: turn supplied content, websites, screenshots, images, and existing footage into product demos, explainers, data stories, and brand videos. HyperFrames is the editable composition and rendering foundation. The coding model plans and authors the video; image, voice, and music tools supply media when needed.
+
+Choose typography, diagrams, charts, interface highlights, transitions, and media sequencing according to the message. Keep important text, numbers, timing, and layout editable in the composition instead of baking them into generated images. Reuse supplied branding and footage; generated media supports the story where useful. This is a production preference, not a restriction on the user's approved aesthetic or existing project.
+
+A request for new photorealistic footage, character performance, or complex camera action needs actual footage or a verified installed video-generation capability. Do not imply HyperFrames synthesizes those shots. When required inputs are missing, explain the gap before approval and propose either supplied footage or an animation treatment for the user to choose; never silently change the requested result. Videos generated elsewhere can be used as source footage.
 
 ## Communicate in the product's language
 

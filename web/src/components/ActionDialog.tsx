@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { X } from "@phosphor-icons/react";
 import { animateElement } from "./motion";
 
-export function ActionDialog({ title, children, busy, onClose }: { title: string; children: ReactNode; busy?: boolean; onClose: () => void }) {
+export function ActionDialog({ title, children, busy, onClose, className = "" }: { className?: string; title: string; children: ReactNode; busy?: boolean; onClose: () => void }) {
   const root = useRef<HTMLDialogElement>(null);
   const animation = useRef<Animation | undefined>(undefined);
   const closing = useRef(false);
@@ -36,5 +36,5 @@ export function ActionDialog({ title, children, busy, onClose }: { title: string
     if (animation.current) void animation.current.finished.then(() => closeCallback.current()).catch(() => undefined);
     else closeCallback.current();
   }
-  return <dialog ref={root} className="action-dialog" aria-label={title} onCancel={event => { event.preventDefault(); requestClose(); }}><header><h2>{title}</h2><button type="button" disabled={busy} aria-label="关闭对话框" onClick={requestClose}><X/></button></header>{children}</dialog>;
+  return <dialog ref={root} className={`action-dialog ${className}`} aria-label={title} onCancel={event => { event.preventDefault(); requestClose(); }}><header><h2>{title}</h2><button type="button" disabled={busy} aria-label="关闭对话框" onClick={requestClose}><X/></button></header>{children}</dialog>;
 }

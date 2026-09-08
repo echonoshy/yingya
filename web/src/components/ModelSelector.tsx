@@ -58,11 +58,11 @@ export function ModelSelector({ models, value, onChange }: {
       items[next]?.focus();
     }
     if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
-    <button type="button" className="model-trigger" title={`${displayName} · ${effortName}`} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
+    <button type="button" className="model-trigger" title={`制作助手模型：${displayName} · ${effortName}`} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
       <span className="model-trigger-label">{displayName} · {effortName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
     </button>
     {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={position}>
-      <div className="model-menu-primary" role="group" aria-label="模型">
+      <div className="model-menu-primary" role="group" aria-label="制作助手模型">
         {menuModels.map(model => <button
           type="button"
           role="menuitemradio"

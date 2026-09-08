@@ -616,50 +616,47 @@ async fn list_agent_projects(State(state): State<AppState>) -> Result<Json<Vec<V
             project.status.as_str(),
             "failed" | "incomplete" | "interrupted"
         );
-        let review_label = if active || failed {
-            None
-        } else if manifest.phase == "briefing" {
-            Some("等待补充要求")
-        } else if project.queue_depth == 0 {
+        let rendering = state.agent_jobs.active_render(&project.id).await.is_some();
+        let version = manifest
+            .versions
+            .iter()
+            .find(|v| Some(&v.id) == manifest.current_draft.as_ref())
+            .or_else(|| manifest.versions.last());
+        let has_video = version.is_some_and(|v| !v.video_path.is_empty());
+        let exported = version.is_some_and(|v| {
             manifest
-                .checkpoint
-                .as_ref()
-                .map(|checkpoint| {
-                    if checkpoint.kind == "plan" {
-                        "制作方案待确认"
+                .artifacts
+                .iter()
+                .any(|a| a.kind == "final-video" && a.version.as_ref() == Some(&v.id))
+        });
+        let checkpoint = manifest.checkpoint.as_ref();
+        let (group, label) = if active {
+            ("active", "正在制作")
+        } else if rendering {
+            ("active", "正在导出")
+        } else if failed {
+            ("failed", "制作待恢复")
+        } else if manifest.phase == "briefing" {
+            ("review", "等待补充要求")
+        } else if checkpoint.is_some_and(|c| c.kind == "plan") {
+            ("review", "制作方案待确认")
+        } else if has_video {
+            if exported {
+                (
+                    "completed",
+                    if manifest.dirty {
+                        "已导出 · 源文件有更新"
                     } else {
-                        "草稿待确认"
-                    }
-                })
-                .or(if manifest.dirty {
-                    Some(
-                        if manifest
-                            .versions
-                            .iter()
-                            .any(|version| !version.video_path.is_empty())
-                        {
-                            "修改待检查"
-                        } else {
-                            "制作待检查"
-                        },
-                    )
-                } else {
-                    None
-                })
-        } else if manifest.dirty {
-            Some(
-                if manifest
-                    .versions
-                    .iter()
-                    .any(|version| !version.video_path.is_empty())
-                {
-                    "修改待检查"
-                } else {
-                    "制作待检查"
-                },
-            )
+                        "当前版本已导出"
+                    },
+                )
+            } else if manifest.dirty && checkpoint.is_none_or(|c| c.kind != "draft") {
+                ("ready", "已有视频 · 源文件有更新")
+            } else {
+                ("ready", "视频可导出")
+            }
         } else {
-            None
+            ("review", "等待继续制作")
         };
         let mut summary = json!(project);
         if manifest
@@ -672,10 +669,8 @@ async fn list_agent_projects(State(state): State<AppState>) -> Result<Json<Vec<V
                 project.id, project.updated_at
             ));
         }
-        if let Some(label) = review_label {
-            summary["workflowStatus"] = json!("review");
-            summary["workflowLabel"] = json!(label);
-        }
+        summary["workflowStatus"] = json!(group);
+        summary["workflowLabel"] = json!(label);
         summaries.push(summary);
     }
     Ok(Json(summaries))

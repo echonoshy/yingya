@@ -18,6 +18,7 @@ Write `.yingya/plan.md` with:
 - **Visual direction:** canvas brightness, palette, type hierarchy, composition, motion intensity, safe areas, and scene continuity. Continue an existing design before inferring a new one.
 - **Sound and timing:** narration text or outline (label which), saved voice, music / silence, captions, duration target, and whether duration is hard or approximate.
 - **Production route and outputs:** asset sources, available capabilities and limitations, aspect ratio, resolution, fps, editable source, review draft, and final MP4.
+- **Composition approach:** identify which content stays editable as text, diagrams, charts, or interface overlays, which scenes use supplied media, and any missing footage. For website work, verify access before promising a capture; request screenshots or copy if access fails. Data stories retain source, units, and scope; missing values remain unresolved rather than invented.
 - **Assumptions / unresolved decisions:** distinguish user facts from recommendations; ask about material conflicts together.
 
 Avoid five overlapping planning documents. The plan owns decisions; `scenes.json` owns scene structure. Preserve existing `SCRIPT.md` or `STORYBOARD.md` when supplied, and keep dependent scene fields consistent with user edits. Create additional artifacts only when the requested deliverable needs them.

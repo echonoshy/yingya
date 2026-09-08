@@ -96,7 +96,6 @@ export const api = {
   listAssetLibrary: () => request("/api/assets/library", assetLibrarySchema),
   uploadLibraryAsset: async (file: File, folderId?: string) => { const body = new FormData(); body.append("file", file); if (folderId) body.append("folderId", folderId); return request("/api/assets/library", assetLibraryItemSchema, { method: "POST", body }); },
   importLibraryAsset: (id: string, projectId: string) => request(`/api/assets/library/${encodeURIComponent(id)}/projects/${projectId}`, uploadSchema, { method: "POST", body: "{}" }),
-  getLibraryUsage: (id: string) => request(`/api/assets/library/${encodeURIComponent(id)}/usage`, z.array(z.object({ projectId: z.string(), projectTitle: z.string(), addedAt: z.number() }))),
   renameLibraryAsset: (id: string, name: string) => requestVoid(`/api/assets/library/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteLibraryAsset: (id: string) => requestVoid(`/api/assets/library/${encodeURIComponent(id)}`, { method: "DELETE" }),
   renameAssetFolder: (id: string, name: string) => requestVoid(`/api/assets/folders/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
