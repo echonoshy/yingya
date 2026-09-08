@@ -12,6 +12,8 @@ const FIXED_DEFAULT_VOICE: &str = "yingya-default-narrator";
 
 #[derive(Clone)]
 pub struct VoiceClient {
+    owner: Option<String>,
+    storage: Option<std::path::PathBuf>,
     client: Client,
     base_url: String,
     default_voice_lock: Arc<tokio::sync::Mutex<()>>,
@@ -63,6 +65,8 @@ impl VoiceClient {
             .timeout(Duration::from_secs(300))
             .build()?;
         Ok(Self {
+            owner: None,
+            storage: None,
             client,
             base_url: env::var("VOXCPM2_API_BASE")
                 .unwrap_or_else(|_| DEFAULT_API_BASE.to_owned())
@@ -72,6 +76,20 @@ impl VoiceClient {
         })
     }
 
+    pub fn for_user(id: &str, storage: std::path::PathBuf) -> Result<Self, VoiceError> {
+        let mut client = Self::from_env()?;
+        client.owner = Some(format!("u_{}_", id.replace('-', "")));
+        client.storage = Some(storage);
+        Ok(client)
+    }
+    fn provider_name(&self, name: &str) -> String {
+        if name == FIXED_DEFAULT_VOICE {
+            return name.to_owned();
+        }
+        self.owner
+            .as_ref()
+            .map_or_else(|| name.to_owned(), |owner| format!("{owner}{name}"))
+    }
     pub async fn list(&self) -> Result<VoiceList, VoiceError> {
         let response = self
             .client
@@ -79,10 +97,35 @@ impl VoiceClient {
             .send()
             .await?;
         let response = checked(response).await?;
-        response
+        let mut list: VoiceList = response
             .json()
             .await
-            .map_err(|error| VoiceError::InvalidResponse(error.to_string()))
+            .map_err(|error| VoiceError::InvalidResponse(error.to_string()))?;
+        if let Some(owner) = &self.owner {
+            list.voices = list
+                .voices
+                .into_iter()
+                .filter_map(|name| {
+                    if name == "default" || name == FIXED_DEFAULT_VOICE {
+                        Some(name)
+                    } else {
+                        name.strip_prefix(owner).map(str::to_owned)
+                    }
+                })
+                .collect();
+            list.uploaded_voices = list
+                .uploaded_voices
+                .into_iter()
+                .filter_map(|mut voice| {
+                    if voice.name == FIXED_DEFAULT_VOICE {
+                        return Some(voice);
+                    }
+                    voice.name = voice.name.strip_prefix(owner)?.to_owned();
+                    Some(voice)
+                })
+                .collect();
+        }
+        Ok(list)
     }
 
     pub async fn synthesize(&self, voice: &str, text: &str) -> Result<Vec<u8>, VoiceError> {
@@ -93,7 +136,7 @@ impl VoiceClient {
             .json(&json!({
                 "model": "voxcpm2",
                 "input": text,
-                "voice": voice.name,
+                "voice": self.provider_name(&voice.name),
                 "ref_text": voice.ref_text,
                 "response_format": "wav"
             }))
@@ -188,12 +231,24 @@ impl VoiceClient {
         mime_type: &str,
         audio: Vec<u8>,
     ) -> Result<UploadedVoice, VoiceError> {
+        if let Some(storage) = &self.storage {
+            let folder = storage.join(format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(name.as_bytes())
+            ));
+            tokio::fs::create_dir_all(&folder)
+                .await
+                .map_err(|e| VoiceError::Service(e.to_string()))?;
+            tokio::fs::write(folder.join("reference.audio"), &audio)
+                .await
+                .map_err(|e| VoiceError::Service(e.to_string()))?;
+        }
         let audio_part = multipart::Part::bytes(audio)
             .file_name(filename.to_owned())
             .mime_str(mime_type)
             .map_err(|error| VoiceError::InvalidResponse(error.to_string()))?;
         let form = multipart::Form::new()
-            .text("name", name.to_owned())
+            .text("name", self.provider_name(name))
             .text("consent", consent.to_owned())
             .text("ref_text", ref_text.to_owned())
             .text("speaker_description", description.to_owned())
@@ -209,7 +264,9 @@ impl VoiceClient {
             .json()
             .await
             .map_err(|error| VoiceError::InvalidResponse(error.to_string()))?;
-        Ok(envelope.voice)
+        let mut voice = envelope.voice;
+        voice.name = name.to_owned();
+        Ok(voice)
     }
 
     pub async fn exists(&self, voice: &str) -> Result<bool, VoiceError> {
@@ -294,6 +351,8 @@ mod tests {
             .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let client = VoiceClient {
+            owner: None,
+            storage: None,
             client: Client::new(),
             base_url: format!("http://{}", listener.local_addr().unwrap()),
             default_voice_lock: Arc::new(Mutex::new(())),
@@ -302,6 +361,30 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
         (client, state, task)
+    }
+
+    #[tokio::test]
+    async fn private_voices_are_not_listed_or_usable_by_another_account() {
+        let (base, _, task) = mock_client().await;
+        let mut a = base.clone();
+        a.owner = Some("user_a_".into());
+        let mut b = base.clone();
+        b.owner = Some("user_b_".into());
+        a.create_design("narration", "清晰温暖的中文旁白")
+            .await
+            .unwrap();
+        assert!(
+            a.list_visible()
+                .await
+                .unwrap()
+                .uploaded_voices
+                .iter()
+                .any(|v| v.name == "narration")
+        );
+        assert!(b.list_visible().await.unwrap().uploaded_voices.is_empty());
+        assert!(b.synthesize("narration", "hello").await.is_err());
+        assert!(a.synthesize("narration", "hello").await.is_ok());
+        task.abort();
     }
 
     #[tokio::test]

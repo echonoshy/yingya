@@ -37,6 +37,7 @@ pub struct StudioSession {
 
 #[derive(Clone)]
 pub struct StudioSessionManager {
+    private_preview: bool,
     runner: Arc<dyn PreviewCommandRunner>,
     projects_root: Arc<PathBuf>,
     sessions: Arc<Mutex<HashMap<String, StudioSession>>>,
@@ -46,6 +47,7 @@ pub struct StudioSessionManager {
 impl StudioSessionManager {
     pub fn new(cli: PathBuf, hyperframes_home: PathBuf, projects_root: PathBuf) -> Self {
         Self {
+            private_preview: true,
             runner: Arc::new(CliPreviewCommandRunner {
                 cli: Arc::new(cli),
                 hyperframes_home: Arc::new(hyperframes_home),
@@ -59,6 +61,7 @@ impl StudioSessionManager {
     #[cfg(test)]
     fn with_runner(projects_root: PathBuf, runner: Arc<dyn PreviewCommandRunner>) -> Self {
         Self {
+            private_preview: false,
             runner,
             projects_root: Arc::new(projects_root),
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -67,6 +70,9 @@ impl StudioSessionManager {
     }
 
     pub async fn adopt_existing(&self) -> Result<usize, String> {
+        if self.private_preview {
+            return Ok(0);
+        }
         let _guard = self.operation_lock.lock().await;
         let sessions = self.list_managed().await?;
         let root = fs::canonicalize(self.projects_root.as_ref())
@@ -119,6 +125,27 @@ impl StudioSessionManager {
             );
         }
 
+        if self.private_preview {
+            let url = format!("/api/agent-projects/{project_id}/files/index.html");
+            let session = StudioSession {
+                state: "running".into(),
+                host: String::new(),
+                port: 0,
+                project_name: project_id.into(),
+                server_url: url.clone(),
+                preview_url: url.clone(),
+                storyboard_url: url,
+                last_seen_at: now_millis(),
+                project_id: project_id.into(),
+                project_dir: canonical.clone(),
+                source_fingerprint: source_fingerprint(&canonical).await?,
+            };
+            self.sessions
+                .lock()
+                .await
+                .insert(project_id.into(), session.clone());
+            return Ok(session);
+        }
         let mut listed = self.list_managed().await?;
         if let Some(existing) = listed
             .iter()
@@ -183,7 +210,9 @@ impl StudioSessionManager {
         let Some(session) = session else {
             return Ok(false);
         };
-        self.run_preview(&session.project_dir, &["--stop"]).await?;
+        if !self.private_preview {
+            self.run_preview(&session.project_dir, &["--stop"]).await?;
+        }
         self.sessions.lock().await.remove(project_id);
         Ok(true)
     }

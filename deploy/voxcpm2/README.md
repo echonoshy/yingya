@@ -2,7 +2,7 @@
 
 This project runs `openbmb/VoxCPM2` through vLLM-Omni and exposes the
 OpenAI-compatible Speech API on port `8791`. By default, the server listens on
-`0.0.0.0`, while local clients connect through `http://127.0.0.1:8791`.
+`127.0.0.1`, while local clients connect through `http://127.0.0.1:8791`.
 
 The machine-specific CUDA 12.8 environment and model weights are installed
 under `.runtime/`, so they stay isolated from the Rust and Node dependencies:
@@ -37,7 +37,7 @@ VOXCPM2_GPU_MEMORY_UTILIZATION=0.75 \
 ```
 
 Override `VOXCPM2_HOST` when the service should bind to a different interface.
-The default `0.0.0.0` binding makes it reachable from other machines, so put
+The default `127.0.0.1` binding makes it reachable from other machines, so put
 authentication or a trusted reverse proxy in front of it on untrusted networks.
 
 ## Generate speech

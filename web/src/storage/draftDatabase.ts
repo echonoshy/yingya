@@ -1,9 +1,10 @@
+import { userStorageKey } from "../session";
 let database: Promise<IDBDatabase> | undefined;
 
 export function openDraftDatabase(): Promise<IDBDatabase> {
   return database ??= new Promise((resolve, reject) => {
     let blocked = false;
-    const request = indexedDB.open("yingya-drafts", 2);
+    const request = indexedDB.open(userStorageKey("yingya-drafts"), 2);
     request.onupgradeneeded = () => {
       for (const name of ["files", "feedback"]) {
         if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name);

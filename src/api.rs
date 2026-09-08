@@ -1,3 +1,7 @@
+#[path = "tenancy.rs"]
+mod tenancy;
+use crate::accounts::{Accounts, User};
+use crate::sandbox::Sandbox;
 use std::{
     env,
     net::SocketAddr,
@@ -57,6 +61,10 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
+    user: User,
+    accounts: Accounts,
+    sandbox: Sandbox,
+    user_root: PathBuf,
     codex: Arc<CodexClient>,
     heygen: HeyGenClient,
     assets: AssetStore,
@@ -321,25 +329,36 @@ struct AgentServerResponse {
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("yingya_server=info")),
-        )
-        .init();
+    tenancy::run().await
+}
 
-    let paths = AppPaths::from_env().map_err(std::io::Error::other)?;
-    for directory in [&paths.app_data, &paths.cache, &paths.runtime] {
+async fn user_router(
+    paths: AppPaths,
+    accounts: Accounts,
+    user: User,
+    service_token: &str,
+) -> Result<Router, Box<dyn std::error::Error>> {
+    for directory in [&paths.cache, &paths.runtime] {
         fs::create_dir_all(directory).await?;
     }
     let root = paths.resources.clone();
     let video_agent_skill = install_bundled_video_agent_skill(&root, &paths.codex_home).await?;
-    let hyperframes_browser = discover_hyperframes_browser(&root, &paths.hyperframes_home).await;
+    let hyperframes_browser =
+        discover_hyperframes_browser(&root, &root.join(".runtime/hyperframes-home")).await;
+    let sandbox = Sandbox::new(
+        paths.app_data.clone(),
+        root.clone(),
+        hyperframes_browser.clone(),
+        service_token,
+    )
+    .await
+    .map_err(std::io::Error::other)?;
     let config = CodexConfig {
+        sandbox: Some(sandbox.clone()),
+        accounting: Some((accounts.clone(), user.id.clone())),
         binary: env_path("YINGYA_CODEX_BIN", root.join("node_modules/.bin/codex")),
         home: paths.codex_home.clone(),
-        workspace: env_path("YINGYA_WORKSPACE", root.clone()),
+        workspace: paths.app_data.clone(),
         model: env::var("YINGYA_CODEX_MODEL").unwrap_or_else(|_| "gpt-5.6-terra".to_owned()),
         network_access: env_bool("YINGYA_CODEX_NETWORK_ACCESS", true),
         hyperframes_browser,
@@ -350,7 +369,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let codex = CodexClient::spawn(config).await?;
     let heygen = HeyGenClient::new()?;
-    let voices = VoiceClient::from_env()?;
+    let voices = VoiceClient::for_user(&user.id, paths.app_data.join("voices"))?;
     let assets = AssetStore::new(paths.assets.clone()).await?;
     let agent_projects = AgentProjectStore::new(paths.projects.clone()).await?;
     agent_projects
@@ -358,7 +377,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(std::io::Error::other)?;
     let (agent_events, _) = broadcast::channel(2_048);
-    let static_assets = assets.root.as_ref().clone();
+
     let web_dist = root.join("web-dist");
     let web_index = web_dist.join("index.html");
     let render_jobs = RenderJobStore::new(paths.projects.clone());
@@ -368,6 +387,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         paths.projects.clone(),
     );
     let state = AppState {
+        user,
+        accounts,
+        sandbox,
+        user_root: paths.app_data.clone(),
         codex,
         heygen,
         assets,
@@ -521,7 +544,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             get(agent_project_poster),
         )
         .route("/api/{*path}", any(api_not_found))
-        .nest_service("/assets", ServeDir::new(static_assets))
+        .route("/assets/{*path}", get(tenancy::asset_file))
+        .route("/api/internal/voice/{*path}", any(tenancy::voice_proxy))
         .fallback_service(ServeDir::new(web_dist).not_found_service(ServeFile::new(web_index)))
         .route(
             "/api/agent-projects/{project_id}/feedback-assets",
@@ -531,13 +555,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
         .with_state(state);
 
-    let address: SocketAddr = env::var("YINGYA_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:8797".to_owned())
-        .parse()?;
-    let listener = TcpListener::bind(address).await?;
-    info!(%address, "Yingya Rust backend is listening");
-    axum::serve(listener, app).await?;
-    Ok(())
+    Ok(app)
 }
 
 async fn install_bundled_video_agent_skill(
@@ -1024,6 +1042,10 @@ async fn post_agent_turn(
         .submit_turn(&project_id, request, priority)
         .await
         .map_err(ApiError::Project)?;
+    state
+        .accounts
+        .request(&state.user.id, &submitted.turn.id, "agent")
+        .map_err(ApiError::External)?;
     if !submitted.deduplicated {
         if priority && let Some(active) = state.agent_jobs.active(&project_id).await {
             active.cancellation.cancel();
@@ -1867,7 +1889,9 @@ async fn run_preflight_command(
 ) -> Result<String, String> {
     let output = tokio::time::timeout(
         Duration::from_secs(600),
-        Command::new(state.root.join("node_modules/.bin/hyperframes"))
+        state
+            .sandbox
+            .command(state.root.join("node_modules/.bin/hyperframes"))
             .arg(command)
             .arg(source_dir)
             .arg("--json")
@@ -1968,7 +1992,9 @@ async fn run_render_command(
     resolution: &str,
     fps: u16,
 ) -> Result<(), String> {
-    let mut child = Command::new(state.root.join("node_modules/.bin/hyperframes"))
+    let mut child = state
+        .sandbox
+        .command(state.root.join("node_modules/.bin/hyperframes"))
         .arg("render")
         .args(["--output", output_path.to_string_lossy().as_ref()])
         .args(["--quality", "high"])
@@ -2756,7 +2782,7 @@ async fn agent_project_poster(
         metadata.modified().ok()
     );
     let digest = format!("{:x}", Sha256::digest(key.as_bytes()));
-    let cache = state.root.join(".runtime/posters");
+    let cache = state.user_root.join("runtime/posters");
     fs::create_dir_all(&cache).await?;
     let target = cache.join(format!("{digest}.jpg"));
     let _guard = POSTER_LOCK.lock().await;
@@ -2764,7 +2790,9 @@ async fn agent_project_poster(
         let temporary = cache.join(format!("{digest}-{}.jpg", Uuid::new_v4()));
         let output = tokio::time::timeout(
             Duration::from_secs(15),
-            Command::new("ffmpeg")
+            state
+                .sandbox
+                .command("/usr/bin/ffmpeg")
                 .kill_on_drop(true)
                 .args(["-v", "error", "-nostdin", "-i"])
                 .arg(&source)
@@ -3687,6 +3715,17 @@ async fn execute_turn(
         reference_images.push(state.assets.resolve(image).await?);
     }
 
+    if !state.accounts.owns_thread(&thread_id, &state.user.id) {
+        return Err(ApiError::BadRequest("会话不存在".into()));
+    }
+    state
+        .accounts
+        .request(
+            &state.user.id,
+            &Uuid::new_v4().to_string(),
+            if use_imagegen { "image" } else { "agent" },
+        )
+        .map_err(ApiError::External)?;
     let turn = state
         .codex
         .run_turn(

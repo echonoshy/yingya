@@ -4,20 +4,20 @@ import { once } from "node:events";
 
 const host = "127.0.0.1";
 const port = 4174;
-const baseUrl = `http://${host}:${port}`;
-const preview = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--config", "web/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
+const baseUrl = process.env.YINGYA_UI_QA_URL ?? `http://${host}:${port}`;
+const preview = process.env.YINGYA_UI_QA_URL ? null : spawn(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--config", "web/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
   cwd: new URL("..", import.meta.url),
   stdio: ["ignore", "pipe", "pipe"],
 });
 
 let previewOutput = "";
-preview.stdout.on("data", chunk => { previewOutput += chunk; });
-preview.stderr.on("data", chunk => { previewOutput += chunk; });
+preview?.stdout.on("data", chunk => { previewOutput += chunk; });
+preview?.stderr.on("data", chunk => { previewOutput += chunk; });
 
 async function waitForPreview() {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (preview.exitCode !== null) throw new Error(`Vite preview exited early:\n${previewOutput}`);
+    if (preview && preview.exitCode !== null) throw new Error(`Vite preview exited early:\n${previewOutput}`);
     try {
       const response = await fetch(baseUrl);
       if (response.ok) return;
@@ -75,7 +75,8 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
   await page.route("**/api/**", async route => {
     const request = route.request();
     const url = new URL(request.url());
-    const { pathname } = url;
+    const pathname = url.pathname.replace(/^\/api\/u\/qa-user\//, "/api/");
+    if (pathname === "/api/auth/me") return json(route, { user: { id: "qa-user", email: "qa@example.com", isAdmin: false } });
     const method = request.method();
 
     if (pathname === "/api/codex/models") return json(route, { data: [] });
@@ -229,7 +230,7 @@ async function assertLiveHyperFramesPreview(browser) {
 async function assertAssetWorkshop(browser) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
   const errors = [];
-  page.on("request", request => { if (/\/api\/assets\/library\/[^/]+\/usage$/.test(request.url())) errors.push("Removed asset usage endpoint was requested"); });
+  page.on("request", request => { if (/\/api\/u\/qa-user\/assets\/library\/[^/]+\/usage$/.test(request.url())) errors.push("Removed asset usage endpoint was requested"); });
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
   await installApiMock(page);
@@ -250,7 +251,7 @@ async function assertAssetWorkshop(browser) {
   await bulkToolbar.getByLabel("批量移动到文件夹").selectOption("folder-brand");
   await page.screenshot({ path: "/tmp/yingya-ui-asset-bulk-select.png", fullPage: true });
   const moveRequests = [];
-  page.on("request", request => { if (/\/api\/assets\/library\/[^/]+$/.test(request.url()) && request.method() === "PATCH") moveRequests.push(request); });
+  page.on("request", request => { if (/\/api\/u\/qa-user\/assets\/library\/[^/]+$/.test(request.url()) && request.method() === "PATCH") moveRequests.push(request); });
   await bulkToolbar.getByRole("button", { name: "移动", exact: true }).click();
   await page.getByText("已将 2 项素材移动到“品牌素材”", { exact: true }).waitFor();
   await page.locator(".asset-card-item.batch-selected").first().waitFor({ state: "detached" });
@@ -261,7 +262,7 @@ async function assertAssetWorkshop(browser) {
   await page.getByPlaceholder("文件夹名称").fill("活动素材");
   await page.getByRole("button", { name: "创建", exact: true }).click();
   await page.getByRole("button", { name: /^活动素材/ }).waitFor();
-  const uploadRequest = page.waitForRequest(request => request.url().endsWith("/api/assets/library") && request.method() === "POST");
+  const uploadRequest = page.waitForRequest(request => request.url().endsWith("/assets/library") && request.method() === "POST");
   await page.locator('.asset-library-header input[type="file"]').setInputFiles({ name: "活动执行方案.pdf", mimeType: "application/pdf", buffer: Buffer.from("pdf-test") });
   await uploadRequest;
   await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).waitFor();
@@ -278,7 +279,7 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("button", { name: "生成图片" }).click();
   const prompt = page.getByPlaceholder("主体、场景、构图、光线和画幅要求");
   await prompt.fill("极简桌面上的透明智能设备，冷色轮廓光，16:9");
-  const requestPromise = page.waitForRequest(request => request.url().endsWith("/api/codex/threads/image-thread-1/images") && request.method() === "POST");
+  const requestPromise = page.waitForRequest(request => request.url().endsWith("/codex/threads/image-thread-1/images") && request.method() === "POST");
   await page.getByRole("button", { name: "生成图片" }).click();
   const payload = (await requestPromise).postDataJSON();
   if (payload.prompt !== "极简桌面上的透明智能设备，冷色轮廓光，16:9") throw new Error(`Unexpected image prompt: ${JSON.stringify(payload)}`);
@@ -468,7 +469,7 @@ async function assertDesktop(browser) {
   const finalReply = page.getByText("预览已完成，请选择下一步：", { exact: false });
   await finalReply.waitFor();
   await page.locator(".message--assistant ol > li").first().waitFor();
-  const planLink = page.locator(`.message--assistant a[href="/api/agent-projects/${record.id}/files/plans/production.md"]`);
+  const planLink = page.locator(`.message--assistant a[href="/api/u/qa-user/agent-projects/${record.id}/files/plans/production.md"]`);
   await planLink.getByText("查看制作方案", { exact: true }).waitFor();
   const activityTop = await page.locator(".activity-item").first().evaluate(element => element.getBoundingClientRect().top);
   const replyTop = await finalReply.evaluate(element => element.getBoundingClientRect().top);
@@ -574,7 +575,7 @@ async function assertCreateAndMobile(browser) {
   await voiceDialog.getByRole("button", { name: "关闭对话框" }).click();
   const prompt = page.getByPlaceholder("粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…");
   await prompt.fill("网站产品宣传片");
-  const createRequest = page.waitForRequest(request => request.url().endsWith("/api/agent-projects") && request.method() === "POST");
+  const createRequest = page.waitForRequest(request => request.url().endsWith("/agent-projects") && request.method() === "POST");
   const turnRequest = page.waitForRequest(request => request.url().endsWith("/turns") && request.method() === "POST");
   await page.getByRole("button", { name: "创建视频任务" }).click();
   await page.getByRole("heading", { name: "正在准备你的创作空间" }).waitFor();
@@ -628,7 +629,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.getByRole("button", { name: "任务中心" }).click();
   await page.locator(".task-row").getByText("修改待检查", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
-  const projectListUrl = `${baseUrl}/api/agent-projects`;
+  const projectListUrl = `${baseUrl}/api/u/qa-user/agent-projects`;
   await page.route(projectListUrl, route => json(route, [{ ...seed, workflowStatus: "completed", workflowLabel: "成片已完成", statusLabel: "成片已完成" }]));
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await page.locator(".task-center-trigger b").waitFor();
@@ -644,7 +645,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.reload();
   await composer.waitFor();
   if (await composer.inputValue() !== "这个项目独有的修改草稿") throw new Error("Project draft or direct project route was lost");
-  await page.evaluate(projectId => localStorage.setItem(`yingya-canvas-tab:${projectId}`, JSON.stringify({ version: 1, value: "storyboard" })), seed.id);
+  await page.evaluate(projectId => localStorage.setItem(`yingya-user:qa-user:yingya-canvas-tab:${projectId}`, JSON.stringify({ version: 1, value: "storyboard" })), seed.id);
   await page.reload();
   await page.locator('#canvas-tab-preview[aria-selected="true"]').waitFor();
   if (await page.getByRole("tab", { name: "分镜", exact: true }).count()) throw new Error("Removed storyboard tab should not reappear from saved state");
@@ -748,7 +749,7 @@ async function assertMotionFeedback(browser) {
   await page.getByText("已加入队列", { exact: true }).waitFor();
   await composer.fill("下一条草稿");
   if (await page.locator(".composer-feedback").innerText()) throw new Error("Previous submission status remained on the next draft");
-  await page.route("**/api/agent-projects/*/turns", route => json(route, { code: "unavailable", message: "测试发送失败" }, 503));
+  await page.route("**/api/u/qa-user/agent-projects/*/turns", route => json(route, { code: "unavailable", message: "测试发送失败" }, 503));
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await page.getByRole("button", { name: "重试发送消息" }).waitFor();
   if (await composer.inputValue() !== "下一条草稿") throw new Error("Failed submission lost the draft");
@@ -794,7 +795,7 @@ async function assertDesignRepairs(browser) {
   await page.goto(`${baseUrl}/#/projects/${seed.id}`);
   await page.locator(".video-stage video").waitFor();
   const link = page.getByRole("link", { name: "打开视频", exact: true });
-  if (await link.getAttribute("href") !== `/api/agent-projects/${seed.id}/files/renders/draft.mp4`) throw new Error("Historical file URL was not resolved through the project API");
+  if (await link.getAttribute("href") !== `/api/u/qa-user/agent-projects/${seed.id}/files/renders/draft.mp4`) throw new Error("Historical file URL was not resolved through the project API");
   if (await page.locator(".dirty-chip").count()) throw new Error("Draft review should not show an unscoped dirty warning");
   await page.getByRole("button", { name: "导出", exact: true }).click();
   await page.waitForFunction(() => document.activeElement?.classList.contains("export-destination"));
@@ -908,6 +909,6 @@ try {
   console.log("Screenshots: /tmp/yingya-ui-asset-bulk-select.png, /tmp/yingya-ui-asset-bulk-moved.png, /tmp/yingya-ui-asset-bulk-mobile.png, /tmp/yingya-ui-home-desktop.png, /tmp/yingya-ui-hyperframes-live.png, /tmp/yingya-ui-hyperframes-live-mobile.png, /tmp/yingya-ui-hyperframes-live-320.png, /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-creation-pending-mobile.png, /tmp/yingya-ui-mobile.png");
 } finally {
   await browser?.close();
-  preview.kill("SIGTERM");
-  if (preview.exitCode === null) await Promise.race([once(preview, "exit"), new Promise(resolve => setTimeout(resolve, 2_000))]);
+  preview?.kill("SIGTERM");
+  if (preview && preview.exitCode === null) await Promise.race([once(preview, "exit"), new Promise(resolve => setTimeout(resolve, 2_000))]);
 }

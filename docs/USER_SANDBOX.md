@@ -1,0 +1,62 @@
+# 用户沙箱与用量统计（内测版）
+
+## 试用
+
+打开映芽，输入邮箱进入工作台。首次自动创建账号。右上角显示当前邮箱，提供退出登录与用量统计。
+
+本版不验证邮箱归属，没有密码或验证码。知道邮箱的人可以进入同一账号，不能作为面向陌生用户的正式身份验证。项目与运行环境按账号隔离；这不能替代邮箱归属验证。
+
+在 `.env` 配置 `YINGYA_ADMIN_EMAILS=admin@yingya.local`，或用逗号分隔多个管理员邮箱。该账号的统计页有“所有用户”入口。管理员不会自动获得其他用户的项目访问权限。配置 HTTPS 部署时设置 `YINGYA_SECURE_COOKIES=true`。
+
+## 存储和会话
+
+- SQLite：`data/yingya.sqlite`，保存用户、哈希后的会话令牌、请求和用量账本。不会挂载给 Agent。
+- 用户内容：`data/users/<user-id>/projects`、`assets`、`voices`。
+- 用户运行状态：`data/users/<user-id>/runtime`，包含独立 Codex home、工具 home 和封面缓存。
+- Cookie：HttpOnly、SameSite=Strict，有效期 30 天；退出后服务端立即吊销。
+- 浏览器草稿按用户划分 localStorage 与 IndexedDB；其他标签页收到账号切换通知后重新加载。
+- 文件 URL 包含用户 ID，后端检查身份。不能通过复制其他账号的项目 ID、素材链接、事件流地址访问其内容。
+
+现有 `data/video-projects`、`data/assets` 和共享 Codex 历史保留原样，不自动分配给第一个登录的人。已有共享项目需要在确认归属邮箱后另行迁移。新统计不回填无法完整归属的旧数据。
+
+## 执行隔离
+
+本版使用 Linux Bubblewrap（`bwrap`），不要求 Docker 守护进程。宿主机需允许非特权用户命名空间，并已安装 Node.js、Codex、HyperFrames 和浏览器依赖。
+
+每个账号独立启动 Codex app-server。Agent 与渲染命令运行在私有文件系统、PID 和网络命名空间中：只挂载本用户的数据，可只读访问已安装的系统工具、项目依赖和浏览器。不会挂载整个仓库、其他用户目录、宿主 `.env` 或个人 Codex home。缺少隔离能力时运行环境启动失败，不降级为宿主直接执行。
+
+共享平台模型凭据由后端复制进独立 Codex home，用于平台统一承担模型调用；用户会话与用量仍分开。不要把此内测方案当作针对不可信本机系统用户的凭据托管服务。
+
+网络经过本用户专属 Unix socket 网关：普通出站只允许公共 HTTP/HTTPS，拒绝私网和宿主回环直连；语音和映芽内部请求由网关注入服务端用户身份。使用开发代理时，平台与内置 CDN 的可信域名保留域名路由，其他目的地固定到已校验的公网 IP。Chromium 也经过同一网关。代理环境只由宿主网关使用，不将宿主服务密钥传入 Agent 的环境变量。自定义后端端口需同步设置 `YINGYA_INTERNAL_API_BASE`。
+
+VoxCPM2 只应监听 `127.0.0.1:8791`。自定义音色在服务端加用户命名空间，列表、预览和合成均限制归属。参考音频副本保存在各自的 `voices` 目录。
+
+## 预览
+
+多用户工作台展示当前 composition 的实时预览，自动适配画布大小，并支持播放和暂停。独立窗口入口为只读预览，不启动可公开直连的 HyperFrames Studio 编辑器端口。
+
+预览 URL 带不可猜测的只读令牌，只能读取对应项目文件，30 分钟有效，工作台心跳续期。它与创建它的登录会话绑定，退出登录后失效。URL 属于访问凭据，不应分享。后端对 HTML 设置 CSP sandbox、禁止表单提交与 referrer，生成页面无法读取父页面、账号 Cookie 或工作台 API。普通下载与项目文件 API 仍检查登录和归属。
+
+## 用量口径
+
+- 请求次数：成功接收的创作/修改消息、素材工坊模型请求；创作队列使用已有请求 ID 去重。页面刷新、列表轮询不计入。
+- 执行轮次：实际启动的 Agent turn。自动标题、重试也记到发起用户；不是不可见的供应商内部 HTTP 调用次数。
+- Token：在 Codex 标准输出读取结构化事件时落 SQLite，不依赖浏览器连接或项目日志。
+- 同一 thread 的累计计数取增量，重复事件不重复相加。失败、中断仍保留已收到的用量。未收到用量显示为未知执行，而非零消耗。
+- 输入、输出、缓存输入、推理输出与总 token 分开显示；明细不重复加到供应商总数中。不是金额或账单估算。
+- 模型筛选作用于执行与 token；请求次数仍显示该日期范围全部模型的请求数。
+- 删除项目不删除用量。服务重启保留账号、会话与统计；未完成的执行标记为中断。
+
+## 开发检查
+
+```bash
+npm run backend:service:restart   # yingya-backend，8797
+npm run web:service:status        # yingya-frontend，8798
+cargo test --all-targets -- --test-threads=1
+npm run typecheck
+npm run test:web
+npm run web:build
+YINGYA_UI_QA_URL=http://127.0.0.1:8797 npm run test:ui
+```
+
+服务均通过命名 tmux 会话管理。浏览器检查可复用上述现有服务，不需要额外启动开发进程。

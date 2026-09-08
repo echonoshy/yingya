@@ -16,7 +16,7 @@ if [[ ! -f "${model_root}/config.json" ]]; then
   exit 1
 fi
 
-host="${VOXCPM2_HOST:-0.0.0.0}"
+host="${VOXCPM2_HOST:-127.0.0.1}"
 port="${VOXCPM2_PORT:-8791}"
 gpu="${VOXCPM2_GPU:-1}"
 gpu_memory_utilization="${VOXCPM2_GPU_MEMORY_UTILIZATION:-0.80}"

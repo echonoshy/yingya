@@ -18,22 +18,33 @@ npm run web:build
 npm run backend:service:start
 ```
 
-The server listens on `127.0.0.1:8797` by default and starts Codex app-server
-over local stdio with the isolated `.runtime/codex-home` credential.
+The server listens on `127.0.0.1:8797` by default and lazily starts a separate Codex app-server for each signed-in user.
+Each runtime uses its own Codex home and the platform model credential.
 
 ```bash
 curl http://127.0.0.1:8797/health
 
-curl -X POST http://127.0.0.1:8797/api/codex/threads
+curl -c /tmp/yingya-cookies http://127.0.0.1:8797/api/auth/login \
+  -H 'content-type: application/json' -d '{"email":"you@example.com"}'
 
-curl -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/turns \
+curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/codex/threads
+
+curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/turns \
   -H 'content-type: application/json' \
   -d '{"prompt":"Reply with YINGYA_OK only."}'
 ```
 
-Open `http://127.0.0.1:8797/` for the Yingya video Agent workspace. A new video
+Open `http://127.0.0.1:8797/` and sign in with an email to enter your Yingya workspace.
+This preview does not verify email ownership. Use it only with trusted testers.
+See [user sandboxes and usage](docs/USER_SANDBOX.md) for admin setup, isolation,
+usage accounting, and the handling of existing shared data.
+
+Authenticated users get their own projects, assets, voices, and Agent runtime.
+The default admin example in `.env.example` is `admin@yingya.local`.
+
+The Yingya video Agent workspace uses the following flow. A new video
 project creates an isolated HyperFrames workspace under
-`data/video-projects/<project-id>/`; its Codex thread is created lazily when the
+`data/users/<user-id>/projects/<project-id>/`; its Codex thread is created lazily when the
 first queued turn starts. The browser uses `/api/agent-projects`, loads recent
 events in pages, follows incremental updates over SSE, and renders artifacts
 from `.yingya/manifest.json`. Render jobs are persisted before execution in
@@ -79,14 +90,14 @@ accepts optional local reference images, listens for structured
 Upload a reference image first (maximum request size: 25 MiB):
 
 ```bash
-curl -X POST http://127.0.0.1:8797/api/assets/images \
+curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/assets/images \
   -F 'file=@reference.png;type=image/png'
 ```
 
 Then create a thread and request an image:
 
 ```bash
-curl -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/images \
+curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/codex/threads/THREAD_ID/images \
   -H 'content-type: application/json' \
   -d '{
     "prompt": "Create a cinematic 16:9 seedling image with no text.",
@@ -142,7 +153,7 @@ HEYGEN_API_KEY=your-key
 Search the catalog without exposing the credential to the browser:
 
 ```bash
-curl --get http://127.0.0.1:8797/api/heygen/audio \
+curl -b /tmp/yingya-cookies --get http://127.0.0.1:8797/api/heygen/audio \
   --data-urlencode 'query=warm restrained product background music' \
   --data-urlencode 'type=music' \
   --data-urlencode 'limit=8'
@@ -187,8 +198,9 @@ The pinned Chrome Headless Shell is stored under
 at startup and passes it to Codex app-server as `HYPERFRAMES_BROWSER_PATH`.
 Yingya reuses official HyperFrames Studio sessions by their canonical project
 directory, assigns available ports from `8600–8799`, and retires sessions after
-two hours without a workspace heartbeat. Studio remains a direct browser
-connection to `0.0.0.0`; it is not proxied through the Yingya API.
+two hours without a workspace heartbeat. In multi-user mode, live composition previews are served through a short-lived,
+read-only Yingya preview URL tied to the login session. No public Studio port is
+started. The standalone Studio editor is not exposed in this mode.
 
 Upgrades are explicit and update the pinned package versions and lockfile:
 
@@ -206,7 +218,7 @@ exposes an OpenAI-compatible Speech API. See
 [`deploy/voxcpm2/README.md`](deploy/voxcpm2/README.md) for lifecycle commands,
 request examples, voice cloning, and streaming output.
 
-The service listens on `0.0.0.0:8791` by default; local clients use
+The service listens on `127.0.0.1:8791` by default; local clients use
 `http://127.0.0.1:8791`. Install the project-local Codex integration with
 `npm run voxcpm2:skill:install`, then invoke `$voxcpm2-tts` from Codex.
 

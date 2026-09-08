@@ -17,8 +17,8 @@ export default defineConfig({
       usePolling: process.env.YINGYA_VITE_POLLING === "1",
     },
     proxy: {
-      "/api": "http://127.0.0.1:8797",
-      "/assets": "http://127.0.0.1:8797",
+      "/api": { target: "http://127.0.0.1:8797", changeOrigin: false },
+      "/assets": { target: "http://127.0.0.1:8797", changeOrigin: false },
     },
   },
 });

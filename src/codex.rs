@@ -62,8 +62,10 @@ pub enum CodexError {
     MissingGeneratedImage(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CodexConfig {
+    pub sandbox: Option<crate::sandbox::Sandbox>,
+    pub accounting: Option<(crate::accounts::Accounts, String)>,
     pub binary: PathBuf,
     pub home: PathBuf,
     pub workspace: PathBuf,
@@ -277,6 +279,27 @@ impl CodexClient {
             .ok_or(CodexError::MissingField("thread.id"))?
             .to_owned();
 
+        if let Some((accounts, user)) = &self.config.accounting {
+            let project = cwd
+                .file_name()
+                .and_then(|v| v.to_str())
+                .filter(|v| uuid::Uuid::parse_str(v).is_ok());
+            accounts
+                .thread(
+                    &thread_id,
+                    user,
+                    model,
+                    project,
+                    if !persist {
+                        "title"
+                    } else if project.is_some() {
+                        "agent"
+                    } else {
+                        "image"
+                    },
+                )
+                .map_err(CodexError::Rpc)?;
+        }
         Ok(ThreadStarted { thread_id })
     }
 
@@ -316,6 +339,14 @@ impl CodexClient {
         }
         if let Some(effort) = options.effort.filter(|value| *value != "auto") {
             params["effort"] = json!(effort);
+        }
+        if let Some((accounts, user)) = &self.config.accounting {
+            if !accounts.owns_thread(thread_id, user) {
+                return Err(CodexError::Rpc("会话不存在".into()));
+            }
+            accounts
+                .set_model(thread_id, options.model.unwrap_or(&self.config.model))
+                .map_err(CodexError::Rpc)?;
         }
         let result = self.request("turn/start", params).await?;
         let turn_id = result
@@ -578,7 +609,10 @@ fn spawn_app_server(
     pending: PendingRequests,
     events: broadcast::Sender<Value>,
 ) -> Result<(Child, ChildStdin), CodexError> {
-    let mut command = Command::new(&config.binary);
+    let mut command = config.sandbox.as_ref().map_or_else(
+        || Command::new(&config.binary),
+        |sandbox| sandbox.command(&config.binary),
+    );
     command
         .arg("app-server")
         .arg("-c")
@@ -594,14 +628,16 @@ fn spawn_app_server(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    if let Some(browser) = &config.hyperframes_browser {
+    if config.sandbox.is_none()
+        && let Some(browser) = &config.hyperframes_browser
+    {
         command.env("HYPERFRAMES_BROWSER_PATH", browser);
     }
     let mut child = command.spawn().map_err(CodexError::Spawn)?;
     let stdin = child.stdin.take().ok_or(CodexError::MissingStdin)?;
     let stdout = child.stdout.take().ok_or(CodexError::MissingStdout)?;
     let stderr = child.stderr.take();
-    spawn_stdout_reader(stdout, pending, events);
+    spawn_stdout_reader(stdout, pending, events, config.accounting.clone());
     if let Some(stderr) = stderr {
         spawn_stderr_reader(stderr);
     }
@@ -612,6 +648,7 @@ fn spawn_stdout_reader(
     stdout: tokio::process::ChildStdout,
     pending: PendingRequests,
     events: broadcast::Sender<Value>,
+    accounting: Option<(crate::accounts::Accounts, String)>,
 ) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
@@ -619,6 +656,11 @@ fn spawn_stdout_reader(
             match lines.next_line().await {
                 Ok(Some(line)) => match serde_json::from_str::<Value>(&line) {
                     Ok(message) => {
+                        if let Some((accounts, _)) = &accounting
+                            && let Err(error) = accounts.event(&message)
+                        {
+                            tracing::error!(%error, "usage persistence failed");
+                        }
                         if message.get("method").is_some() {
                             let _ = events.send(message);
                         } else if let Some(id) = message.get("id").and_then(Value::as_u64) {
@@ -682,6 +724,8 @@ mod tests {
     #[test]
     fn runtime_validation_rejects_missing_binary() {
         let config = CodexConfig {
+            sandbox: None,
+            accounting: None,
             binary: Path::new("/definitely/missing/codex").to_path_buf(),
             home: Path::new("/tmp").to_path_buf(),
             workspace: Path::new("/tmp").to_path_buf(),

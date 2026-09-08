@@ -1,8 +1,9 @@
+import { userStorageKey } from "../session";
 import { useCallback, useRef, useState, type SetStateAction } from "react";
 import { z } from "zod";
 
 export function readDraft<T>(key: string, schema: z.ZodType<T>, fallback: T): T {
-  try { const result = schema.safeParse(JSON.parse(localStorage.getItem(key) ?? "null")); return result.success ? result.data : fallback; }
+  try { const result = schema.safeParse(JSON.parse(localStorage.getItem(userStorageKey(key)) ?? "null")); return result.success ? result.data : fallback; }
   catch { return fallback; }
 }
 
@@ -17,7 +18,7 @@ export function useSavedState<T>(key: string, schema: z.ZodType<T>, fallback: T)
     const previous = latest.current.key === key ? latest.current.value : readDraft(key, schema, fallback);
     const next = typeof action === "function" ? (action as (value: T) => T)(previous) : action;
     latest.current = { key, value: next };
-    try { localStorage.setItem(key, JSON.stringify(next)); setSaved(true); }
+    try { localStorage.setItem(userStorageKey(key), JSON.stringify(next)); setSaved(true); }
     catch { setSaved(false); }
     setSnapshot(latest.current);
   }, [key, schema, fallback]);

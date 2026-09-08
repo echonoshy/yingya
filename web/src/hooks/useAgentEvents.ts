@@ -1,3 +1,4 @@
+import { scopedUrl } from "../session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { agentEventSchema } from "../schemas";
@@ -73,7 +74,7 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
         const cursor = await loadRecent();
         if (disposed) return;
         setConnectionState("connected");
-        source = new EventSource(`/api/agent-projects/${projectId}/events?after=${cursor}`);
+        source = new EventSource(scopedUrl(`/api/agent-projects/${projectId}/events?after=${cursor}`));
         source.onopen = () => {
           if (disconnectTimer) window.clearTimeout(disconnectTimer);
           setConnectionState("connected");

@@ -1,3 +1,4 @@
+mod accounts;
 mod agent_jobs;
 mod agent_projects;
 mod api;
@@ -7,6 +8,7 @@ mod feedback;
 mod heygen;
 mod model_settings;
 mod render_jobs;
+mod sandbox;
 mod studio_sessions;
 mod voices;
 

@@ -1,9 +1,14 @@
+import { scopedUrl } from "./session";
 /** Resolve only files inside the active project; never turn arbitrary disk paths into URLs. */
 export function projectFilePath(href: string, projectId: string): string | null {
   let path: string;
   try { path = decodeURIComponent(href); } catch { return null; }
   if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith('//')) return null;
   const apiPrefix = `/api/agent-projects/${projectId}/files/`;
+  const scopedPrefix = scopedUrl(apiPrefix);
+  if (path.startsWith(scopedPrefix)) path = apiPrefix + path.slice(scopedPrefix.length);
+  const newDiskMarker = `/projects/${projectId}/`;
+  if (path.startsWith("/") && path.includes(newDiskMarker)) path = apiPrefix + path.slice(path.indexOf(newDiskMarker) + newDiskMarker.length);
   const diskMarker = `/video-projects/${projectId}/`;
   if (path.startsWith(apiPrefix)) path = path.slice(apiPrefix.length);
   else if (path.startsWith('/') && path.includes(diskMarker)) path = path.slice(path.indexOf(diskMarker) + diskMarker.length);

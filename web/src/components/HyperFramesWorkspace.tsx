@@ -1,5 +1,5 @@
-import { ArrowClockwise, Check, CircleNotch, Code, DownloadSimple, FilmSlate, LinkBreak, Warning } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowClockwise, ArrowsOut, Pause, Play, Check, CircleNotch, Code, DownloadSimple, FilmSlate, LinkBreak, Warning } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { DraftVersion, ProjectDetail, RenderJob } from "../types";
 
@@ -34,6 +34,9 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
   const [shouldConnect, setShouldConnect] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const previewRef = useRef<HTMLIFrameElement>(null);
+  useEffect(() => { previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: playing && active }, "*"); }, [playing, active]);
 
   useEffect(() => {
     setSession(null);
@@ -88,15 +91,16 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
     <div className="live-preview-toolbar">
       <div><b>HyperFrames 实时画面</b><span className={`studio-connection studio-connection--${state}`}><i aria-hidden="true"/>{connectionLabel}</span></div>
       {session ? <div>
+        <button type="button" aria-label={playing ? "暂停实时画面" : "播放实时画面"} title={playing ? "暂停实时画面" : "播放实时画面"} onClick={() => setPlaying(value => !value)}>{playing ? <Pause/> : <Play/>}</button>
         <button type="button" aria-label="刷新实时画面" title="刷新实时画面" onClick={() => setReloadKey(value => value + 1)}><ArrowClockwise/></button>
-        <button type="button" onClick={() => window.open(session.previewUrl, "_blank", "noopener,noreferrer")}><Code/>编辑源画面</button>
+        <button type="button" onClick={() => window.open(session.previewUrl, "_blank", "noopener,noreferrer")}><ArrowsOut/>打开预览</button>
         <button type="button" aria-label="断开 Studio" title="断开 Studio" onClick={() => void disconnect()}><LinkBreak/></button>
       </div> : null}
     </div>
     {!available ? <div className="live-preview-state"><Code/><b>制作方案确认后开放</b><span>确认方案后，映芽会编排文字、图形与素材，在这里预览动画。</span></div>
       : state === "connecting" || state === "reconnecting" ? <div className="live-preview-state"><CircleNotch className="spin"/><b>{connectionLabel}</b><span>首次打开需要启动本地 HyperFrames 服务。</span></div>
       : error ? <div className="live-preview-state live-preview-state--error"><Warning/><b>实时画面暂不可用</b><span>{error}</span><button type="button" onClick={() => { setError(""); setState("reconnecting"); setShouldConnect(true); }}>重新连接</button></div>
-      : session ? <div className={`live-preview-frame ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}><iframe key={reloadKey} title="HyperFrames 实时画面" src={previewUrl} allow="autoplay; fullscreen"/></div>
+      : session ? <div className={`live-preview-frame ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}><iframe ref={previewRef} key={reloadKey} onLoad={() => previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: playing && active }, "*")} title="HyperFrames 实时画面" src={previewUrl} allow="autoplay; fullscreen"/></div>
       : <div className="live-preview-state"><LinkBreak/><b>Studio 已断开</b><span>重新连接后可以继续预览和编辑。</span><button type="button" onClick={() => { setState("reconnecting"); setShouldConnect(true); }}>重新连接</button></div>}
   </section>;
 }
@@ -162,7 +166,7 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
 }
 
 function withReloadKey(value: string, reloadKey: number) {
-  const url = new URL(normalizeLocalUrl(value));
+  const url = new URL(normalizeLocalUrl(value), window.location.href);
   url.searchParams.set("yingyaReload", String(reloadKey));
   return url.toString();
 }

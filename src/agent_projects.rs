@@ -380,7 +380,19 @@ impl AgentProjectStore {
 
     pub fn project_dir(&self, id: &str) -> Result<PathBuf, String> {
         Uuid::parse_str(id).map_err(|_| "invalid project id".to_owned())?;
-        Ok(self.root.join(id))
+        let directory = self.root.join(id);
+        reject_symlink_components(&directory)?;
+        for path in [
+            "project.json",
+            "messages.json",
+            "queue.json",
+            "events.jsonl",
+            ".yingya",
+            "assets",
+        ] {
+            reject_symlink_components(&directory.join(path))?;
+        }
+        Ok(directory)
     }
 
     async fn project_lock(&self, id: &str) -> Result<Arc<Mutex<()>>, String> {
@@ -1261,7 +1273,9 @@ impl AgentProjectStore {
         {
             return Err("invalid project path".to_owned());
         }
-        Ok(self.project_dir(project_id)?.join(path))
+        let resolved = self.project_dir(project_id)?.join(path);
+        reject_symlink_components(&resolved)?;
+        Ok(resolved)
     }
 }
 
@@ -1583,7 +1597,22 @@ where
     })
 }
 
+fn reject_symlink_components(path: &Path) -> Result<(), String> {
+    for ancestor in path.ancestors() {
+        match std::fs::symlink_metadata(ancestor) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err("project paths must not contain symbolic links".into());
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
+}
+
 async fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
+    reject_symlink_components(path)?;
     let bytes = fs::read(path).await.map_err(|error| error.to_string())?;
     serde_json::from_slice(&bytes).map_err(|error| error.to_string())
 }
@@ -1599,6 +1628,7 @@ async fn read_json_or_default<T: for<'de> Deserialize<'de> + Default>(
 }
 
 async fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(), String> {
+    reject_symlink_components(path)?;
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
     let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
     fs::write(&temporary, bytes)

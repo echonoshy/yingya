@@ -1,3 +1,4 @@
+import { scopedUrl, sessionHeaders } from "./session";
 import { feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
 import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
@@ -12,7 +13,7 @@ async function parseError(response: Response) {
 }
 
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, headers: init?.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...init?.headers } });
+  const response = await fetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new Error(await parseError(response));
   return schema.parse(await response.json());
 }
@@ -26,18 +27,18 @@ async function requestWithNetworkRetry<T>(path: string, schema: z.ZodType<T>, in
 }
 
 async function requestVoid(path: string, init?: RequestInit): Promise<void> {
-  const response = await fetch(path, { ...init, headers: init?.body instanceof FormData ? init.headers : { "Content-Type": "application/json", ...init?.headers } });
+  const response = await fetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new Error(await parseError(response));
 }
 
 async function requestText(path: string): Promise<string> {
-  const response = await fetch(path);
+  const response = await fetch(scopedUrl(path), { headers: sessionHeaders() });
   if (!response.ok) throw new Error((await response.text()) || response.statusText || "文件读取失败");
   return response.text();
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const response = await fetch(path, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  const response = await fetch(scopedUrl(path), { ...init, headers: { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new Error(await parseError(response));
   return response.blob();
 }
@@ -81,7 +82,7 @@ export const api = {
   markStudioDirty: (id: string) => requestVoid(`/api/agent-projects/${id}/studio/dirty`, { method: "POST", body: "{}" }),
   eventLog: (id: string, before?: number, limit = 500) => request(`/api/agent-projects/${id}/event-log?${new URLSearchParams({ ...(before ? { before: String(before) } : {}), limit: String(limit) })}`, eventPageSchema),
   readProjectFile: (id: string, path: string) => requestText(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),
-  fileUrl: (id: string, path: string) => `/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`,
+  fileUrl: (id: string, path: string) => scopedUrl(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),
   searchAudio: (query: string, type: "music" | "sound_effects") => request(`/api/heygen/audio?${new URLSearchParams({ query, type, limit: "20" })}`, z.object({ data: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), audioUrl: z.string(), duration: z.number(), type: z.string() })), hasMore: z.boolean().default(false) })),
   importAudio: (id: string, input: { id: string; query: string; type: string }) => request(`/api/agent-projects/${id}/heygen/audio`, mediaAssetSchema, { method: "POST", body: JSON.stringify(input) }),
   listVoices: () => request("/api/voices", voiceListSchema),
