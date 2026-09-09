@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Check, Copy, Pause, Play, Plus, X } from '@phosphor-icons/react';
-import { categories, examples, posterPath, videoPath, type Category, type VideoExample } from './examples';
+import { ArrowRight, ArrowUpRight, Check, Copy, Pause, Play, Plus, SpeakerHigh, X } from '@phosphor-icons/react';
+import { categories, examples, featuredIntro, featuredLeft, featuredRight, posterPath, videoPath, type Category, type VideoExample } from './examples';
 import { BrandLogo as Brand } from './BrandLogo';
 import './marketing.css';
 
@@ -39,21 +39,21 @@ function HeroReel({ onOpen, suspended }: { onOpen: (example: VideoExample) => vo
   }
   return <div className="marketing-reel">
     <div className="marketing-filmstrip">
-      <button className="marketing-side-film" onClick={() => onOpen(examples[1])} aria-label="播放动态文字示例">
-        <img src={posterPath('yingya-type')} alt="动态文字作品画面" /><span><Play weight="fill" /> 动态文字</span>
+      <button className="marketing-side-film" onClick={() => onOpen(featuredLeft)} aria-label="播放人物动效示例">
+        <img src={posterPath(featuredLeft.id)} alt="人物讲解搭配动态图文的高清示例画面" /><span><Play weight="fill" /> 人物动效</span>
       </button>
       <div className="marketing-main-film">
-        <video ref={videoRef} src={videoPath('yingya-brand')} poster={posterPath('yingya-brand')} muted loop playsInline preload="metadata" aria-label="映芽原创品牌动效演示，无音轨" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setFailed(true)} />
+        <video ref={videoRef} src={videoPath(featuredIntro.id)} poster={posterPath(featuredIntro.id)} muted loop playsInline preload="metadata" aria-label="映芽介绍短片，静音预览" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setFailed(true)} />
         <div className="marketing-film-controls">
-          <button onClick={togglePlayback} disabled={failed} aria-label={playing ? '暂停品牌演示' : '播放品牌演示'}>{playing ? <Pause weight="fill" /> : <Play weight="fill" />}<span>{failed ? '视频暂时无法播放' : playing ? '暂停演示' : '播放演示'}</span></button>
-          <button onClick={() => { allowPlay.current = false; videoRef.current?.pause(); onOpen(examples[4]); }} aria-label="打开品牌短片播放器"><ArrowUpRight /><span>查看短片</span></button>
+          <button onClick={togglePlayback} disabled={failed} aria-label={playing ? '暂停映芽介绍短片' : '播放映芽介绍短片'}>{playing ? <Pause weight="fill" /> : <Play weight="fill" />}<span>{failed ? '视频暂时无法播放' : playing ? '暂停演示' : '播放演示'}</span></button>
+          <button onClick={() => { allowPlay.current = false; videoRef.current?.pause(); onOpen(featuredIntro); }} aria-label="有声观看映芽介绍短片" title="有声观看 · 66 秒"><SpeakerHigh /><span>有声观看 · 66 秒</span></button>
         </div>
       </div>
-      <button className="marketing-side-film" onClick={() => onOpen(examples[0])} aria-label="播放产品演示示例">
-        <img src={posterPath('product-promo')} alt="产品演示作品画面" /><span><Play weight="fill" /> 产品演示</span>
+      <button className="marketing-side-film" onClick={() => onOpen(featuredRight)} aria-label="播放产品演示示例">
+        <img src={posterPath(featuredRight.id)} alt="产品演示作品画面" /><span><Play weight="fill" /> 产品演示</span>
       </button>
     </div>
-    <p className="marketing-reel-caption">品牌短片 · 动态排版与素材编排</p>
+    <p className="marketing-reel-caption">66 秒认识映芽 · 从一句想法到一支作品</p>
   </div>;
 }
 

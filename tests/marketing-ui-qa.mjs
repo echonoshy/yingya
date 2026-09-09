@@ -43,11 +43,47 @@ try {
   }
   await checkLogoPassage();
   await page.waitForFunction(() => document.querySelector('.marketing-main-film video').currentTime > 0.1);
-  await page.getByRole('button', { name: '暂停品牌演示', exact: true }).click();
+  await page.getByRole('button', { name: '暂停映芽介绍短片', exact: true }).click();
   assert.equal(await page.locator('.marketing-main-film video').evaluate(video => video.paused), true);
   const pausedAt = await page.locator('.marketing-main-film video').evaluate(video => video.currentTime);
-  await page.getByRole('button', { name: '播放品牌演示', exact: true }).click();
+  await page.getByRole('button', { name: '播放映芽介绍短片', exact: true }).click();
   await page.waitForFunction(at => document.querySelector('.marketing-main-film video').currentTime !== at, pausedAt);
+  const hero = page.locator('.marketing-main-film video');
+  const heroMedia = await hero.evaluate(video => ({ src: video.currentSrc, duration: video.duration, muted: video.muted }));
+  assert.match(heroMedia.src, /\/marketing\/video\/yingya-intro-v2\.mp4$/);
+  assert.ok(Math.abs(heroMedia.duration - 65.833) < .1, 'Homepage uses the complete second draft');
+  assert.equal(heroMedia.muted, true, 'Automatic preview is silent');
+  const watchIntro = page.getByRole('button', { name: '有声观看映芽介绍短片', exact: true });
+  await watchIntro.click();
+  await page.getByRole('heading', { name: '66 秒认识映芽', exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector('dialog video').currentTime > .1);
+  const introMedia = await page.locator('dialog video').evaluate(video => ({ src: video.currentSrc, muted: video.muted, volume: video.volume, error: video.error }));
+  assert.equal(introMedia.src, heroMedia.src);
+  assert.equal(introMedia.muted, false, 'User-initiated full playback includes narration');
+  assert.equal(introMedia.volume, 1);
+  assert.equal(introMedia.error, null);
+  assert.equal(await hero.evaluate(video => video.paused), true, 'Preview pauses while the full film is open');
+  await page.locator('dialog video').evaluate(video => { video.pause(); video.currentTime = 30; });
+  await page.waitForFunction(() => !document.querySelector('dialog video').seeking && Math.abs(document.querySelector('dialog video').currentTime - 30) < .1);
+  await page.keyboard.press('Escape');
+  assert.equal(await watchIntro.evaluate(el => el === document.activeElement), true);
+  await hero.evaluate(video => { video.currentTime = 5; });
+  await page.waitForFunction(() => !document.querySelector('.marketing-main-film video').seeking);
+  await page.screenshot({ path: '/tmp/yingya-home-intro-desktop.png' });
+  const featuredSources = new Set([heroMedia.src]);
+  for (const button of await page.locator('.marketing-side-film').all()) {
+    await button.click();
+    await page.waitForFunction(() => document.querySelector('dialog video').currentTime > .1);
+    const media = await page.locator('dialog video').evaluate(video => ({ src: video.currentSrc, width: video.videoWidth, height: video.videoHeight }));
+    featuredSources.add(media.src);
+    if (media.src.includes('kinetic-type-hd')) {
+      assert.equal(media.width, 1920, 'Featured example uses the original Full HD video');
+      assert.equal(media.height, 1080);
+      assert.equal(await button.locator('img').evaluate(img => img.naturalWidth), 1920, 'Cover is extracted at full resolution');
+    }
+    await page.keyboard.press('Escape');
+    assert.equal(await button.evaluate(el => el === document.activeElement), true);
+  }
   await page.getByRole('link', { name: '看看作品', exact: true }).click();
   await page.getByRole('button', { name: '知识动画', exact: true }).click();
   assert.equal(await page.locator('.marketing-example').count(), 1);
@@ -72,6 +108,7 @@ try {
     await button.click();
     await page.waitForFunction(() => document.querySelector('dialog video').readyState >= 2);
     assert.equal(await page.locator('dialog video').evaluate(video => video.error), null);
+    assert.equal(featuredSources.has(await page.locator('dialog video').evaluate(video => video.currentSrc)), false, 'Gallery never repeats a featured video');
     await page.keyboard.press('Escape');
   }
   await page.getByRole('button', { name: /1 说说你想做什么/ }).click();
@@ -87,10 +124,15 @@ try {
     await checkLogoPassage();
     const dimensions = await page.locator('.marketing-page').evaluate(el => ({ client: el.clientWidth, scroll: el.scrollWidth }));
     assert.ok(dimensions.scroll <= dimensions.client, `No horizontal overflow at ${width}px`);
-    await page.getByRole('button', { name: '播放：给品牌，一个记忆点', exact: true }).click();
+    await watchIntro.click();
+    await page.waitForFunction(() => document.querySelector('dialog video').readyState >= 2);
     const bounds = await page.getByRole('dialog').boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width, `Dialog fits ${width}px`);
     await page.keyboard.press('Escape');
+    if (width === 390) {
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      await page.screenshot({ path: '/tmp/yingya-home-intro-390.png' });
+    }
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(baseUrl);
@@ -110,7 +152,7 @@ try {
   await page.locator('#login-email').waitFor();
   assert.equal(await page.locator('#marketing-title').count(), 0, 'Legacy project links route to the workspace login');
   assert.deepEqual(errors, []);
-  console.log('Marketing QA passed: public entry, logo mouth continuity, media playback/pause/seek, all six videos, filters, copy, dialog focus/Escape, workflow, FAQ, 768/390/320px, reduced motion, login/home and legacy project routing.');
+  console.log('Marketing QA passed: public entry, complete draft-2 intro, silent preview and audible playback/seek, logo mouth continuity, all six gallery videos, filters, copy, dialog focus/Escape, workflow, FAQ, 768/390/320px, reduced motion, login/home and legacy project routing.');
   await context.close();
 } finally {
   await browser.close();

@@ -135,7 +135,6 @@
   .marketing-reel { margin-top: 32px; }
   .marketing-film-controls { padding: 8px; }
   .marketing-film-controls button { padding: 8px; min-height: 36px; font-size: var(--text-caption); }
-  .marketing-film-controls button:last-child span { display: none; }
   .marketing-section { padding: 60px 20px; }
   .marketing-section-heading h2, .marketing-workflow h2, .marketing-faq h2 { font-size: var(--text-title); letter-spacing: 0; }
   .marketing-section-heading p { max-width: 280px; }
