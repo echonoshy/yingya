@@ -39,8 +39,8 @@ function HeroReel({ onOpen, suspended }: { onOpen: (example: VideoExample) => vo
   }
   return <div className="marketing-reel">
     <div className="marketing-filmstrip">
-      <button className="marketing-side-film" onClick={() => onOpen(featuredLeft)} aria-label="播放人物动效示例">
-        <img src={posterPath(featuredLeft.id)} alt="人物讲解搭配动态图文的高清示例画面" /><span><Play weight="fill" /> 人物动效</span>
+      <button className="marketing-side-film marketing-contained-film" onClick={() => onOpen(featuredLeft)} aria-label="播放品牌动效示例">
+        <img src={posterPath(featuredLeft.id)} alt="绿色与米白配色的品牌动效示例画面" /><span><Play weight="fill" /> 品牌动效</span>
       </button>
       <div className="marketing-main-film">
         <video ref={videoRef} src={videoPath(featuredIntro.id)} poster={posterPath(featuredIntro.id)} muted loop playsInline preload="metadata" aria-label="映芽介绍短片，静音预览" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={() => setFailed(true)} />

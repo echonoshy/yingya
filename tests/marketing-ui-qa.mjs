@@ -50,8 +50,8 @@ try {
   await page.waitForFunction(at => document.querySelector('.marketing-main-film video').currentTime !== at, pausedAt);
   const hero = page.locator('.marketing-main-film video');
   const heroMedia = await hero.evaluate(video => ({ src: video.currentSrc, duration: video.duration, muted: video.muted }));
-  assert.match(heroMedia.src, /\/marketing\/video\/yingya-intro-v2\.mp4$/);
-  assert.ok(Math.abs(heroMedia.duration - 65.833) < .1, 'Homepage uses the complete second draft');
+  assert.match(heroMedia.src, /\/marketing\/video\/yingya-intro-v4\.mp4$/);
+  assert.ok(Math.abs(heroMedia.duration - 65.833) < .1, 'Homepage uses the complete fourth draft with Sichuan-style narration');
   assert.equal(heroMedia.muted, true, 'Automatic preview is silent');
   const watchIntro = page.getByRole('button', { name: '有声观看映芽介绍短片', exact: true });
   await watchIntro.click();
@@ -76,8 +76,9 @@ try {
     await page.waitForFunction(() => document.querySelector('dialog video').currentTime > .1);
     const media = await page.locator('dialog video').evaluate(video => ({ src: video.currentSrc, width: video.videoWidth, height: video.videoHeight }));
     featuredSources.add(media.src);
-    if (media.src.includes('kinetic-type-hd')) {
-      assert.equal(media.width, 1920, 'Featured example uses the original Full HD video');
+    if (await button.getAttribute('aria-label') === '播放品牌动效示例') {
+      assert.match(media.src, /\/marketing\/video\/warm-grain\.mp4$/);
+      assert.equal(media.width, 1920, 'Featured example uses the original brand motion video');
       assert.equal(media.height, 1080);
       assert.equal(await button.locator('img').evaluate(img => img.naturalWidth), 1920, 'Cover is extracted at full resolution');
     }
@@ -86,7 +87,7 @@ try {
   }
   await page.getByRole('link', { name: '看看作品', exact: true }).click();
   await page.getByRole('button', { name: '知识动画', exact: true }).click();
-  assert.equal(await page.locator('.marketing-example').count(), 1);
+  assert.equal(await page.locator('.marketing-example').count(), 2);
   assert.equal(await page.getByRole('button', { name: '知识动画', exact: true }).getAttribute('aria-pressed'), 'true');
   const example = page.getByRole('button', { name: '播放：把复杂知识，讲得简单', exact: true });
   await example.click();
@@ -152,7 +153,7 @@ try {
   await page.locator('#login-email').waitFor();
   assert.equal(await page.locator('#marketing-title').count(), 0, 'Legacy project links route to the workspace login');
   assert.deepEqual(errors, []);
-  console.log('Marketing QA passed: public entry, complete draft-2 intro, silent preview and audible playback/seek, logo mouth continuity, all six gallery videos, filters, copy, dialog focus/Escape, workflow, FAQ, 768/390/320px, reduced motion, login/home and legacy project routing.');
+  console.log('Marketing QA passed: public entry, complete draft-4 intro, silent preview and audible playback/seek, logo mouth continuity, all six gallery videos, filters, copy, dialog focus/Escape, workflow, FAQ, 768/390/320px, reduced motion, login/home and legacy project routing.');
   await context.close();
 } finally {
   await browser.close();
