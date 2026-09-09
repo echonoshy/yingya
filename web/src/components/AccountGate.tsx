@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight, ChartBar, CircleNotch, EnvelopeSimple, SignOut, UserCircle } from '@phosphor-icons/react';
 import { z } from 'zod';
 import { App } from '../App';
+import { UsageModelFilter } from './UsageModelFilter';
 import { sessionChanged, setCurrentUser } from '../session';
 const userSchema = z.object({ id:z.string(), email:z.string(), isAdmin:z.boolean() });
 type User = z.infer<typeof userSchema>;
@@ -32,7 +33,7 @@ export function AccountGate() {
    <header className="account-bar"><div className="account-identity"><UserCircle/><span title={user.email}>{user.email}</span><small>内测账号</small></div><nav aria-label="账号"><button onClick={()=>setScreen(screen==='work'?'usage':'work')}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button></nav></header>
    {error?<p className="account-error" role="alert">{error}</p>:null}
    <div hidden={screen!=='work'}><App/></div>
-   {screen==='usage'?<UsagePage user={user} onBack={()=>setScreen('work')}/>:null}
+   {screen==='usage'?<UsagePage onBack={()=>setScreen('work')}/>:null}
  </div>;
 }
 function LoginScreen({initialError,onLogin}:{initialError:string;onLogin:(user:User)=>void}) {
@@ -40,19 +41,26 @@ function LoginScreen({initialError,onLogin}:{initialError:string;onLogin:(user:U
  async function submit(event:FormEvent){event.preventDefault();if(busy)return;setBusy(true);setError('');try{const body=await call('/api/auth/login',{method:'POST',body:JSON.stringify({email})});onLogin(userSchema.parse(body.user));}catch(e){setError(e instanceof Error?e.message:'登录失败');}finally{setBusy(false);}}
  return <main className="login-screen"><a className="login-brand" href="/" aria-label="返回映芽首页"><img src="/brand/yingya-ghost.png" alt=""/><span>映芽</span></a><section className="login-content"><span className="login-eyebrow">你的创作，从这里继续</span><h1>进入你的<br/>视频工作台。</h1><p className="login-intro">用对话，把想法做成视频。<br/>项目、素材和创作记录，保存在你的账号空间。</p><form onSubmit={event=>void submit(event)}><label htmlFor="login-email">邮箱地址</label><div className="login-input"><EnvelopeSimple/><input id="login-email" type="email" autoComplete="email" inputMode="email" placeholder="you@example.com" value={email} onChange={event=>setEmail(event.target.value)} required maxLength={254} autoFocus/></div><button className="login-submit" disabled={busy}>{busy?<CircleNotch className="spin"/>:null}{busy?'正在进入…':'进入工作台'}{!busy?<ArrowRight/>:null}</button>{error?<p className="account-error" role="alert">{error}</p>:null}</form><aside className="login-notice"><b>内测版 · 邮箱直接登录</b><p>首次使用自动创建账号。目前不验证邮箱归属，知道该邮箱的人也可进入同一账号。仅用于可信内测。</p></aside></section><footer>映芽 · 对话式动画视频制作工作台</footer></main>;
 }
-function UsagePage({user,onBack}:{user:User;onBack:()=>void}) {
- const [admin,setAdmin]=useState(false),[since,setSince]=useState(''),[until,setUntil]=useState(''),[model,setModel]=useState(''),[data,setData]=useState<Usage|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0);
+function UsagePage({onBack}:{onBack:()=>void}) {
+ const [{since,until},setDateRange]=useState(()=>{
+   const today=new Date();
+   const previousMonthEnd=new Date(today.getFullYear(),today.getMonth(),0);
+   const start=new Date(today.getFullYear(),today.getMonth()-1,Math.min(today.getDate(),previousMonthEnd.getDate()));
+   const format=(date:Date)=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+   return {since:format(start),until:format(today)};
+ });
+ const [model,setModel]=useState(''),[data,setData]=useState<Usage|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[refresh,setRefresh]=useState(0);
  useEffect(()=>{let disposed=false;const controller=new AbortController();setLoading(true);setError('');
  const params=new URLSearchParams();if(since)params.set('since',String(new Date(`${since}T00:00:00`).getTime()/1000));if(until){const date=new Date(`${until}T00:00:00`);date.setDate(date.getDate()+1);params.set('until',String(date.getTime()/1000));}if(model)params.set('model',model);
- void call(`${admin?'/api/admin/usage':'/api/usage'}?${params}`,{signal:controller.signal}).then(value=>{if(!disposed)setData(usageSchema.parse(value));}).catch(e=>{if(!disposed)setError(e.message);}).finally(()=>{if(!disposed)setLoading(false);});return()=>{disposed=true;controller.abort();};},[admin,since,until,model,refresh]);
+ void call(`/api/usage?${params}`,{signal:controller.signal}).then(value=>{if(!disposed)setData(usageSchema.parse(value));}).catch(e=>{if(!disposed)setError(e.message);}).finally(()=>{if(!disposed)setLoading(false);});return()=>{disposed=true;controller.abort();};},[since,until,model,refresh]);
  const rows=data?.users??[], number=(n:number)=>n.toLocaleString('zh-CN');
  const sum=(key:'requests'|'executions'|'totalTokens'|'unknownExecutions')=>rows.reduce((n,row)=>n+row[key],0);
- return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><span>创作记录</span><h1>用量统计</h1><p>查看请求次数与模型实际返回的 token 用量。</p></div></div>
- <div className="usage-toolbar">{user.isAdmin?<div className="usage-tabs"><button aria-pressed={!admin} onClick={()=>setAdmin(false)}>我的用量</button><button aria-pressed={admin} onClick={()=>setAdmin(true)}>所有用户</button></div>:<b>我的用量</b>}<button className="usage-refresh" disabled={loading} onClick={()=>setRefresh(v=>v+1)}>{loading?'正在更新…':'刷新数据'}</button></div>
- <div className="usage-filters"><label>开始日期<input type="date" value={since} onChange={e=>setSince(e.target.value)}/></label><label>结束日期<input type="date" value={until} onChange={e=>setUntil(e.target.value)}/></label><label>模型<select value={model} onChange={e=>setModel(e.target.value)}><option value="">全部模型</option>{data?.models.map(value=><option key={value}>{value}</option>)}</select></label></div>
+ return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><span>创作记录</span><h1>用量统计</h1><p>查看当前账号的请求次数与模型实际返回的 token 用量。</p></div></div>
+ <div className="usage-toolbar"><b>我的用量</b><button className="usage-refresh" disabled={loading} onClick={()=>setRefresh(v=>v+1)}>{loading?'正在更新…':'刷新数据'}</button></div>
+ <div className="usage-filters"><label>开始日期<input type="date" value={since} onChange={e=>{const since=e.target.value;setDateRange(range=>({...range,since}));}}/></label><label>结束日期<input type="date" value={until} onChange={e=>{const until=e.target.value;setDateRange(range=>({...range,until}));}}/></label><UsageModelFilter models={data?.models ?? []} value={model} onChange={setModel}/></div>
  {error?<p className="account-error" role="alert">{error}</p>:null}
  <section className="usage-metrics" aria-label="用量汇总" aria-busy={loading}>{[['请求次数',sum('requests'),'次'],['Agent 执行',sum('executions'),'轮'],['总 token',sum('totalTokens'),'tokens']].map(([label,value,unit])=><div key={String(label)}><span>{label}</span><strong>{loading?'—':number(Number(value))}</strong><small>{unit}</small></div>)}</section>
- <div className="usage-table-wrap"><table><caption>{admin?'按用户汇总':'当前账号用量'}{model?' · 请求次数为全部模型合计':''}</caption><thead><tr>{['邮箱','请求','执行','输入 token','输出 token','缓存输入','推理输出','总 token'].map(label=><th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.userId}><th scope="row">{row.email}</th>{[row.requests,row.executions,row.inputTokens,row.outputTokens,row.cachedInputTokens,row.reasoningOutputTokens,row.totalTokens].map((value,i)=><td key={i}>{loading?'—':number(value)}</td>)}</tr>)}</tbody></table>{!loading&&!rows.length?<p className="usage-empty">这个时间范围内暂无用户记录。</p>:null}</div>
+ <div className="usage-table-wrap"><table><caption>当前账号用量{model?' · 请求次数为全部模型合计':''}</caption><thead><tr>{['邮箱','请求','执行','输入 token','输出 token','缓存输入','推理输出','总 token'].map(label=><th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.userId}><th scope="row">{row.email}</th>{[row.requests,row.executions,row.inputTokens,row.outputTokens,row.cachedInputTokens,row.reasoningOutputTokens,row.totalTokens].map((value,i)=><td key={i}>{loading?'—':number(value)}</td>)}</tr>)}</tbody></table>{!loading&&!rows.length?<p className="usage-empty">这个时间范围内暂无用量记录。</p>:null}</div>
  <div className="usage-notes"><p>一次创作或修改计为一次请求；自动标题和重试可能增加执行轮次。失败或中断仍保留已消耗的 token。</p><p>缓存输入、推理输出为明细项，不额外加到总 token。语音、音乐等服务的调用不折算成模型 token。</p>{sum('unknownExecutions')>0?<p>有 {sum('unknownExecutions')} 轮执行尚未收到用量，未按零消耗计算。</p>:null}<p>统计从本版本启用后开始记录，原共享项目未自动分配或计入。</p></div>
  </main>;
 }

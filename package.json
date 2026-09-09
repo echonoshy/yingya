@@ -38,7 +38,7 @@
     "backend:service:stop": "bash scripts/dev-service.sh backend stop",
     "backend:service:restart": "bash scripts/dev-service.sh backend restart",
     "backend:service:status": "bash scripts/dev-service.sh backend status",
-    "test:services": "node --test tests/dev-service.test.mjs"
+    "test:services": "node --test tests/dev-service.test.mjs tests/sandbox-stdio.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-sc": "^5.3.0",

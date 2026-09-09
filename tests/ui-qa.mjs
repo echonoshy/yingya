@@ -270,7 +270,13 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
   if (await page.getByRole("heading", { name: "使用位置", exact: true }).count() || await page.getByLabel("选择项目", { exact: true }).count()) throw new Error("Removed asset usage controls reappeared");
   const folderSelect = page.locator('select[aria-label="素材文件夹"]');
+  const clearFolder = page.waitForResponse(response => response.url().includes('/assets/library/') && response.request().method() === 'PATCH');
   await folderSelect.selectOption("");
+  await clearFolder;
+  // Moving out of the current folder removes the selected item and its inspector.
+  await folderSelect.waitFor({ state: 'detached' });
+  await page.getByRole("button", { name: /全部素材/ }).click();
+  await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
   await folderSelect.selectOption({ label: "活动素材" });
   await page.getByRole("button", { name: /全部素材/ }).click();
   await page.getByRole("button", { name: "AI 生成", exact: true }).click();
@@ -373,7 +379,7 @@ async function assertWorkflowRecovery(browser) {
   await installApiMock(page, failed);
   await page.goto(workspaceUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
-  await page.getByText("制作流程已安全暂停").waitFor();
+  await page.getByText("制作需要恢复").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
   await page.getByRole("button", { name: /重新生成制作方案/ }).click();
   const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
@@ -393,7 +399,7 @@ async function assertIncompleteWorkflowRecovery(browser) {
   const recovery = page.getByRole("status");
   await recovery.getByText("检查已通过，草稿待封存", { exact: true }).waitFor();
   await recovery.getByText("只补齐缺失的版本与审核登记", { exact: false }).waitFor();
-  if (await page.getByText("制作流程已安全暂停", { exact: true }).count()) throw new Error("Recoverable incomplete work should not be presented as a failed workflow");
+  if (await page.getByText("制作需要恢复", { exact: true }).count()) throw new Error("Recoverable incomplete work should not be presented as a failed workflow");
   await page.screenshot({ path: "/tmp/yingya-ui-incomplete.png", fullPage: true });
   await recovery.getByRole("button", { name: "检查并恢复项目流程" }).click();
   if (await page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
@@ -888,10 +894,117 @@ async function assertSelectionMotion(browser) {
   console.log("Selection motion QA passed: interrupted motion, responsive alignment, live reduced-motion switch, modal focus and mobile tabs");
 }
 
+async function assertLostExecutionState(browser) {
+  for (const width of [1280, 390, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    const seed = { ...structuredClone(detail), status: "failed", statusLabel: "执行连接中断，队列已暂停；请检查已有成果后继续", activeTurnId: null, queueDepth: 0, queuePaused: true, queue: [], manifest: { ...structuredClone(manifest), phase: "production", dirty: true, checkpoint: null } };
+    await installApiMock(page, seed);
+    await page.route("**/event-log*", route => json(route, {items: [{seq: 1, projectId: seed.id, turnId: "lost-turn", method: "item/started", payload: {params: {item: {id: "lost-cmd", type: "commandExecution", command: "base64 -w0 assets/audio/scene-1.wav"}}}, createdAt: now + 20}], latestSeq: 1, hasMore: false, nextBefore: null}));
+    await page.goto(`${workspaceUrl}#/projects/${seed.id}`);
+    await page.getByText("制作需要恢复", {exact: true}).waitFor();
+    const recover = page.getByRole("button", {name: "检查并恢复项目流程", exact: true});
+    await recover.focus();
+    await page.keyboard.press("Enter");
+    const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+    if (await composer.inputValue() !== "检查并恢复项目流程") throw new Error("Recovery did not populate composer");
+    if (await page.locator(".activity-item--running").count()) throw new Error("Orphaned command is still spinning");
+    if (await page.getByText("制作流程已安全暂停", {exact: true}).count()) throw new Error("Unverified stop claim is visible");
+    if (!await page.locator(".activity-item--interrupted").count()) throw new Error("Missing interrupted command status");
+    if (errors.length) throw new Error(errors.join("\n"));
+    await page.screenshot({ path: `/tmp/yingya-recovered-state-${width}.png` });
+    await page.close();
+  }
+  console.log("Lost execution QA passed: no stale spinner, honest recovery state, keyboard-accessible recovery at 1280/390/320px");
+}
+
+async function assertCompactWorkspaceAndQueue(browser) {
+  for (const width of [1259, 390, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: width === 1259 ? 1180 : 844 } });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const seed = { ...structuredClone(detail), status: 'running', statusLabel: '正在制作', activeTurnId: 'turn-active', queuePaused: false, queueDepth: 0, queue: [] };
+    seed.messages[0].text = '继续调整标题和画面节奏，保留已确认的旁白与素材。'.repeat(5);
+    await installApiMock(page, seed);
+    let current = structuredClone(seed), sends = 0, promotions = 0, failPromotion = true;
+    await page.route('**/api/**', async route => {
+      const path = new URL(route.request().url()).pathname.replace(/^\/api\/u\/qa-user\//, '/api/');
+      if (path === `/api/agent-projects/${seed.id}` && route.request().method() === 'GET') return json(route, current);
+      if (path === `/api/agent-projects/${seed.id}/turns`) {
+        const input = route.request().postDataJSON();
+        if (input.interrupt !== false) throw new Error('New messages must queue by default');
+        sends++;
+        const turn = { id: 'queued-new', text: input.text, attachments: input.attachments, context: input.context, model: input.model, reasoningEffort: input.reasoningEffort, createdAt: now + 10 };
+        current.queue.push(turn); current.queueDepth = current.queue.length;
+        current.messages.push({ id: 'message-queued', turnId: turn.id, role: 'user', text: turn.text, attachments: input.attachments, context: input.context, status: 'queued', createdAt: now + 10 });
+        return json(route, { turnId: turn.id, status: 'queued', queueDepth: current.queueDepth });
+      }
+      if (path === `/api/agent-projects/${seed.id}/queue/queued-new/execute`) {
+        promotions++;
+        if (failPromotion) { failPromotion = false; return json(route, { message: '测试切换失败，请重试' }, 409); }
+        current.queue = []; current.queueDepth = 0; current.activeTurnId = 'queued-new';
+        current.messages.find(message => message.turnId === 'queued-new').status = 'running';
+        return route.fulfill({ status: 202, body: '' });
+      }
+      return route.fallback();
+    });
+    await page.goto(workspaceUrl);
+    await page.locator('.account-bar').waitFor({ state: 'visible' });
+    await page.locator('.home-project-open').first().click();
+    const composer = page.getByRole('textbox', { name: '修改描述', exact: true });
+    await composer.waitFor();
+    if (await page.locator('.account-bar').isVisible()) throw new Error('Workspace account navigation remains');
+    if (await page.getByRole('combobox', { name: '发送方式' }).count()) throw new Error('Old send mode remains');
+    if (width === 1259) {
+      const separator = page.getByRole('separator', { name: '调整创作对话宽度' });
+      const box = await separator.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + 100);
+      await page.mouse.down(); await page.mouse.move(760, box.y + 100); await page.mouse.up();
+      await separator.focus(); await page.keyboard.press('ArrowRight');
+      if (Number(await separator.getAttribute('aria-valuenow')) !== 768) throw new Error('Expanded resize range failed');
+      if (await composer.evaluate(el => getComputedStyle(el).fontSize) !== '13px') throw new Error('Composer typography is not compact');
+      if (await page.locator('.message--user').first().evaluate(el => getComputedStyle(el).fontSize) !== '13px') throw new Error('Message typography is not compact');
+      if (await page.locator('.composer .model-trigger').evaluate(el => getComputedStyle(el).fontSize) !== '12px') throw new Error('Model typography is not compact');
+      await page.getByRole('tab', { name: /^产物/ }).click();
+      if (await page.getByRole('textbox', { name: '搜索产物名称或路径' }).evaluate(el => getComputedStyle(el).fontSize) !== '13px') throw new Error('Search typography is not compact');
+    }
+    if (width === 320) await page.emulateMedia({ reducedMotion: 'reduce' });
+    await composer.fill('让开场标题更清楚，其他内容保持不变');
+    await page.keyboard.press('Enter');
+    await page.locator('.queue-card .queue-execute').waitFor();
+    if (await composer.inputValue()) throw new Error('Submitted draft was not cleared');
+    if (sends !== 1 || !await page.locator('.queue-card').getByText('排队中', { exact: true }).isVisible()) throw new Error('Missing queued state');
+    const geometry = await page.locator('.composer').evaluate(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, bottom: r.bottom, width: innerWidth, height: innerHeight }; });
+    if (geometry.left < 0 || geometry.right > geometry.width || geometry.bottom > geometry.height) throw new Error(`Composer clipped: ${JSON.stringify(geometry)}`);
+    await page.screenshot({ path: `/tmp/yingya-compact-workspace-${width}.png` });
+    await page.locator('.queue-execute').click();
+    await page.getByRole('alert').filter({ hasText: '测试切换失败，请重试' }).waitFor();
+    if (!await page.locator('.queue-execute').isVisible()) throw new Error('Failed promotion lost the queued message');
+    await page.locator('.queue-execute').click();
+    await page.locator('.queue-card').waitFor({ state: 'detached' });
+    if (sends !== 1 || promotions !== 2 || current.messages.filter(m => m.turnId === 'queued-new').length !== 1) throw new Error('Promotion duplicated the message');
+    if (width === 1259) {
+      await page.reload(); await composer.waitFor();
+      if (Number(await page.getByRole('separator', { name: '调整创作对话宽度' }).getAttribute('aria-valuenow')) !== 768) throw new Error('Panel width not saved');
+      await page.setViewportSize({ width: 1050, height: 900 });
+      await page.waitForFunction(() => Number(document.querySelector('.workspace-splitter--thread')?.getAttribute('aria-valuenow')) <= 650);
+    }
+    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Workspace horizontal overflow');
+    await page.getByRole('button', { name: '所有项目', exact: true }).click();
+    await page.locator('.account-bar').waitFor({ state: 'visible' });
+    if (errors.length) throw new Error(errors.join('\n'));
+    await page.close();
+  }
+  console.log('Compact workspace QA passed: queued submission, promotion retry without duplicates, full-height workspace, resize persistence, compact typography, 390px/320px and reduced motion');
+}
+
 let browser;
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
+  await assertCompactWorkspaceAndQueue(browser);
+  await assertLostExecutionState(browser);
   await assertSelectionMotion(browser);
   await assertDesignRepairs(browser);
   await assertMotionFeedback(browser);

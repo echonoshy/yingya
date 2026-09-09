@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
@@ -20,7 +20,11 @@ use tokio::{
 };
 use tracing::{debug, error, warn};
 
+#[cfg(not(test))]
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+const STATUS_PROBE_INTERVAL: Duration = REQUEST_TIMEOUT;
 
 type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
@@ -143,6 +147,7 @@ pub struct CodexClient {
     pending: PendingRequests,
     events: broadcast::Sender<Value>,
     next_id: AtomicU64,
+    generation: AtomicU64,
     _child: Mutex<Child>,
 }
 
@@ -159,6 +164,7 @@ impl CodexClient {
             pending,
             events,
             next_id: AtomicU64::new(1),
+            generation: AtomicU64::new(0),
             _child: Mutex::new(child),
         });
 
@@ -171,11 +177,16 @@ impl CodexClient {
         &self.config.model
     }
 
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::Acquire)
+    }
+
     pub async fn restart(&self) -> Result<(), CodexError> {
+        self.generation.fetch_add(1, Ordering::AcqRel);
         self.pending.lock().await.clear();
         {
             let mut current = self._child.lock().await;
-            let _ = current.kill().await;
+            current.kill().await?;
         }
         let (child, stdin) =
             spawn_app_server(&self.config, Arc::clone(&self.pending), self.events.clone())?;
@@ -310,6 +321,12 @@ impl CodexClient {
         reference_images: &[PathBuf],
         options: TurnOptions<'_>,
     ) -> Result<TurnCompleted, CodexError> {
+        if options
+            .cancellation
+            .is_some_and(TurnCancellation::is_cancelled)
+        {
+            return Err(CodexError::TurnInterrupted(thread_id.to_owned()));
+        }
         let mut events = self.events.subscribe();
         let mut input = Vec::with_capacity(reference_images.len() + 2);
         if options.use_imagegen {
@@ -348,7 +365,25 @@ impl CodexClient {
                 .set_model(thread_id, options.model.unwrap_or(&self.config.model))
                 .map_err(CodexError::Rpc)?;
         }
-        let result = self.request("turn/start", params).await?;
+        let submitted_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let mut recovered = VecDeque::new();
+        let result = match self.request("turn/start", params).await {
+            Ok(result) => result,
+            Err(error @ CodexError::RequestTimeout(_)) => {
+                // A missing acknowledgement does not mean the request was rejected.
+                // Read back this submission; never retry turn/start blindly.
+                let snapshot = self.read_thread(thread_id).await?;
+                let Some(turn) = submitted_turn(&snapshot, submitted_at, prompt) else {
+                    return Err(error);
+                };
+                recovered = snapshot_events(thread_id, turn);
+                json!({"turn": turn})
+            }
+            Err(error) => return Err(error),
+        };
         let turn_id = result
             .pointer("/turn/id")
             .and_then(Value::as_str)
@@ -361,9 +396,13 @@ impl CodexClient {
             let mut interrupt_sent = false;
             let mut inactivity_deadline = Instant::now() + self.config.turn_timeout;
             let mut interrupt_deadline = None;
+            let mut probe_deadline = Instant::now() + STATUS_PROBE_INTERVAL;
 
             loop {
                 let receive_event = async {
+                    if let Some(event) = recovered.pop_front() {
+                        return Some(Ok(event));
+                    }
                     if !interrupt_sent {
                         if let Some(cancellation) = options.cancellation {
                             tokio::select! {
@@ -382,10 +421,28 @@ impl CodexClient {
                     .map_or(inactivity_deadline, |deadline: Instant| {
                         deadline.min(inactivity_deadline)
                     });
-                let remaining = deadline.saturating_duration_since(Instant::now());
+                let remaining = deadline
+                    .min(probe_deadline)
+                    .saturating_duration_since(Instant::now());
                 let event_result = match timeout(remaining, receive_event).await {
                     Ok(result) => result,
                     Err(_) => {
+                        if probe_deadline < deadline {
+                            let snapshot = self.read_thread(thread_id).await?;
+                            if let Some(turn) = snapshot
+                                .pointer("/thread/turns")
+                                .and_then(Value::as_array)
+                                .and_then(|turns| turns.iter().find(|turn| turn["id"] == turn_id))
+                                && matches!(
+                                    turn["status"].as_str(),
+                                    Some("completed" | "failed" | "interrupted")
+                                )
+                            {
+                                recovered = snapshot_events(thread_id, turn);
+                            }
+                            probe_deadline = Instant::now() + STATUS_PROBE_INTERVAL;
+                            continue;
+                        }
                         if interrupt_deadline.is_some_and(|deadline| deadline <= Instant::now()) {
                             return Err(CodexError::InterruptTimeout(turn_id.clone()));
                         }
@@ -444,6 +501,7 @@ impl CodexClient {
                 // Only activity from this turn renews the deadline. Events from
                 // concurrent turns must not keep an otherwise stalled turn alive.
                 inactivity_deadline = Instant::now() + self.config.turn_timeout;
+                probe_deadline = Instant::now() + STATUS_PROBE_INTERVAL;
 
                 if let Some(sender) = &options.event_tx {
                     let _ = sender.send(event.clone());
@@ -533,6 +591,14 @@ impl CodexClient {
         wait_for_turn.await
     }
 
+    async fn read_thread(&self, thread_id: &str) -> Result<Value, CodexError> {
+        self.request(
+            "thread/read",
+            json!({"threadId": thread_id, "includeTurns": true}),
+        )
+        .await
+    }
+
     async fn request(&self, method: &str, params: Value) -> Result<Value, CodexError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
@@ -590,6 +656,69 @@ impl CodexClient {
         stdin.flush().await?;
         debug!(method = ?message.get("method"), "sent Codex app-server message");
         Ok(())
+    }
+}
+
+// Match both the submission time and text so an older successful turn cannot
+// accidentally be used as the acknowledgement of a different request.
+fn submitted_turn<'a>(snapshot: &'a Value, submitted_at: u64, prompt: &str) -> Option<&'a Value> {
+    snapshot
+        .pointer("/thread/turns")?
+        .as_array()?
+        .iter()
+        .rev()
+        .find(|turn| {
+            turn["startedAt"]
+                .as_u64()
+                .is_some_and(|time| time >= submitted_at)
+                && turn["items"].as_array().is_some_and(|items| {
+                    items.iter().any(|item| {
+                        item["type"] == "userMessage"
+                            && item["content"].as_array().is_some_and(|content| {
+                                content
+                                    .iter()
+                                    .any(|part| part["type"] == "text" && part["text"] == prompt)
+                            })
+                    })
+                })
+        })
+}
+
+fn snapshot_events(thread_id: &str, turn: &Value) -> VecDeque<Value> {
+    let mut events = VecDeque::new();
+    events.push_back(json!({"method":"turn/started", "params":{"threadId":thread_id,"turn":turn}}));
+    if let Some(items) = turn["items"].as_array() {
+        for item in items {
+            let method = if item["status"] == "inProgress" {
+                "item/started"
+            } else {
+                "item/completed"
+            };
+            events.push_back(json!({"method":method,"params":{"threadId":thread_id,"turnId":turn["id"],"item":item}}));
+        }
+    }
+    if matches!(
+        turn["status"].as_str(),
+        Some("completed" | "failed" | "interrupted")
+    ) {
+        events.push_back(
+            json!({"method":"turn/completed","params":{"threadId":thread_id,"turn":turn}}),
+        );
+    }
+    events
+}
+
+impl CodexError {
+    pub fn execution_uncertain(&self) -> bool {
+        matches!(
+            self,
+            Self::RequestTimeout(_)
+                | Self::RequestCancelled(_)
+                | Self::Io(_)
+                | Self::EventStreamClosed
+                | Self::InterruptTimeout(_)
+                | Self::TurnTimeout(_)
+        )
     }
 }
 
@@ -708,6 +837,96 @@ fn turn_user_input(prompt: &str, images: &[PathBuf]) -> Vec<Value> {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn recovery_matches_only_the_current_submission() {
+        let snapshot = json!({"thread":{"turns":[{"id":"old","startedAt":100,"items":[
+            {"type":"userMessage","content":[{"type":"text","text":"make video"}]}]}]}});
+        assert!(submitted_turn(&snapshot, 101, "make video").is_none());
+        assert!(submitted_turn(&snapshot, 100, "different request").is_none());
+        assert_eq!(
+            submitted_turn(&snapshot, 100, "make video").unwrap()["id"],
+            "old"
+        );
+    }
+
+    #[tokio::test]
+    async fn recovers_missing_receipt_and_completion_without_resubmitting() {
+        use std::os::unix::fs::PermissionsExt;
+        for acknowledge in [false, true] {
+            let root = std::env::temp_dir()
+                .join(format!("yingya-codex-recovery-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("auth.json"), "{}").unwrap();
+            let script = root.join("mock.py");
+            std::fs::write(
+                &script,
+                format!(
+                    r#"#!/usr/bin/python3
+import json,sys,time,pathlib
+turn=None
+for line in sys.stdin:
+ r=json.loads(line); method=r.get('method'); result={{}}
+ if method=='initialized':continue
+ if method=='turn/start':
+  pathlib.Path('starts').open('a').write('start\n')
+  turn={{'id':'actual-turn','status':'completed','startedAt':int(time.time()),'items':[
+   {{'id':'input','type':'userMessage','content':[{{'type':'text','text':'make video'}}]}},
+   {{'id':'reply','type':'agentMessage','text':'draft ready'}}]}}
+  if not {acknowledge}:continue
+  result={{'turn':{{'id':'actual-turn','status':'inProgress'}}}}
+ elif method=='thread/read':result={{'thread':{{'turns':[turn]}}}}
+ print(json.dumps({{'id':r['id'],'result':result}}),flush=True)
+"#,
+                    acknowledge = if acknowledge { "True" } else { "False" }
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let config = CodexConfig {
+                sandbox: None,
+                accounting: None,
+                binary: script,
+                home: root.clone(),
+                workspace: root.clone(),
+                model: "test".into(),
+                network_access: false,
+                hyperframes_browser: None,
+                video_agent_skill: None,
+                turn_timeout: Duration::from_secs(10),
+            };
+            let client = CodexClient::spawn(config).await.unwrap();
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let result = client
+                .run_turn(
+                    "thread",
+                    "make video",
+                    &[],
+                    TurnOptions {
+                        event_tx: Some(tx),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.turn_id, "actual-turn");
+            assert_eq!(result.text, "draft ready");
+            assert_eq!(
+                std::fs::read_to_string(root.join("starts"))
+                    .unwrap()
+                    .lines()
+                    .count(),
+                1
+            );
+            let mut completed = false;
+            while let Ok(event) = rx.try_recv() {
+                completed |= event["method"] == "turn/completed";
+            }
+            assert!(completed);
+            client._child.lock().await.kill().await.unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
 
     #[test]
     fn feedback_screenshots_are_visual_inputs_not_only_prompt_paths() {

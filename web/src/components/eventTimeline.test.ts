@@ -43,3 +43,23 @@ describe("buildTimeline", () => {
     });
   });
 });
+
+
+describe("lost execution connection", () => {
+  const started = event(1, "item/started", { params: { item: { id: "cmd", type: "commandExecution", command: "base64 audio.wav" } } });
+  it("settles an orphaned command when the project has failed without a final event", () => {
+    expect(buildTimeline([started], new Set(), { status: "failed", activeTurnId: undefined })[0]).toMatchObject({status: "interrupted"});
+  });
+  it("keeps the current running command active", () => {
+    expect(buildTimeline([started], new Set(), {status: "running", activeTurnId: "request-id"})[0].status).toBe("running");
+  });
+  it("does not revive old commands when a later run starts", () => {
+    const ended = event(2, "project/executionEnded", {params: {status: "interrupted"}});
+    expect(buildTimeline([started, ended], new Set(), {status: "running", activeTurnId: "next-request"})[0].status).toBe("interrupted");
+  });
+  it("clears a stale automatic-retry indicator after completion", () => {
+    const retry = event(2, "error", {params: {willRetry: true}});
+    const done = event(3, "turn/completed", {params: {turn: {status: "completed"}}});
+    expect(buildTimeline([retry, done], new Set())[0].status).toBe("completed");
+  });
+});

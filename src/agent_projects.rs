@@ -794,6 +794,27 @@ impl AgentProjectStore {
         Ok(next)
     }
 
+    pub async fn prioritize_queued(&self, project_id: &str, turn_id: &str) -> Result<bool, String> {
+        let lock = self.project_lock(project_id).await?;
+        let _guard = lock.lock().await;
+        let directory = self.project_dir(project_id)?;
+        let queue_path = directory.join("queue.json");
+        let mut queue: Vec<QueuedTurn> = read_json_or_default(&queue_path).await?;
+        let Some(index) = queue.iter().position(|turn| turn.id == turn_id) else {
+            return Ok(false);
+        };
+        let turn = queue.remove(index);
+        queue.insert(0, turn);
+        let project_path = directory.join("project.json");
+        let mut project: AgentProjectRecord = read_json(&project_path).await?;
+        project.queue_paused = false;
+        project.queue_depth = queue.len();
+        project.updated_at = now_millis();
+        write_json(&queue_path, &queue).await?;
+        write_json(&project_path, &project).await?;
+        Ok(true)
+    }
+
     pub async fn remove_queued(&self, project_id: &str, turn_id: &str) -> Result<(), String> {
         let lock = self.project_lock(project_id).await?;
         let _guard = lock.lock().await;
@@ -801,6 +822,9 @@ impl AgentProjectStore {
         let path = directory.join("queue.json");
         let message_path = directory.join("messages.json");
         let mut queue: Vec<QueuedTurn> = read_json_or_default(&path).await?;
+        if !queue.iter().any(|turn| turn.id == turn_id) {
+            return Ok(());
+        }
         queue.retain(|turn| turn.id != turn_id);
         let mut messages: Vec<AgentMessage> = read_json_or_default(&message_path).await?;
         if let Some(message) = messages
@@ -2032,6 +2056,90 @@ mod tests {
         fs::remove_dir_all(root)
             .await
             .expect("clean paused queue store");
+    }
+
+    #[tokio::test]
+    async fn prioritize_preserves_message_identity_payload_and_remaining_order() {
+        let root = std::env::temp_dir().join(format!("yingya-priority-test-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let project = store.create(&request()).await.unwrap();
+        let active = store
+            .submit_turn(&project.id, turn("active"), false)
+            .await
+            .unwrap();
+        store.claim_next(&project.id).await.unwrap();
+        let first = store
+            .submit_turn(&project.id, turn("first queued"), false)
+            .await
+            .unwrap();
+        let mut input = turn("apply this now");
+        input.attachments = vec!["assets/reference.png".into()];
+        input.context = vec!["keep the current narration".into()];
+        input.model = Some("gpt-5.6-terra".into());
+        let target = store.submit_turn(&project.id, input, false).await.unwrap();
+        let last = store
+            .submit_turn(&project.id, turn("last queued"), false)
+            .await
+            .unwrap();
+        let messages = store.get(&project.id).await.unwrap().messages;
+        store.set_queue_paused(&project.id, true).await.unwrap();
+        assert!(
+            store
+                .prioritize_queued(&project.id, &target.turn.id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            store
+                .prioritize_queued(&project.id, &target.turn.id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !store
+                .prioritize_queued(&project.id, "missing")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !store
+                .prioritize_queued(&project.id, &active.turn.id)
+                .await
+                .unwrap()
+        );
+        store
+            .remove_queued(&project.id, &active.turn.id)
+            .await
+            .unwrap();
+        let detail = store.get(&project.id).await.unwrap();
+        assert_eq!(
+            detail.queue.iter().map(|t| &t.id).collect::<Vec<_>>(),
+            vec![&target.turn.id, &first.turn.id, &last.turn.id]
+        );
+        assert_eq!(
+            serde_json::to_value(&detail.queue[0]).unwrap(),
+            serde_json::to_value(&target.turn).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&detail.messages).unwrap(),
+            serde_json::to_value(messages).unwrap()
+        );
+        assert!(!detail.project.queue_paused);
+        assert_eq!(detail.project.queue_depth, 3);
+        assert_eq!(
+            detail.project.active_turn_id.as_deref(),
+            Some(active.turn.id.as_str())
+        );
+        assert_eq!(
+            store.claim_next(&project.id).await.unwrap().unwrap().id,
+            target.turn.id
+        );
+        let reopened = AgentProjectStore::new(root.clone()).await.unwrap();
+        assert_eq!(
+            reopened.get(&project.id).await.unwrap().queue[0].id,
+            first.turn.id
+        );
+        fs::remove_dir_all(root).await.unwrap();
     }
 
     #[tokio::test]

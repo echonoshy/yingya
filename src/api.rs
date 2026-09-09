@@ -480,6 +480,10 @@ async fn user_router(
             axum::routing::delete(remove_queued_turn),
         )
         .route(
+            "/api/agent-projects/{project_id}/queue/{turn_id}/execute",
+            post(execute_queued_turn),
+        )
+        .route(
             "/api/agent-projects/{project_id}/events",
             get(agent_event_stream),
         )
@@ -1133,10 +1137,44 @@ async fn resume_agent_queue(
     Ok(StatusCode::ACCEPTED)
 }
 
+async fn execute_queued_turn(
+    State(state): State<AppState>,
+    Path((project_id, turn_id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let _gate = state.agent_jobs.lock(&project_id).await;
+    let active = state.agent_jobs.active(&project_id).await;
+    if active
+        .as_ref()
+        .is_some_and(|turn| turn.request_id == turn_id)
+    {
+        return Ok(StatusCode::ACCEPTED);
+    }
+    if state.agent_jobs.active_render(&project_id).await.is_some() {
+        return Err(ApiError::Conflict("请等待当前导出完成后再执行消息".into()));
+    }
+    if !state
+        .agent_projects
+        .prioritize_queued(&project_id, &turn_id)
+        .await
+        .map_err(ApiError::Project)?
+    {
+        return Err(ApiError::Conflict(
+            "这条消息已不在队列中，请刷新项目".into(),
+        ));
+    }
+    if let Some(active) = active {
+        active.cancellation.cancel();
+    }
+    start_next_agent_turn_locked(state.clone(), project_id.clone()).await?;
+    emit_agent_state_event(&state, &project_id, Some(turn_id), "queue/updated").await;
+    Ok(StatusCode::ACCEPTED)
+}
+
 async fn remove_queued_turn(
     State(state): State<AppState>,
     Path((project_id, turn_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
+    let _gate = state.agent_jobs.lock(&project_id).await;
     state
         .agent_projects
         .remove_queued(&project_id, &turn_id)
@@ -2977,6 +3015,7 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
 }
 
 async fn start_next_agent_turn_locked(state: AppState, project_id: String) -> Result<(), ApiError> {
+    let _runtime = state.agent_jobs.lock_runtime().await;
     if state.agent_jobs.contains(&project_id).await
         || state.agent_jobs.active_render(&project_id).await.is_some()
     {
@@ -3018,6 +3057,7 @@ async fn run_agent_queue(
     loop {
         run_agent_turn(&state, &project_id, queued, &cancellation).await;
         let _gate = state.agent_jobs.lock(&project_id).await;
+        let _runtime = state.agent_jobs.lock_runtime().await;
         let next = state
             .agent_projects
             .claim_next(&project_id)
@@ -3050,6 +3090,7 @@ async fn run_agent_turn(
     queued: QueuedTurn,
     cancellation: &TurnCancellation,
 ) {
+    let generation = state.codex.generation();
     let mut project = match state.agent_projects.read_project(project_id).await {
         Ok(value) => value,
         Err(_) => return,
@@ -3147,6 +3188,7 @@ async fn run_agent_turn(
     let event_bus = state.agent_events.clone();
     let event_project = project_id.to_owned();
     let event_task = tokio::spawn(async move {
+        let mut observed_turn_id = None;
         while let Some(raw) = event_rx.recv().await {
             let method = raw
                 .get("method")
@@ -3158,6 +3200,9 @@ async fn run_agent_turn(
                 .or_else(|| raw.pointer("/params/turn/id"))
                 .and_then(Value::as_str)
                 .map(str::to_owned);
+            if turn_id.is_some() {
+                observed_turn_id = turn_id.clone();
+            }
             if let Ok(event) = event_store
                 .append_event(&event_project, turn_id, method, raw)
                 .await
@@ -3165,6 +3210,7 @@ async fn run_agent_turn(
                 let _ = event_bus.send(event);
             }
         }
+        observed_turn_id
     });
     let result = state
         .codex
@@ -3247,25 +3293,30 @@ async fn run_agent_turn(
         result => result,
     };
     drop(event_tx);
-    let _ = event_task.await;
-    if matches!(&result, Err(CodexError::InterruptTimeout(_))) {
-        warn!(
-            project_id,
-            "Codex interrupt grace period expired; restarting app-server"
-        );
-        for (affected_id, active) in state.agent_jobs.active_projects().await {
-            active.cancellation.cancel();
-            let _ = state
-                .agent_projects
-                .update_message_status(&affected_id, &active.request_id, "interrupted")
-                .await;
-            let _ = state
-                .agent_projects
-                .set_queue_paused(&affected_id, true)
-                .await;
-        }
-        if let Err(error) = state.codex.restart().await {
-            warn!(%error, "failed to restart Codex app-server");
+    let observed_turn_id = event_task.await.ok().flatten();
+    if result
+        .as_ref()
+        .is_err_and(|error| error.execution_uncertain())
+    {
+        // This runtime is shared by a user's projects. Block new submissions
+        // while stopping it, and only reset the generation that actually failed.
+        let _runtime = state.agent_jobs.lock_runtime().await;
+        if state.codex.generation() == generation {
+            warn!(
+                project_id,
+                "Codex execution status unavailable; pausing queues and resetting runtime"
+            );
+            for (affected_id, active) in state.agent_jobs.active_projects().await {
+                active.cancellation.cancel();
+                let _ = state
+                    .agent_projects
+                    .set_queue_paused(&affected_id, true)
+                    .await;
+                emit_agent_state_event(state, &affected_id, None, "project/updated").await;
+            }
+            if let Err(error) = state.codex.restart().await {
+                warn!(%error, "failed to restart Codex app-server");
+            }
         }
     }
     match result {
@@ -3328,10 +3379,12 @@ async fn run_agent_turn(
                 .await;
         }
         Err(error) => {
-            let interrupted = matches!(
-                error,
-                CodexError::TurnInterrupted(_) | CodexError::InterruptTimeout(_)
-            ) || cancellation.is_cancelled();
+            let uncertain = error.execution_uncertain();
+            let interrupted = !uncertain
+                && (matches!(
+                    error,
+                    CodexError::TurnInterrupted(_) | CodexError::InterruptTimeout(_)
+                ) || cancellation.is_cancelled());
             let _ = state
                 .agent_projects
                 .update_message_status(
@@ -3340,6 +3393,14 @@ async fn run_agent_turn(
                     if interrupted { "interrupted" } else { "failed" },
                 )
                 .await;
+            if let Some(turn_id) = observed_turn_id
+                && let Ok(event) = state.agent_projects.append_event(
+                    project_id, Some(turn_id.clone()), "project/executionEnded".to_owned(),
+                    json!({"params":{"turnId":turn_id,"status":if uncertain || interrupted {"interrupted"} else {"failed"}}}),
+                ).await
+            {
+                let _ = state.agent_events.send(event);
+            }
             let mut manifest = state
                 .agent_projects
                 .manifest(project_id)
@@ -3354,8 +3415,13 @@ async fn run_agent_turn(
                 .agent_projects
                 .update_project(project_id, |record| {
                     record.active_turn_id = None;
+                    if !interrupted {
+                        record.queue_paused = true;
+                    }
                     record.status = if interrupted { "interrupted" } else { "failed" }.to_owned();
-                    record.status_label = if interrupted {
+                    record.status_label = if uncertain {
+                        "执行连接中断，队列已暂停；请检查已有成果后继续".to_owned()
+                    } else if interrupted {
                         "运行已中断".to_owned()
                     } else {
                         format!("Codex 执行失败：{error}")
@@ -3364,6 +3430,7 @@ async fn run_agent_turn(
                 .await;
         }
     }
+    emit_agent_state_event(state, project_id, Some(queued.id), "project/updated").await;
 }
 
 struct WorkflowCompletion {

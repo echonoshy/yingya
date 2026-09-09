@@ -1,4 +1,4 @@
-import type { AgentEvent } from "../types";
+import type { AgentEvent, ProjectDetail } from "../types";
 
 type ActivityKind = "assistant" | "command" | "file" | "plan" | "tool" | "request" | "system";
 export interface TimelineActivity {
@@ -17,12 +17,16 @@ export interface TimelineActivity {
 
 type JsonObject = Record<string, unknown>;
 
-export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set<string>): TimelineActivity[] {
+export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set<string>, project?: Pick<ProjectDetail, "status" | "activeTurnId">): TimelineActivity[] {
   const activities: TimelineActivity[] = [];
   const byId = new Map<string, TimelineActivity>();
   const completedTurns = new Map<string, string>();
 
   for (const event of events) {
+    if (event.method === "project/executionEnded" && event.turnId) {
+      completedTurns.set(event.turnId, stringValue(asObject(asObject(event.payload).params).status) || "interrupted");
+      continue;
+    }
     if (event.method !== "turn/completed" || !event.turnId) continue;
     const turn = asObject(asObject(asObject(event.payload).params).turn);
     completedTurns.set(event.turnId, stringValue(turn.status) || "completed");
@@ -114,7 +118,14 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
 
   for (const item of activities) {
     const turnStatus = item.turnId ? completedTurns.get(item.turnId) : undefined;
-    if (item.status === "running" && turnStatus) item.status = turnStatus === "interrupted" ? "interrupted" : turnStatus === "failed" ? "failed" : "completed";
+    if ((item.status === "running" || item.status === "waiting") && turnStatus) item.status = turnStatus === "interrupted" ? "interrupted" : turnStatus === "failed" ? "failed" : "completed";
+    // Transport failures may leave no final event. Do not keep spinning after
+    // the server has settled the project, or label unobserved work successful.
+    if (project && !project.activeTurnId && !["starting", "queued", "running"].includes(project.status)
+      && (item.status === "running" || item.status === "waiting")) {
+      item.status = "interrupted";
+      item.summary = item.summary ? `${item.summary} · 进度记录已中断` : "进度记录已中断";
+    }
   }
 
   return activities.filter(item => {

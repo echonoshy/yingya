@@ -78,12 +78,17 @@ mod tests {
 
 #[derive(Clone, Default)]
 pub struct AgentJobCoordinator {
+    runtime_gate: Arc<Mutex<()>>,
     gates: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     active: Arc<Mutex<HashMap<String, ActiveAgentTurn>>>,
     renders: Arc<Mutex<HashMap<String, ActiveRenderJob>>>,
 }
 
 impl AgentJobCoordinator {
+    pub async fn lock_runtime(&self) -> OwnedMutexGuard<()> {
+        self.runtime_gate.clone().lock_owned().await
+    }
+
     pub async fn lock(&self, project_id: &str) -> OwnedMutexGuard<()> {
         let gate = {
             let mut gates = self.gates.lock().await;
