@@ -16,7 +16,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
     sync::{Mutex, Notify, broadcast, mpsc, oneshot},
-    time::{Instant, timeout},
+    time::{Instant, timeout, timeout_at},
 };
 use tracing::{debug, error, warn};
 
@@ -46,6 +46,8 @@ pub enum CodexError {
     InvalidMessage(#[from] serde_json::Error),
     #[error("Codex request {0} timed out")]
     RequestTimeout(u64),
+    #[error("Codex transport is unavailable or its write timed out; restart required")]
+    TransportUnavailable,
     #[error("Codex request {0} was cancelled")]
     RequestCancelled(u64),
     #[error("Codex app-server rejected the request: {0}")]
@@ -144,6 +146,7 @@ impl TurnCancellation {
 pub struct CodexClient {
     config: CodexConfig,
     stdin: Mutex<ChildStdin>,
+    write_incomplete: AtomicBool,
     pending: PendingRequests,
     events: broadcast::Sender<Value>,
     next_id: AtomicU64,
@@ -161,6 +164,7 @@ impl CodexClient {
         let client = Arc::new(Self {
             config,
             stdin: Mutex::new(stdin),
+            write_incomplete: AtomicBool::new(false),
             pending,
             events,
             next_id: AtomicU64::new(1),
@@ -191,7 +195,11 @@ impl CodexClient {
         let (child, stdin) =
             spawn_app_server(&self.config, Arc::clone(&self.pending), self.events.clone())?;
         *self._child.lock().await = child;
-        *self.stdin.lock().await = stdin;
+        {
+            let mut current = self.stdin.lock().await;
+            *current = stdin;
+            self.write_incomplete.store(false, Ordering::Release);
+        }
         self.initialize().await
     }
 
@@ -600,6 +608,7 @@ impl CodexClient {
     }
 
     async fn request(&self, method: &str, params: Value) -> Result<Value, CodexError> {
+        let deadline = Instant::now() + REQUEST_TIMEOUT;
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
         self.pending.lock().await.insert(id, sender);
@@ -616,7 +625,7 @@ impl CodexClient {
             return Err(error);
         }
 
-        let response = match timeout(REQUEST_TIMEOUT, receiver).await {
+        let response = match timeout_at(deadline, receiver).await {
             Ok(Ok(response)) => response,
             Ok(Err(_)) => {
                 self.pending.lock().await.remove(&id);
@@ -649,13 +658,24 @@ impl CodexClient {
     }
 
     async fn write_message(&self, message: Value) -> Result<(), CodexError> {
-        let mut stdin = self.stdin.lock().await;
         let mut bytes = serde_json::to_vec(&message)?;
         bytes.push(b'\n');
-        stdin.write_all(&bytes).await?;
-        stdin.flush().await?;
-        debug!(method = ?message.get("method"), "sent Codex app-server message");
-        Ok(())
+        timeout(REQUEST_TIMEOUT, async {
+            let mut stdin = self.stdin.lock().await;
+            if self.write_incomplete.load(Ordering::Acquire) {
+                return Err(CodexError::TransportUnavailable);
+            }
+            // Cancellation or a partial write leaves the transport poisoned. Never
+            // append a new JSON frame to an incomplete one, or resend a turn blindly.
+            self.write_incomplete.store(true, Ordering::Release);
+            stdin.write_all(&bytes).await?;
+            stdin.flush().await?;
+            self.write_incomplete.store(false, Ordering::Release);
+            debug!(method = ?message.get("method"), "sent Codex app-server message");
+            Ok(())
+        })
+        .await
+        .map_err(|_| CodexError::TransportUnavailable)?
     }
 }
 
@@ -713,6 +733,7 @@ impl CodexError {
         matches!(
             self,
             Self::RequestTimeout(_)
+                | Self::TransportUnavailable
                 | Self::RequestCancelled(_)
                 | Self::Io(_)
                 | Self::EventStreamClosed
@@ -757,6 +778,22 @@ fn spawn_app_server(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if config.sandbox.is_some() {
+        // Keep the OpenAI capability name, but use HTTP/SSE through the host
+        // relay so no provider bearer token enters the sandbox.
+        for setting in [
+            "model_provider=\"yingya\"",
+            "model_providers.yingya.name=\"OpenAI\"",
+            "model_providers.yingya.base_url=\"http://127.0.0.1:8797/api/internal/model/backend-api/codex\"",
+            "model_providers.yingya.wire_api=\"responses\"",
+            "model_providers.yingya.requires_openai_auth=true",
+            "model_providers.yingya.supports_websockets=false",
+            "model_providers.yingya.supports_standalone_web_search=true",
+            "chatgpt_base_url=\"http://127.0.0.1:8797/api/internal/model/backend-api\"",
+        ] {
+            command.arg("-c").arg(setting);
+        }
+    }
     if config.sandbox.is_none()
         && let Some(browser) = &config.hyperframes_browser
     {
@@ -959,5 +996,66 @@ for line in sys.stdin:
             ensure_runtime_files(&config),
             Err(CodexError::MissingExecutable(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod write_regression {
+    use super::*;
+    #[tokio::test]
+    async fn blocked_stdin_times_out_and_poisoned_transport_rejects_new_frames() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!(
+            "yingya-blocked-write-audit-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("auth.json"), "{}").unwrap();
+        let script = root.join("mock.py");
+        std::fs::write(
+            &script,
+            r#"#!/usr/bin/python3
+import sys,json,time
+for line in sys.stdin:
+ r=json.loads(line)
+ if r.get('method')=='initialized':time.sleep(30);continue
+ print(json.dumps({'id':r['id'],'result':{}}),flush=True)
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let config = CodexConfig {
+            sandbox: None,
+            accounting: None,
+            binary: script,
+            home: root.clone(),
+            workspace: root.clone(),
+            model: "audit".into(),
+            network_access: false,
+            hyperframes_browser: None,
+            video_agent_skill: None,
+            turn_timeout: Duration::from_secs(10),
+        };
+        let client = CodexClient::spawn(config).await.unwrap();
+        let result = timeout(
+            REQUEST_TIMEOUT * 3,
+            client.request("turn/start", json!({"text":"x".repeat(2*1024*1024)})),
+        )
+        .await;
+        assert!(matches!(
+            result.unwrap(),
+            Err(CodexError::TransportUnavailable)
+        ));
+        assert!(client.pending.lock().await.is_empty());
+        let started = Instant::now();
+        assert!(matches!(
+            client.request("thread/read", json!({})).await,
+            Err(CodexError::TransportUnavailable)
+        ));
+        assert!(started.elapsed() < REQUEST_TIMEOUT);
+        client.restart().await.unwrap();
+        assert!(!client.write_incomplete.load(Ordering::Acquire));
+        client._child.lock().await.kill().await.unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

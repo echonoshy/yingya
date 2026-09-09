@@ -168,6 +168,15 @@ mod tests {
         tokio::fs::write(parent.join("other-user.txt"), "private sentinel")
             .await
             .unwrap();
+        tokio::fs::create_dir_all(root.join("runtime/codex-home"))
+            .await
+            .unwrap();
+        tokio::fs::write(parent.join("auth.json"), r#"{"tokens":{"access_token":"private-model-access","refresh_token":"private-model-refresh"}}"#).await.unwrap();
+        crate::model_relay::ModelRelay::new(&parent)
+            .unwrap()
+            .prepare_user_auth(&root.join("runtime/codex-home"))
+            .await
+            .unwrap();
         let sandbox = Sandbox::new(
             root.clone(),
             PathBuf::from(env!("CARGO_MANIFEST_DIR")),
@@ -184,6 +193,13 @@ mod tests {
             String::from_utf8_lossy(&output.stderr)
         );
         assert!(String::from_utf8_lossy(&output.stdout).contains("isolated"));
+        let credential_check = sandbox.command("/usr/bin/python3").args(["-c", "import os,pathlib; p=pathlib.Path(os.environ['CODEX_HOME']); assert 'private-model-' not in (p/'auth.json').read_text(); assert not pathlib.Path(os.environ['HOST_AUTH']).exists(); print('host credentials isolated')"])
+            .env("HOST_AUTH", parent.join("auth.json")).output().await.unwrap();
+        assert!(
+            credential_check.status.success(),
+            "{}",
+            String::from_utf8_lossy(&credential_check.stderr)
+        );
         let socket = sandbox.socket.clone();
         drop(sandbox);
         let _ = tokio::fs::remove_file(socket).await;

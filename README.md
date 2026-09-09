@@ -19,7 +19,9 @@ npm run backend:service:start
 ```
 
 The server listens on `127.0.0.1:8797` by default and lazily starts a separate Codex app-server for each signed-in user.
-Each runtime uses its own Codex home and the platform model credential.
+Each runtime uses its own Codex home. Platform model credentials stay on the
+host; a scoped HTTP relay authenticates model requests without exposing those
+credentials to Agent commands.
 
 ```bash
 curl http://127.0.0.1:8797/health

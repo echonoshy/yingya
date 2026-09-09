@@ -1041,21 +1041,15 @@ impl AgentProjectStore {
     ) -> Result<AgentEvent, String> {
         let lock = self.project_lock(project_id).await?;
         let _guard = lock.lock().await;
-        let mut sequences = self.sequences.lock().await;
-        let seq = if let Some(value) = sequences.get_mut(project_id) {
-            *value += 1;
-            *value
-        } else {
-            let count = self
+        let cached = self.sequences.lock().await.get(project_id).copied();
+        let seq = match cached {
+            Some(seq) => seq + 1,
+            None => self
                 .read_events_unlocked(project_id, 0)
                 .await?
                 .last()
-                .map_or(0, |event| event.seq)
-                + 1;
-            sequences.insert(project_id.to_owned(), count);
-            count
+                .map_or(1, |event| event.seq + 1),
         };
-        drop(sequences);
         let event = AgentEvent {
             seq,
             project_id: project_id.to_owned(),
@@ -1081,6 +1075,9 @@ impl AgentProjectStore {
         file.write_all(&bytes)
             .await
             .map_err(|error| error.to_string())?;
+        // Tokio file writes may still be pending after write_all. Do not publish
+        // a cursor or calculate the next index offset until the bytes are visible.
+        file.flush().await.map_err(|error| error.to_string())?;
         if seq == 1 || (seq - 1) % 256 == 0 {
             let index_path = directory.join(".yingya/events.idx");
             let mut index: EventIndex = read_json_or_default(&index_path).await?;
@@ -1088,6 +1085,10 @@ impl AgentProjectStore {
             index.checkpoints.push(EventIndexEntry { seq, offset });
             write_json(&index_path, &index).await?;
         }
+        self.sequences
+            .lock()
+            .await
+            .insert(project_id.to_owned(), seq);
         Ok(event)
     }
 
@@ -1621,7 +1622,7 @@ where
     })
 }
 
-fn reject_symlink_components(path: &Path) -> Result<(), String> {
+pub(crate) fn reject_symlink_components(path: &Path) -> Result<(), String> {
     for ancestor in path.ancestors() {
         match std::fs::symlink_metadata(ancestor) {
             Ok(meta) if meta.file_type().is_symlink() => {
@@ -1644,6 +1645,7 @@ async fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, Strin
 async fn read_json_or_default<T: for<'de> Deserialize<'de> + Default>(
     path: &Path,
 ) -> Result<T, String> {
+    reject_symlink_components(path)?;
     match fs::read(path).await {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| error.to_string()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),

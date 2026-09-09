@@ -33,9 +33,7 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{
         HeaderMap, StatusCode,
-        header::{
-            ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, ETAG, IF_NONE_MATCH, RANGE,
-        },
+        header::{CONTENT_TYPE, ETAG, IF_NONE_MATCH},
     },
     response::{
         IntoResponse, Response, Sse,
@@ -48,7 +46,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::{
     fs,
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader},
+    io::{AsyncBufReadExt, BufReader},
     net::TcpListener,
     process::Command,
     sync::{Mutex, broadcast, mpsc},
@@ -2009,7 +2007,13 @@ async fn verify_render_output(path: &FilePath) -> Result<(), String> {
     Ok(())
 }
 
+async fn read_safe_bytes(path: &FilePath) -> Result<Vec<u8>, std::io::Error> {
+    agent_projects::reject_symlink_components(path).map_err(std::io::Error::other)?;
+    fs::read(path).await
+}
+
 async fn atomic_write_bytes(path: &FilePath, bytes: &[u8]) -> Result<(), String> {
+    agent_projects::reject_symlink_components(path)?;
     let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
     fs::write(&temporary, bytes)
         .await
@@ -2234,21 +2238,34 @@ async fn agent_event_stream(
     }
     let history_stream = tokio_stream::iter(history_events);
     let live_project_id = project_id.clone();
-    let live = BroadcastStream::new(subscriber).filter_map(move |result| match result {
-        Ok(event) if event.project_id == live_project_id && event.seq > baseline => {
+    let live = BroadcastStream::new(subscriber)
+        .filter_map(move |result| live_agent_event(result, &live_project_id, baseline));
+
+    Ok(Sse::new(history_stream.chain(live)).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
+fn live_agent_event(
+    result: Result<AgentEvent, tokio_stream::wrappers::errors::BroadcastStreamRecvError>,
+    project_id: &str,
+    baseline: u64,
+) -> Option<Result<Event, std::convert::Infallible>> {
+    match result {
+        Ok(event) if event.project_id == project_id && event.seq > baseline => {
             Some(Ok(Event::default()
                 .event("agent-event")
                 .id(event.seq.to_string())
                 .json_data(event)
                 .unwrap_or_else(|_| Event::default().data("{}"))))
         }
+        Err(_) => Some(Ok(Event::default()
+            .event("resync-required")
+            .data("live-buffer-overflow"))),
         _ => None,
-    });
-    Ok(Sse::new(history_stream.chain(live)).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("keep-alive"),
-    ))
+    }
 }
 
 async fn agent_event_log(
@@ -2871,7 +2888,7 @@ async fn agent_project_poster(
 async fn agent_project_file(
     State(state): State<AppState>,
     Path((project_id, path)): Path<(String, String)>,
-    headers: HeaderMap,
+    request: axum::extract::Request,
 ) -> Result<Response, ApiError> {
     let project_root = fs::canonicalize(
         state
@@ -2896,84 +2913,49 @@ async fn agent_project_file(
     if !metadata.is_file() {
         return Err(ApiError::BadRequest("not a file".to_owned()));
     }
-    let total = metadata.len();
+    stream_project_file(file_path, request).await
+}
+
+async fn stream_project_file(
+    file_path: PathBuf,
+    request: axum::extract::Request,
+) -> Result<Response, ApiError> {
+    use tower::ServiceExt;
+    // ServeFile streams bounded chunks and implements HEAD, byte ranges and 416.
+    // Keep our ETag support for the preview player and conditional downloads.
+    let metadata = fs::metadata(&file_path).await?;
     let modified = metadata
         .modified()
         .ok()
-        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
-        .map_or(0, |value| value.as_secs());
-    let etag = format!("\"{total:x}-{modified:x}\"");
-    if headers
+        .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |value| value.as_nanos());
+    let etag = format!("\"{:x}-{modified:x}\"", metadata.len());
+    if request
+        .headers()
         .get(IF_NONE_MATCH)
-        .and_then(|value| value.to_str().ok())
-        == Some(etag.as_str())
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(',').any(|tag| {
+                let tag = tag.trim();
+                tag == "*" || tag.strip_prefix("W/").unwrap_or(tag) == etag
+            })
+        })
     {
         let mut response = StatusCode::NOT_MODIFIED.into_response();
         response
             .headers_mut()
-            .insert(ETAG, etag.parse().expect("etag header"));
+            .insert(ETAG, etag.parse().expect("etag"));
         return Ok(response);
     }
-    let mime = content_type_for_path(&file_path);
-    let range = headers
-        .get(RANGE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| parse_byte_range(value, total));
-    let (start, end, status) = range.map_or(
-        (0, total.saturating_sub(1), StatusCode::OK),
-        |(start, end)| (start, end, StatusCode::PARTIAL_CONTENT),
-    );
-    let length = if total == 0 { 0 } else { end - start + 1 };
-    let mut file = fs::File::open(&file_path).await?;
-    file.seek(std::io::SeekFrom::Start(start)).await?;
-    let mut bytes = vec![0; length as usize];
-    if length > 0 {
-        file.read_exact(&mut bytes).await?;
-    }
-    let mut response = (status, bytes).into_response();
-    let response_headers = response.headers_mut();
-    response_headers.insert(
-        CONTENT_TYPE,
-        mime.parse()
-            .unwrap_or_else(|_| "application/octet-stream".parse().expect("static mime")),
-    );
-    response_headers.insert(ACCEPT_RANGES, "bytes".parse().expect("static header"));
-    response_headers.insert(
-        CONTENT_LENGTH,
-        length.to_string().parse().expect("numeric header"),
-    );
-    response_headers.insert(ETAG, etag.parse().expect("etag header"));
-    if status == StatusCode::PARTIAL_CONTENT {
-        response_headers.insert(
-            CONTENT_RANGE,
-            format!("bytes {start}-{end}/{total}")
-                .parse()
-                .expect("range header"),
-        );
-    }
+    let mut response = ServeFile::new(file_path)
+        .oneshot(request)
+        .await
+        .expect("ServeFile is infallible")
+        .into_response();
+    response
+        .headers_mut()
+        .insert(ETAG, etag.parse().expect("etag"));
     Ok(response)
-}
-
-fn parse_byte_range(value: &str, total: u64) -> Option<(u64, u64)> {
-    let value = value.strip_prefix("bytes=")?.split(',').next()?;
-    let (start, end) = value.split_once('-')?;
-    if total == 0 {
-        return None;
-    }
-    if start.is_empty() {
-        let suffix = end.parse::<u64>().ok()?.min(total);
-        return (suffix > 0).then_some((total - suffix, total - 1));
-    }
-    let start = start.parse::<u64>().ok()?;
-    if start >= total {
-        return None;
-    }
-    let end = if end.is_empty() {
-        total - 1
-    } else {
-        end.parse::<u64>().ok()?.min(total - 1)
-    };
-    (start <= end).then_some((start, end))
 }
 
 fn content_type_for_path(path: &FilePath) -> &'static str {
@@ -3372,9 +3354,7 @@ async fn run_agent_turn(
                 .agent_projects
                 .update_project(project_id, |record| {
                     record.active_turn_id = None;
-                    record.queue_paused = workflow.needs_recovery;
-                    record.status = workflow.status.to_owned();
-                    record.status_label = workflow.label.to_owned();
+                    apply_workflow_completion(record, &workflow);
                 })
                 .await;
         }
@@ -3438,6 +3418,13 @@ struct WorkflowCompletion {
     label: &'static str,
     needs_recovery: bool,
     guidance: &'static str,
+}
+
+fn apply_workflow_completion(record: &mut AgentProjectRecord, workflow: &WorkflowCompletion) {
+    // An explicit stop (or restart recovery) remains authoritative until resume.
+    record.queue_paused |= workflow.needs_recovery;
+    record.status = workflow.status.to_owned();
+    record.status_label = workflow.label.to_owned();
 }
 
 async fn validate_completed_workflow(
@@ -3733,9 +3720,7 @@ async fn audit_existing_project_workflows(state: &AppState) {
         let _ = state
             .agent_projects
             .update_project(&project.id, |record| {
-                record.queue_paused = workflow.needs_recovery;
-                record.status = workflow.status.to_owned();
-                record.status_label = workflow.label.to_owned();
+                apply_workflow_completion(record, &workflow);
             })
             .await;
     }
@@ -3854,6 +3839,7 @@ async fn upload_image(
         let id = Uuid::new_v4().to_string();
         let relative = format!("uploads/{id}.{extension}");
         let destination = state.assets.root.join(&relative);
+        agent_projects::reject_symlink_components(&destination).map_err(ApiError::BadRequest)?;
         fs::write(&destination, bytes).await?;
         state
             .assets
@@ -3958,6 +3944,7 @@ async fn upload_library_asset(
         folder_id: folder_id.clone(),
         mime_type: Some(mime_type.clone()),
     };
+    agent_projects::reject_symlink_components(&destination).map_err(ApiError::BadRequest)?;
     fs::write(&destination, bytes).await?;
     state.assets.write_metadata(&destination, &metadata).await?;
     Ok(Json(AssetLibraryItem {
@@ -4212,6 +4199,10 @@ fn audio_extension(bytes: &[u8]) -> Option<&'static str> {
 
 impl AssetStore {
     async fn new(root: PathBuf) -> Result<Self, std::io::Error> {
+        agent_projects::reject_symlink_components(&root.join("uploads"))
+            .map_err(std::io::Error::other)?;
+        agent_projects::reject_symlink_components(&root.join("generated"))
+            .map_err(std::io::Error::other)?;
         fs::create_dir_all(root.join("uploads")).await?;
         fs::create_dir_all(root.join("generated")).await?;
         Ok(Self {
@@ -4222,6 +4213,7 @@ impl AssetStore {
 
     async fn list_folders(&self) -> Result<Vec<AssetFolder>, ApiError> {
         let path = self.root.join("folders.json");
+        agent_projects::reject_symlink_components(&path).map_err(ApiError::BadRequest)?;
         match fs::read(path).await {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|error| ApiError::External(format!("素材文件夹读取失败: {error}"))),
@@ -4275,6 +4267,8 @@ impl AssetStore {
                     "referenceImages entries must start with /assets/ or assets/".to_owned(),
                 )
             })?;
+        agent_projects::reject_symlink_components(&self.root.join(relative))
+            .map_err(ApiError::BadRequest)?;
         let resolved = fs::canonicalize(self.root.join(relative)).await?;
         if !resolved.starts_with(self.root.as_ref()) || !resolved.is_file() {
             return Err(ApiError::BadRequest(
@@ -4299,10 +4293,21 @@ impl AssetStore {
                     event.failure.unwrap_or_else(|| event.id.clone()),
                 )));
             };
+            agent_projects::reject_symlink_components(&source).map_err(ApiError::BadRequest)?;
+            let source = fs::canonicalize(source).await?;
             let extension = generated_extension(&source)?;
             let id = Uuid::new_v4().to_string();
             let filename = format!("{id}.{extension}");
             let destination = self.root.join("generated").join(&filename);
+            agent_projects::reject_symlink_components(&source).map_err(ApiError::BadRequest)?;
+            agent_projects::reject_symlink_components(&destination)
+                .map_err(ApiError::BadRequest)?;
+            // Generated paths come from an untrusted worker, not from the host.
+            if !source.starts_with(self.root.parent().expect("user root")) {
+                return Err(ApiError::BadRequest(
+                    "generated image escapes user workspace".into(),
+                ));
+            }
             fs::copy(&source, &destination).await?;
             self.write_metadata(
                 &destination,
@@ -4354,6 +4359,8 @@ impl AssetStore {
     async fn list_library(&self) -> Result<Vec<AssetLibraryItem>, ApiError> {
         let mut assets = Vec::new();
         for location in ["generated", "uploads"] {
+            agent_projects::reject_symlink_components(&self.root.join(location))
+                .map_err(ApiError::BadRequest)?;
             let mut entries = fs::read_dir(self.root.join(location)).await?;
             while let Some(entry) = entries.next_entry().await? {
                 if !entry.file_type().await?.is_file() {
@@ -4370,7 +4377,7 @@ impl AssetStore {
                     .unwrap_or("bin")
                     .to_ascii_lowercase();
                 let metadata_path = path.with_extension(format!("{extension}.metadata.json"));
-                let metadata = match fs::read(metadata_path).await {
+                let metadata = match read_safe_bytes(&metadata_path).await {
                     Ok(bytes) => serde_json::from_slice::<ImageLibraryMetadata>(&bytes).ok(),
                     Err(_) => None,
                 };
@@ -4432,6 +4439,8 @@ impl AssetStore {
         folder_id: Option<String>,
     ) -> Result<(), ApiError> {
         for location in ["generated", "uploads"] {
+            agent_projects::reject_symlink_components(&self.root.join(location))
+                .map_err(ApiError::BadRequest)?;
             let mut entries = fs::read_dir(self.root.join(location)).await?;
             while let Some(entry) = entries.next_entry().await? {
                 if !entry.file_type().await?.is_file() {
@@ -4447,7 +4456,7 @@ impl AssetStore {
                     .and_then(|value| value.to_str())
                     .unwrap_or("bin");
                 let metadata_path = path.with_extension(format!("{extension}.metadata.json"));
-                let Ok(bytes) = fs::read(&metadata_path).await else {
+                let Ok(bytes) = read_safe_bytes(&metadata_path).await else {
                     continue;
                 };
                 let Ok(mut metadata) = serde_json::from_slice::<ImageLibraryMetadata>(&bytes)
@@ -4571,6 +4580,8 @@ impl AssetStore {
     async fn list_images(&self) -> Result<Vec<ImageLibraryAsset>, ApiError> {
         let mut images = Vec::new();
         for kind in ["generated", "uploads"] {
+            agent_projects::reject_symlink_components(&self.root.join(kind))
+                .map_err(ApiError::BadRequest)?;
             let mut entries = fs::read_dir(self.root.join(kind)).await?;
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
@@ -4595,7 +4606,7 @@ impl AssetStore {
                     .modified()
                     .map(unix_millis)
                     .unwrap_or_default();
-                let metadata = match fs::read(metadata_path).await {
+                let metadata = match read_safe_bytes(&metadata_path).await {
                     Ok(bytes) => serde_json::from_slice::<ImageLibraryMetadata>(&bytes).ok(),
                     Err(_) => None,
                 };
@@ -4927,6 +4938,148 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn slow_event_consumer_is_told_to_resync_after_losing_terminal_event() {
+        use axum::body::to_bytes;
+        let (tx, rx) = broadcast::channel(2);
+        for seq in 1..=3 {
+            tx.send(AgentEvent {
+                seq,
+                project_id: "p".into(),
+                turn_id: None,
+                method: if seq == 1 {
+                    "turn/completed"
+                } else {
+                    "item/updated"
+                }
+                .into(),
+                payload: json!({}),
+                created_at: 0,
+            })
+            .unwrap();
+        }
+        drop(tx);
+        let stream = BroadcastStream::new(rx).filter_map(|event| live_agent_event(event, "p", 0));
+        let body = to_bytes(Sse::new(stream).into_response().into_body(), 4096)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.starts_with("event: resync-required\n"));
+        assert!(text.contains("id: 3\n"));
+        assert!(!text.contains("turn/completed"));
+    }
+
+    #[tokio::test]
+    async fn video_download_supports_ranges_head_conditionals_and_large_files() {
+        use axum::{
+            body::{Body, to_bytes},
+            http::Request,
+        };
+        let root = env::temp_dir().join(format!("yingya-download-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let path = root.join("video.mp4");
+        fs::write(&path, b"0123456789").await.unwrap();
+        for (method, range, status, expected) in [
+            ("GET", "bytes=2-5", 206, "2345"),
+            ("GET", "bytes=-3", 206, "789"),
+            ("GET", "bytes=10-", 416, ""),
+            ("HEAD", "", 200, ""),
+            ("GET", "", 200, "0123456789"),
+        ] {
+            let mut request = Request::builder().method(method).uri("/video.mp4");
+            if !range.is_empty() {
+                request = request.header("range", range);
+            }
+            let response = stream_project_file(path.clone(), request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status().as_u16(), status, "{method} {range}");
+            if status == 416 {
+                assert_eq!(response.headers()["content-range"], "bytes */10");
+            }
+            let bytes = to_bytes(response.into_body(), 100).await.unwrap();
+            assert_eq!(bytes.as_ref(), expected.as_bytes());
+        }
+        let response = stream_project_file(path.clone(), Request::new(Body::empty()))
+            .await
+            .unwrap();
+        let etag = response.headers()[ETAG].clone();
+        let request = Request::builder()
+            .header(IF_NONE_MATCH, etag)
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            stream_project_file(path.clone(), request)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::NOT_MODIFIED
+        );
+        // A sparse 8 GiB video must return headers without allocating/reading 8 GiB.
+        fs::File::create(&path)
+            .await
+            .unwrap()
+            .set_len(8 * 1024 * 1024 * 1024)
+            .await
+            .unwrap();
+        let response = tokio::time::timeout(
+            Duration::from_secs(2),
+            stream_project_file(path, Request::new(Body::empty())),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(response.headers()["content-length"], "8589934592");
+        drop(response);
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn completion_and_startup_audit_preserve_explicit_queue_pause() {
+        let root = env::temp_dir().join(format!("yingya-pause-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let request = serde_json::from_value(json!({"prompt":"test", "aspectRatio":"16:9", "model":"gpt-5.6-terra", "reasoningEffort":"medium", "voiceId":"default"})).unwrap();
+        let project = store.create(&request).await.unwrap();
+        for text in ["first", "second"] {
+            store
+                .submit_turn(
+                    &project.id,
+                    serde_json::from_value(json!({"text":text})).unwrap(),
+                    false,
+                )
+                .await
+                .unwrap();
+        }
+        store.claim_next(&project.id).await.unwrap().unwrap();
+        store.set_queue_paused(&project.id, true).await.unwrap();
+        let workflow = WorkflowCompletion {
+            status: "awaiting_confirmation",
+            label: "已完成",
+            needs_recovery: false,
+            guidance: "",
+        };
+        store
+            .update_project(&project.id, |record| {
+                record.active_turn_id = None;
+                apply_workflow_completion(record, &workflow);
+            })
+            .await
+            .unwrap();
+        assert!(store.claim_next(&project.id).await.unwrap().is_none());
+        let reloaded = AgentProjectStore::new(root.clone()).await.unwrap();
+        reloaded.recover_interrupted().await.unwrap();
+        reloaded
+            .update_project(&project.id, |record| {
+                apply_workflow_completion(record, &workflow)
+            })
+            .await
+            .unwrap();
+        assert!(reloaded.claim_next(&project.id).await.unwrap().is_none());
+        reloaded.set_queue_paused(&project.id, false).await.unwrap();
+        assert!(reloaded.claim_next(&project.id).await.unwrap().is_some());
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn asset_management_preserves_files_when_deleting_folders_and_rejects_duplicates() {
         let root = env::temp_dir().join(format!("yingya-asset-management-{}", Uuid::new_v4()));
         let store = AssetStore::new(root.clone()).await.unwrap();
@@ -5254,19 +5407,6 @@ mod tests {
             Some("sound_effects")
         );
         assert!(normalize_audio_type("voice").is_err());
-    }
-
-    #[test]
-    fn parses_video_byte_ranges() {
-        assert_eq!(parse_byte_range("bytes=0-99", 1_000), Some((0, 99)));
-        assert_eq!(parse_byte_range("bytes=900-", 1_000), Some((900, 999)));
-        assert_eq!(parse_byte_range("bytes=-100", 1_000), Some((900, 999)));
-        assert_eq!(parse_byte_range("bytes=1000-", 1_000), None);
-        assert_eq!(parse_byte_range("items=0-10", 1_000), None);
-        assert_eq!(parse_byte_range("bytes=-0", 1_000), None);
-        assert_eq!(parse_byte_range("bytes=-2000", 1_000), Some((0, 999)));
-        assert_eq!(parse_byte_range("bytes=0-", 0), None);
-        assert_eq!(parse_byte_range("bytes=99-0", 1_000), None);
     }
 
     #[test]

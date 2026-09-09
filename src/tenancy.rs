@@ -2,10 +2,40 @@ use super::*;
 use axum::{
     body::{Body, to_bytes},
     extract::Request,
-    http::{Uri, header::SET_COOKIE},
+    http::{
+        Uri,
+        header::{CONTENT_LENGTH, SET_COOKIE},
+    },
 };
 use std::collections::HashMap;
+use tokio::sync::OnceCell;
 use tower::ServiceExt;
+
+type TenantRouters = Arc<Mutex<HashMap<String, Arc<OnceCell<Router>>>>>;
+type ServiceTokens = Arc<std::sync::Mutex<HashMap<String, User>>>;
+
+// Revoke tokens even if initialization is cancelled by a disconnected request.
+struct PendingServiceToken {
+    tokens: ServiceTokens,
+    token: String,
+    committed: bool,
+}
+impl Drop for PendingServiceToken {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.tokens.lock().unwrap().remove(&self.token);
+        }
+    }
+}
+
+async fn tenant_slot(tenants: &TenantRouters, id: &str) -> Arc<OnceCell<Router>> {
+    tenants
+        .lock()
+        .await
+        .entry(id.to_owned())
+        .or_default()
+        .clone()
+}
 
 #[derive(Clone)]
 struct PreviewGrant {
@@ -20,8 +50,9 @@ struct Gateway {
     previews: Arc<Mutex<HashMap<String, PreviewGrant>>>,
     paths: AppPaths,
     accounts: Accounts,
-    tenants: Arc<Mutex<HashMap<String, Router>>>,
-    service_tokens: Arc<Mutex<HashMap<String, User>>>,
+    model_relay: crate::model_relay::ModelRelay,
+    tenants: TenantRouters,
+    service_tokens: ServiceTokens,
 }
 #[derive(Deserialize)]
 struct Login {
@@ -84,10 +115,25 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .collect(),
     )
     .map_err(std::io::Error::other)?;
+    let model_relay = crate::model_relay::ModelRelay::new(&paths.codex_home)?;
+    // Remove legacy credential copies before accepting requests, including dormant tenants.
+    let mut users = fs::read_dir(paths.app_data.join("users")).await?;
+    while let Some(entry) = users.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            let home = entry.path().join("runtime/codex-home");
+            if home.is_dir() {
+                model_relay
+                    .prepare_user_auth(&home)
+                    .await
+                    .map_err(std::io::Error::other)?;
+            }
+        }
+    }
     let state = Gateway {
         previews: Default::default(),
         paths,
         accounts,
+        model_relay,
         tenants: Default::default(),
         service_tokens: Default::default(),
     };
@@ -229,10 +275,13 @@ async fn copy_tree(source: &FilePath, dest: &FilePath) -> Result<(), std::io::Er
 }
 impl Gateway {
     async fn router(&self, user: &User) -> Result<Router, String> {
-        let mut tenants = self.tenants.lock().await;
-        if let Some(router) = tenants.get(&user.id) {
-            return Ok(router.clone());
-        }
+        let slot = tenant_slot(&self.tenants, &user.id).await;
+        slot.get_or_try_init(|| self.initialize_router(user))
+            .await
+            .cloned()
+    }
+
+    async fn initialize_router(&self, user: &User) -> Result<Router, String> {
         let root = self.paths.app_data.join("users").join(&user.id);
         for dir in [
             "projects",
@@ -246,22 +295,21 @@ impl Gateway {
                 .await
                 .map_err(|e| e.to_string())?;
         }
-        // Only credentials and installed skills are copied. No shared conversations, histories or project trust.
         let home = root.join("runtime/codex-home");
-        fs::copy(
-            self.paths.codex_home.join("auth.json"),
-            home.join("auth.json"),
-        )
-        .await
-        .map_err(|e| format!("模型凭据不可用：{e}"))?;
+        self.model_relay.prepare_user_auth(&home).await?;
         copy_tree(&self.paths.codex_home.join("skills"), &home.join("skills"))
             .await
             .map_err(|e| e.to_string())?;
         let token = crate::accounts::secret();
         self.service_tokens
             .lock()
-            .await
+            .unwrap()
             .insert(token.clone(), user.clone());
+        let mut registration = PendingServiceToken {
+            tokens: self.service_tokens.clone(),
+            token: token.clone(),
+            committed: false,
+        };
         let paths = AppPaths {
             resources: self.paths.resources.clone(),
             app_data: root.clone(),
@@ -276,7 +324,7 @@ impl Gateway {
         let router = user_router(paths, self.accounts.clone(), user.clone(), &token)
             .await
             .map_err(|e| e.to_string())?;
-        tenants.insert(user.id.clone(), router.clone());
+        registration.committed = true;
         Ok(router)
     }
 }
@@ -314,7 +362,7 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
     let service = if let Some(token) = service_token {
-        g.service_tokens.lock().await.get(token).cloned()
+        g.service_tokens.lock().unwrap().get(token).cloned()
     } else {
         None
     };
@@ -365,6 +413,9 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
     if path.starts_with("/api/internal/") && !internal {
         return failure(StatusCode::NOT_FOUND, "接口不存在");
     }
+    if path.starts_with("/api/internal/model/") {
+        return g.model_relay.forward(request).await;
+    }
     if path.starts_with("/api/auth/") || path.starts_with("/api/admin/") || path == "/api/usage" {
         return failure(StatusCode::NOT_FOUND, "接口不存在");
     }
@@ -381,8 +432,13 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
             return failure(StatusCode::NOT_FOUND, "项目不存在");
         }
     }
-    if let Err(e) = reject_escaping_links(&root).await {
-        return failure(StatusCode::FORBIDDEN, &e);
+    if let Some(rest) = path.strip_prefix("/api/agent-projects/") {
+        let id = rest.split('/').next().unwrap_or("");
+        if let Err(e) = agent_projects::reject_symlink_components(
+            &root.join("projects").join(id).join("project.json"),
+        ) {
+            return failure(StatusCode::FORBIDDEN, &e);
+        }
     }
     let uri = format!(
         "{path}{}",
@@ -588,41 +644,15 @@ fn normalize_input(value: &mut Value, user: &str) {
         _ => {}
     }
 }
-async fn reject_escaping_links(root: &FilePath) -> Result<(), String> {
-    // User-created links must never make a host-side API follow paths outside the user's storage.
-    let mut pending = vec![root.join("projects"), root.join("assets")];
-    while let Some(dir) = pending.pop() {
-        if fs::symlink_metadata(&dir)
-            .await
-            .is_ok_and(|m| m.file_type().is_symlink())
-        {
-            return Err("用户数据目录不能是符号链接".into());
-        }
-        let Ok(mut entries) = fs::read_dir(&dir).await else {
-            continue;
-        };
-        while let Some(e) = entries.next_entry().await.map_err(|e| e.to_string())? {
-            let kind = e.file_type().await.map_err(|e| e.to_string())?;
-            if kind.is_symlink() {
-                let canonical = fs::canonicalize(e.path())
-                    .await
-                    .map_err(|_| "沙箱中有不可访问的链接")?;
-                if !canonical.starts_with(root) {
-                    return Err("沙箱文件链接不能指向用户目录之外".into());
-                }
-            } else if kind.is_dir() {
-                pending.push(e.path());
-            }
-        }
-    }
-    Ok(())
-}
 pub(super) async fn asset_file(
     State(state): State<AppState>,
     Path(path): Path<String>,
     request: Request,
 ) -> Response {
     let root = state.assets.root.as_ref();
+    if agent_projects::reject_symlink_components(&root.join(&path)).is_err() {
+        return failure(StatusCode::NOT_FOUND, "素材不存在");
+    }
     let resolved = match fs::canonicalize(root.join(&path)).await {
         Ok(p) if p.starts_with(root) => p,
         _ => return failure(StatusCode::NOT_FOUND, "素材不存在"),
@@ -667,11 +697,166 @@ pub(super) async fn voice_proxy(
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn broken_generated_link_does_not_block_another_project_or_deletion() {
+        let root = env::temp_dir().join(format!("yingya-gateway-path-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let accounts = Accounts::open(&root.join("db.sqlite"), vec![]).unwrap();
+        let (user, session) = accounts.login("path-test@example.test").unwrap();
+        let own = root.join("users").join(&user.id);
+        let first = Uuid::new_v4().to_string();
+        let second = Uuid::new_v4().to_string();
+        for id in [&first, &second] {
+            fs::create_dir_all(own.join("projects").join(id))
+                .await
+                .unwrap();
+            fs::write(own.join("projects").join(id).join("project.json"), b"{}")
+                .await
+                .unwrap();
+        }
+        std::os::unix::fs::symlink(
+            "missing-dependency",
+            own.join("projects").join(&first).join("broken"),
+        )
+        .unwrap();
+        let paths = AppPaths {
+            app_data: root.clone(),
+            resources: root.clone(),
+            cache: root.clone(),
+            runtime: root.clone(),
+            projects: own.join("projects"),
+            assets: own.join("assets"),
+            codex_home: root.clone(),
+            hyperframes_home: root.clone(),
+        };
+        let g = Gateway {
+            paths,
+            accounts,
+            model_relay: crate::model_relay::ModelRelay::new(&root).unwrap(),
+            previews: Default::default(),
+            tenants: Default::default(),
+            service_tokens: Default::default(),
+        };
+        tenant_slot(&g.tenants, &user.id)
+            .await
+            .set(Router::new().fallback(|| async { StatusCode::OK }))
+            .unwrap();
+        for (method, id) in [("GET", &second), ("DELETE", &first)] {
+            let request = Request::builder()
+                .method(method)
+                .uri(format!("/api/agent-projects/{id}"))
+                .header("cookie", format!("yingya_session={session}"))
+                .body(Body::empty())
+                .unwrap();
+            assert_eq!(
+                dispatch(State(g.clone()), request).await.status(),
+                StatusCode::OK
+            );
+        }
+        fs::remove_file(own.join("projects").join(&first).join("project.json"))
+            .await
+            .unwrap();
+        std::os::unix::fs::symlink(
+            own.join("projects").join(&second).join("project.json"),
+            own.join("projects").join(&first).join("project.json"),
+        )
+        .unwrap();
+        let request = Request::builder()
+            .uri(format!("/api/agent-projects/{first}"))
+            .header("cookie", format!("yingya_session={session}"))
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            dispatch(State(g), request).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        fs::remove_dir_all(root).await.unwrap();
+    }
+    #[tokio::test]
+    async fn tenant_initialization_waits_only_for_the_same_user_and_retries_failures() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let tenants = TenantRouters::default();
+        let a = tenant_slot(&tenants, "a").await;
+        let b = tenant_slot(&tenants, "b").await;
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let init = tokio::spawn(async move {
+            a.get_or_try_init(|| async {
+                started_tx.send(()).unwrap();
+                release_rx.await.unwrap();
+                Ok::<_, String>(Router::new())
+            })
+            .await
+            .unwrap()
+            .clone()
+        });
+        started_rx.await.unwrap();
+        let same = tenant_slot(&tenants, "a").await;
+        assert!(same.get().is_none());
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            b.get_or_try_init(|| async { Ok::<_, String>(Router::new()) }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(tenant_slot(&tenants, "b").await.get().is_some());
+        release_tx.send(()).unwrap();
+        let _ = init.await.unwrap();
+        let calls = AtomicUsize::new(0);
+        same.get_or_init(|| async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Router::new()
+        })
+        .await;
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let failed = tenant_slot(&tenants, "failed").await;
+        assert!(
+            failed
+                .get_or_try_init(|| async { Err::<Router, _>("failure") })
+                .await
+                .is_err()
+        );
+        assert!(
+            failed
+                .get_or_try_init(|| async { Ok::<_, String>(Router::new()) })
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_initialization_revokes_its_service_token() {
+        let tokens = ServiceTokens::default();
+        tokens.lock().unwrap().insert(
+            "test-token".into(),
+            User {
+                id: "u".into(),
+                email: "u@example.test".into(),
+                is_admin: false,
+            },
+        );
+        let registration = PendingServiceToken {
+            tokens: tokens.clone(),
+            token: "test-token".into(),
+            committed: false,
+        };
+        let task = tokio::spawn(async move {
+            let _registration = registration;
+            std::future::pending::<()>().await;
+        });
+        task.abort();
+        let _ = task.await;
+        assert!(tokens.lock().unwrap().is_empty());
+    }
+    #[tokio::test]
     async fn links_cannot_expose_another_users_data() {
         let root = env::temp_dir().join(format!("yingya-links-{}", Uuid::new_v4()));
         fs::create_dir_all(root.join("projects")).await.unwrap();
         std::os::unix::fs::symlink("/etc", root.join("projects/escape")).unwrap();
-        assert!(reject_escaping_links(&root).await.is_err());
+        assert!(
+            agent_projects::reject_symlink_components(&root.join("projects/escape/passwd"))
+                .is_err()
+        );
         fs::remove_dir_all(root).await.unwrap();
     }
     #[test]

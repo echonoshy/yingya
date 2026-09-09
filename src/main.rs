@@ -6,6 +6,7 @@ mod codex;
 mod config;
 mod feedback;
 mod heygen;
+mod model_relay;
 mod model_settings;
 mod render_jobs;
 mod sandbox;
