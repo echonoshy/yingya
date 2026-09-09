@@ -530,7 +530,7 @@ async function assertDesktop(browser) {
   await page.getByText("制作方案已就绪", { exact: true }).waitFor();
   if (await page.getByText("历史运行记录", { exact: true }).count()) throw new Error("Debug run history should not appear in the conversation");
   await page.getByRole("button", { name: /查看计划/ }).click();
-  await page.getByRole("heading", { name: "制作方案", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "制作方案", exact: true, level: 2 }).waitFor();
   await page.getByText("三幕结构与视觉方向。").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-desktop.png", fullPage: true });
   if (errors.length) throw new Error(`Desktop page errors:\n${errors.join("\n")}`);
@@ -999,10 +999,169 @@ async function assertCompactWorkspaceAndQueue(browser) {
   console.log('Compact workspace QA passed: queued submission, promotion retry without duplicates, full-height workspace, resize persistence, compact typography, 390px/320px and reduced motion');
 }
 
+async function assertFrontendRecovery(browser) {
+  const errors = [];
+  const makePage = async (seed = detail, width = 1440) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    page.setDefaultTimeout(8000);
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.qaStreams = [];
+      window.EventSource = class extends EventTarget {
+        constructor(url) { super(); this.url = url; this.readyState = 0; window.qaStreams.push(this); queueMicrotask(() => { this.readyState = 1; this.onopen?.(new Event('open')); }); }
+        close() { this.readyState = 2; }
+        emit(name, data) { this.dispatchEvent(new MessageEvent(name, { data: JSON.stringify(data) })); }
+      };
+    });
+    await installApiMock(page, seed);
+    return page;
+  };
+  const open = async page => {
+    await page.goto(workspaceUrl);
+    await page.getByRole('button', { name: /^秋季新品短片/ }).click();
+    await page.locator('.project-heading h1').waitFor();
+    await page.waitForFunction(() => window.qaStreams.some(stream => stream.readyState === 1));
+  };
+  const emit = (page, kind = 'agent-event') => page.evaluate(({ kind, id }) => {
+    window.qaStreams.filter(stream => stream.readyState === 1).forEach(stream => stream.emit(kind, { seq: 99, projectId: id, method: 'project/updated', payload: {}, createdAt: Date.now() }));
+  }, { kind, id: detail.id });
+  const pathOf = route => new URL(route.request().url()).pathname.replace(/^\/api\/u\/qa-user\//, '/api/');
+  const running = { ...structuredClone(detail), activeTurnId: 'in-progress', status: 'running', queue: [], queuePaused: false, manifest: { ...manifest, phase: 'production', checkpoint: null } };
+
+  // A late refresh from an unmounted project must not replace the active screen.
+  {
+    const page = await makePage();
+    const second = { ...structuredClone(detail), id: '22222222-2222-4222-8222-222222222222', title: '第二个项目' };
+    let hold = false, release, seen;
+    const held = new Promise(resolve => { release = resolve; });
+    const pending = new Promise(resolve => { seen = resolve; });
+    await page.route('**/api/**', async route => {
+      const path = pathOf(route);
+      if (path === '/api/agent-projects') return json(route, [detail, second]);
+      if (path === `/api/agent-projects/${second.id}`) return json(route, second);
+      if (path === `/api/agent-projects/${detail.id}` && hold) { seen(); await held; return json(route, detail); }
+      return route.fallback();
+    });
+    await open(page); hold = true; await emit(page); await pending;
+    await page.getByRole('button', { name: '所有项目', exact: true }).click();
+    await page.getByRole('button', { name: /^第二个项目/ }).click();
+    await page.getByRole('heading', { name: '第二个项目', exact: true }).waitFor();
+    const late = page.waitForResponse(response => new URL(response.url()).pathname.endsWith(`/agent-projects/${detail.id}`));
+    release(); await late; await page.waitForTimeout(200);
+    if (!await page.getByRole('heading', { name: '第二个项目', exact: true }).isVisible() || !page.url().endsWith(second.id)) throw new Error('Old project response replaced the current route');
+    await page.close();
+  }
+
+  // Snapshot failure must stay visible even while SSE is open; retry clears it.
+  {
+    const page = await makePage(running); await open(page);
+    let fail = true;
+    await page.route('**/api/**', route => {
+      if (pathOf(route).endsWith('/event-log')) return json(route, { items: [{ seq: 99, projectId: detail.id, method: 'project/updated', payload: {}, createdAt: Date.now() }], latestSeq: 99, hasMore: false, nextBefore: null });
+      return pathOf(route) === `/api/agent-projects/${detail.id}` ? json(route, fail ? { message: 'snapshot unavailable' } : running, fail ? 503 : 200) : route.fallback();
+    });
+    await emit(page, 'resync-required');
+    await page.getByText('任务状态暂未同步', { exact: true }).waitFor();
+    await page.screenshot({ path: '/tmp/yingya-fixed-sync-warning.png' });
+    fail = false;
+    await page.getByRole('button', { name: '重新同步', exact: true }).click();
+    await page.locator('.connection-notice').waitFor({ state: 'detached' });
+    await page.close();
+  }
+
+  // Real preview player: revisions refresh repeatedly, steady heartbeats do not,
+  // and the paused playhead survives iframe navigation.
+  {
+    const page = await makePage(running);
+    await page.clock.install();
+    let revision = 1, frames = 0;
+    const player = await (await import('node:fs/promises')).readFile(new URL('../web/preview-player.js', import.meta.url), 'utf8');
+    await page.route('**/mock-hyperframes-storyboard*', route => {
+      frames++;
+      return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><main data-composition-id="qa" data-width="400" data-height="600"><h1>画面 ${revision}</h1></main><script>window.qaTime=0;window.qaPlaying=true;window.__timelines={qa:{repeat(){},play(){window.qaPlaying=true},pause(){window.qaPlaying=false},seek(t){window.qaTime=t},time(){return window.qaTime},duration(){return 30}}};</script><script>${player}</script></body></html>` });
+    });
+    await page.route('**/api/**', route => /\/studio(?:\/heartbeat)?$/.test(pathOf(route)) ? json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, sourceRevision: String(revision), state: 'running', host: '', port: 0, projectName: detail.id, lastSeenAt: Date.now() }) : route.fallback());
+    await open(page);
+    const frame = page.frameLocator('iframe[title="HyperFrames 实时画面"]');
+    await frame.getByRole('heading', { name: '画面 1' }).waitFor();
+    await page.getByRole('button', { name: '暂停实时画面' }).click();
+    await frame.locator('body').evaluate(() => { window.qaTime = 12; parent.postMessage({ type: 'yingya-preview-position', time: 12 }, '*'); });
+    await page.waitForTimeout(100);
+    for (revision = 2; revision <= 3; revision++) {
+      const heartbeat = page.waitForResponse(response => response.url().includes('/studio/heartbeat'));
+      await page.clock.fastForward(5100); await heartbeat;
+      await frame.getByRole('heading', { name: `画面 ${revision}` }).waitFor();
+      await page.waitForFunction(() => { const frame = document.querySelector('iframe'); return frame?.contentWindow?.qaTime === 12 && frame?.contentWindow?.qaPlaying === false; }, null, { polling: 100 });
+    }
+    revision = 3;
+    const before = frames;
+    const heartbeat = page.waitForResponse(response => response.url().includes('/studio/heartbeat'));
+    await page.clock.fastForward(5100); await heartbeat; await page.waitForTimeout(100);
+    if (frames !== before || frames !== 3) throw new Error('Preview missed a revision or reloaded on an unchanged heartbeat');
+    await page.close();
+  }
+
+  // Reload after acceptance opens the original project without another POST.
+  {
+    const page = await makePage(); let creates = 0, turns = 0, release;
+    const held = new Promise(resolve => { release = resolve; });
+    const created = { ...structuredClone(detail), id: '33333333-3333-4333-8333-333333333333', title: '恢复原任务' };
+    let hold = true;
+    await page.route('**/api/**', async route => {
+      const path = pathOf(route);
+      if (path === '/api/agent-projects' && route.request().method() === 'POST') { creates++; return json(route, created); }
+      if (path.endsWith('/turns')) { turns++; return json(route, { turnId: 'accepted', status: 'running', queueDepth: 0 }); }
+      if (path === `/api/agent-projects/${created.id}`) { if (hold) await held; return json(route, created).catch(() => {}); }
+      return route.fallback();
+    });
+    await page.goto(workspaceUrl);
+    await page.locator('.composer--hero textarea').fill('刷新后恢复同一个任务');
+    const opening = page.waitForRequest(request => new URL(request.url()).pathname.endsWith(`/agent-projects/${created.id}`));
+    await page.getByRole('button', { name: '创建视频任务', exact: true }).click(); await opening;
+    await page.reload();
+    await page.getByRole('button', { name: '继续打开任务', exact: true }).waitFor();
+    hold = false; release();
+    await page.getByRole('button', { name: '继续打开任务', exact: true }).click();
+    await page.getByRole('heading', { name: '恢复原任务', exact: true }).waitFor();
+    if (creates !== 1 || turns !== 1) throw new Error(`Reload duplicated accepted work: ${creates} creates, ${turns} turns`);
+    await page.close();
+  }
+
+  // 401 returns to login; logging back in restores text and files for that account.
+  {
+    const page = await makePage(detail, 390); await page.goto(workspaceUrl);
+    await page.locator('.composer--hero textarea').fill('登录过期前的草稿');
+    await page.locator('input[type=file]').first().setInputFiles({ name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('private draft') });
+    await page.getByText('附件已保存', { exact: true }).waitFor();
+    let expired = true;
+    await page.route('**/api/**', route => {
+      const path = pathOf(route);
+      if (path === '/api/auth/login') { expired = false; return json(route, { user: { id: 'qa-user', email: 'qa@example.com', isAdmin: false } }); }
+      if (path === '/api/agent-projects' && expired) return json(route, { message: '请先登录' }, 401);
+      return route.fallback();
+    });
+    // Trigger the normal list refresh without reloading the whole application.
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.locator('#login-email').waitFor();
+    await page.getByText('登录已过期，请重新登录后继续。', { exact: true }).waitFor();
+    if (await page.getByRole('heading', { name: '本地服务未连接' }).count()) throw new Error('401 displayed as offline');
+    await page.screenshot({ path: '/tmp/yingya-fixed-expired-session-390.png' });
+    await page.locator('#login-email').fill('qa@example.com');
+    await page.getByRole('button', { name: '进入工作台', exact: true }).click();
+    await page.locator('.composer--hero textarea').waitFor();
+    if (await page.locator('.composer--hero textarea').inputValue() !== '登录过期前的草稿') throw new Error('Login recovery lost the draft');
+    await page.getByRole('button', { name: '移除 draft.txt', exact: true }).waitFor();
+    await page.close();
+  }
+  if (errors.length) throw new Error(`Recovery scenarios produced runtime errors: ${errors.join('\n')}`);
+  console.log('Frontend recovery QA passed: late project response, snapshot retry, repeated preview revisions with paused playhead, creation reload dedupe, expired login and draft recovery');
+}
+
 let browser;
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
+  await assertFrontendRecovery(browser);
   await assertCompactWorkspaceAndQueue(browser);
   await assertLostExecutionState(browser);
   await assertSelectionMotion(browser);

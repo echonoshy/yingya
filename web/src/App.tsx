@@ -6,7 +6,7 @@ import { useDraftFiles } from "./hooks/useDraftFiles";
 import { CreationSettings, creationBrief, creationSettingsSchema, defaultCreationSettings } from "./components/CreationSettings";
 import { z } from "zod";
 import { useSavedState } from "./hooks/useSavedState";
-import { useAppRoute } from "./hooks/useAppRoute";
+import { readRoute, useAppRoute } from "./hooks/useAppRoute";
 import { TaskCenter } from "./components/TaskCenter";
 import { projectGroup, projectStatus, projectSummary } from "./projectState";
 import { api } from "./api";
@@ -17,7 +17,8 @@ import { ProjectCreationPendingView, type ProjectCreationStage } from "./compone
 import { VoiceSelector } from "./components/VoiceSelector";
 import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from "./types";
 import { readModelSelection, readStringSetting, writeModelSelection, writeStringSetting } from "./storage";
-import { createClientRequestId } from "./requestId";
+import { newCreationAttempt, readCreationAttempt, saveCreationAttempt } from "./creationAttempt";
+import { userStorageKey } from "./session";
 import { includeAstra } from "./models";
 
 const fallbackModels: CodexModel[] = includeAstra([
@@ -35,7 +36,7 @@ export function App() {
   const saveSelection = (next: ModelSelection) => { setSelection(next); writeModelSelection(next); };
   const saveVoice = (next: string) => { setVoiceId(next); writeStringSetting("yingya-voice-id", next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
-  const updateActiveProject = useCallback((detail: ProjectDetail) => { setActive(detail); setProjects(current => current.map(project => project.id === detail.id ? projectSummary(detail) : project)); }, []);
+  const updateActiveProject = useCallback((detail: ProjectDetail) => { if (readRoute().projectId === detail.id) setActive(current => current?.id === detail.id ? detail : current); setProjects(current => current.map(project => project.id === detail.id ? projectSummary(detail) : project)); }, []);
   useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(includeAstra(value.data))).catch(() => undefined); }, [refreshProjects]);
   const open = (id: string) => navigate({ section: "create", projectId: id });
   useEffect(() => {
@@ -92,7 +93,12 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
   const [prompt, setPrompt, promptSaved] = useSavedState("yingya-home-prompt", z.string(), ""); const [aspectRatio, setAspectRatio] = useSavedState("yingya-home-aspect", z.enum(["9:16", "16:9", "1:1"]), "9:16"); const [files, setFiles, fileDraftStatus] = useDraftFiles("home");
   const [settings, setSettings] = useSavedState("yingya-creation-settings", creationSettingsSchema, defaultCreationSettings);
   const [libraryIds, setLibraryIds] = useSavedState("yingya-home-library", z.array(z.string()), []); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
-  const creationAttemptRef = useRef<{ signature: string; creationRequestId: string; turnRequestId: string; uploadedPaths: Map<string, string> } | null>(null);
+  const attemptKey = useRef(userStorageKey("yingya-home-creation-attempt")).current;
+  const [restoredAttempt] = useState(() => readCreationAttempt(attemptKey));
+  const creationAttemptRef = useRef(restoredAttempt);
+  const acceptedCreation = Boolean(creationAttemptRef.current?.accepted);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [filter, setFilter] = useState<ProjectFilter>("all");
   const [search, setSearch] = useState("");
   const [openMenu, setOpenMenu] = useState("");
@@ -116,36 +122,56 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
     return () => { cancelled = true; };
   }, [coverProjectIds]);
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (!prompt.trim() || busy || fileDraftStatus === "loading") return;
+    event.preventDefault(); if ((!prompt.trim() && !acceptedCreation) || busy || fileDraftStatus === "loading") return;
     const brief = creationBrief(settings);
     const normalizedPrompt = [prompt.trim(), brief ? `创作要求：${brief}` : ""].filter(Boolean).join("\n\n");
     const fileKeys = files.map((file, index) => `${index}:${file.name}:${file.size}:${file.lastModified}:${file.type}`);
     const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId, selection, fileKeys, libraryIds });
     let attempt = creationAttemptRef.current;
-    if (!attempt || attempt.signature !== signature) {
-      attempt = { signature, creationRequestId: createClientRequestId(), turnRequestId: createClientRequestId(), uploadedPaths: new Map() };
+    if (!attempt || (!attempt.accepted && attempt.signature !== signature)) {
+      attempt = newCreationAttempt(signature);
       creationAttemptRef.current = attempt;
     }
     setCreationStage("creating"); setBusy(true); setError("");
     try {
-      const project = await api.createProject({ prompt: normalizedPrompt, clientRequestId: attempt.creationRequestId, aspectRatio, voiceId, ...selection });
-      setCreationStage("uploading");
-      const uploadedPaths = await Promise.all(files.map(async (file, index) => {
-        const key = fileKeys[index];
-        const cached = attempt.uploadedPaths.get(key);
-        if (cached) return cached;
-        const uploaded = await api.uploadAsset(project.id, file);
-        attempt.uploadedPaths.set(key, uploaded.path);
-        return uploaded.path;
-      }));
-      const libraryPaths = await Promise.all(libraryIds.map(id => api.importLibraryAsset(id, project.id).then(asset => asset.path)));
-      uploadedPaths.push(...libraryPaths);
-      setCreationStage("starting");
-      await api.sendTurn(project.id, { text: normalizedPrompt, clientRequestId: attempt.turnRequestId, attachments: uploadedPaths, ...selection });
+      // Save before the first request, including when a response may be lost on reload.
+      saveCreationAttempt(attemptKey, attempt);
+      if (!attempt.projectId) {
+        const project = await api.createProject({ prompt: normalizedPrompt, clientRequestId: attempt.creationRequestId, aspectRatio, voiceId, ...selection });
+        attempt.projectId = project.id;
+        saveCreationAttempt(attemptKey, attempt);
+      }
+      const projectId = attempt.projectId;
+      if (!mounted.current) return;
+      if (!attempt.accepted) {
+        setCreationStage("uploading");
+        if (!attempt.turnInput) {
+          const pending = attempt;
+          const upload = async (key: string, action: () => Promise<{ path: string }>) => {
+            if (pending.uploadedPaths[key]) return pending.uploadedPaths[key];
+            const result = await action();
+            pending.uploadedPaths[key] = result.path;
+            saveCreationAttempt(attemptKey, pending);
+            return result.path;
+          };
+          const uploadedPaths = await Promise.all(files.map((file, index) => upload(fileKeys[index], () => api.uploadAsset(projectId, file))));
+          uploadedPaths.push(...await Promise.all(libraryIds.map(id => upload(`library:${id}`, () => api.importLibraryAsset(id, projectId)))));
+          attempt.turnInput = { text: normalizedPrompt, clientRequestId: attempt.turnRequestId, attachments: uploadedPaths, ...selection };
+          saveCreationAttempt(attemptKey, attempt);
+        }
+        if (!mounted.current) return;
+        setCreationStage("starting");
+        await api.sendTurn(projectId, attempt.turnInput);
+        attempt.accepted = true;
+        saveCreationAttempt(attemptKey, attempt);
+      }
+      if (!mounted.current) return;
       setCreationStage("opening");
-      const detail = await api.getProject(project.id);
+      const detail = await api.getProject(projectId);
+      if (!mounted.current) return;
+      if (signature === attempt.signature) { setPrompt(""); setFiles([]); setLibraryIds([]); }
+      saveCreationAttempt(attemptKey, null);
       creationAttemptRef.current = null;
-      setPrompt(""); setFiles([]); setLibraryIds([]);
       onCreated(detail);
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : "无法创建视频任务"); } finally { setBusy(false); }
@@ -182,7 +208,7 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
           <form className="composer composer--hero" onSubmit={submit}>
           <textarea aria-labelledby="create-prompt-label" aria-describedby="creation-workflow" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…"/>
           <div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
-          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value as typeof aspectRatio)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={!prompt.trim() || busy || fileDraftStatus === "loading"} aria-label="创建视频任务" title="创建视频任务"><span>开始制作</span><ArrowUp weight="bold"/></button></div>
+          <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => setFiles(Array.from(event.target.files ?? []))}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value as typeof aspectRatio)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={(!prompt.trim() && !acceptedCreation) || busy || fileDraftStatus === "loading"} aria-label={acceptedCreation ? "继续打开任务" : "创建视频任务"} title={acceptedCreation ? "继续打开任务" : "创建视频任务"}><span>{acceptedCreation ? "继续打开任务" : "开始制作"}</span><ArrowUp weight="bold"/></button></div>
           </form>
           {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加。</p> : files.length ? <p className="draft-save-status">{fileDraftStatus === "saved" ? "附件已保存" : "正在保存附件…"}</p> : null}
           <CreationSettings value={settings} onChange={setSettings} selectedIds={libraryIds} onSelect={setLibraryIds}/>
@@ -192,6 +218,7 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
             <li><span aria-hidden="true">2</span><div><b>预览与修改</b><p>编排动画，用对话逐步调整</p></div></li>
             <li><span aria-hidden="true">3</span><div><b>导出成片</b><p>保留项目，随时回来继续改</p></div></li>
           </ol>
+          {acceptedCreation ? <p className="draft-save-status" role="status">任务已提交，继续打开可恢复制作进度。</p> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
         </section>
         <section className="home-projects">

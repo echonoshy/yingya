@@ -36,6 +36,14 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
   const [reloadKey, setReloadKey] = useState(0);
   const [playing, setPlaying] = useState(true);
   const previewRef = useRef<HTMLIFrameElement>(null);
+  const playbackTime = useRef(0);
+  useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source === previewRef.current?.contentWindow && event.data?.type === "yingya-preview-position" && Number.isFinite(event.data.time)) playbackTime.current = Math.max(0, event.data.time);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, []);
   useEffect(() => { previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: playing && active }, "*"); }, [playing, active]);
 
   useEffect(() => {
@@ -44,6 +52,7 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
     setShouldConnect(true);
     setError("");
     setReloadKey(0);
+    playbackTime.current = 0;
   }, [project.id]);
 
   useEffect(() => {
@@ -66,17 +75,21 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
 
   useEffect(() => {
     if (!session || state !== "connected") return;
+    let disposed = false, pending = false;
     const heartbeat = window.setInterval(() => {
+      if (pending) return;
+      pending = true;
       void api.heartbeatStudio(project.id).then(next => {
-        setSession(next);
+        if (!disposed) setSession(next);
       }).catch(reason => {
+        if (disposed) return;
         setState("reconnecting");
         setError(reason instanceof Error ? reason.message : "Studio 会话连接已中断");
         setSession(null);
-      });
-    }, 60_000);
-    return () => window.clearInterval(heartbeat);
-  }, [project.id, session, state]);
+      }).finally(() => { pending = false; });
+    }, active ? 5_000 : 60_000);
+    return () => { disposed = true; window.clearInterval(heartbeat); };
+  }, [active, project.id, Boolean(session), state]);
 
   async function disconnect() {
     setError("");
@@ -85,7 +98,7 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
     finally { setShouldConnect(false); setSession(null); setState("disconnected"); }
   }
 
-  const previewUrl = session ? withReloadKey(session.storyboardUrl, reloadKey) : "";
+  const previewUrl = session ? withReloadKey(session.storyboardUrl, reloadKey, session.sourceRevision) : "";
   const connectionLabel = state === "connected" ? "已连接" : state === "connecting" ? "正在连接" : state === "reconnecting" ? "正在重连" : state === "disconnected" ? "已断开" : "等待连接";
   return <section className="live-preview-panel" hidden={!active} aria-label="HyperFrames 实时画面">
     <div className="live-preview-toolbar">
@@ -100,7 +113,7 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
     {!available ? <div className="live-preview-state"><Code/><b>制作方案确认后开放</b><span>确认方案后，映芽会编排文字、图形与素材，在这里预览动画。</span></div>
       : state === "connecting" || state === "reconnecting" ? <div className="live-preview-state"><CircleNotch className="spin"/><b>{connectionLabel}</b><span>首次打开需要启动本地 HyperFrames 服务。</span></div>
       : error ? <div className="live-preview-state live-preview-state--error"><Warning/><b>实时画面暂不可用</b><span>{error}</span><button type="button" onClick={() => { setError(""); setState("reconnecting"); setShouldConnect(true); }}>重新连接</button></div>
-      : session ? <div className={`live-preview-frame ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}><iframe ref={previewRef} key={reloadKey} onLoad={() => previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: playing && active }, "*")} title="HyperFrames 实时画面" src={previewUrl} allow="autoplay; fullscreen"/></div>
+      : session ? <div className={`live-preview-frame ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}><iframe ref={previewRef} key={reloadKey} onLoad={() => previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: playing && active, time: playbackTime.current }, "*")} title="HyperFrames 实时画面" src={previewUrl} allow="autoplay; fullscreen"/></div>
       : <div className="live-preview-state"><LinkBreak/><b>Studio 已断开</b><span>重新连接后可以继续预览和编辑。</span><button type="button" onClick={() => { setState("reconnecting"); setShouldConnect(true); }}>重新连接</button></div>}
   </section>;
 }
@@ -165,9 +178,10 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
   </section>;
 }
 
-function withReloadKey(value: string, reloadKey: number) {
+function withReloadKey(value: string, reloadKey: number, sourceRevision?: string) {
   const url = new URL(normalizeLocalUrl(value), window.location.href);
   url.searchParams.set("yingyaReload", String(reloadKey));
+  if (sourceRevision) url.searchParams.set("yingyaSource", sourceRevision);
   return url.toString();
 }
 

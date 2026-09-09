@@ -261,6 +261,7 @@ struct HealthResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StudioResponse {
+    source_revision: String,
     storyboard_url: String,
     preview_url: String,
     state: String,
@@ -2750,6 +2751,7 @@ async fn stop_agent_studio(
 
 fn studio_response(session: StudioSession) -> StudioResponse {
     StudioResponse {
+        source_revision: session.source_revision(),
         storyboard_url: session.storyboard_url,
         preview_url: session.preview_url,
         state: session.state,

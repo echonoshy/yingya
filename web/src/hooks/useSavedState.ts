@@ -9,6 +9,8 @@ export function readDraft<T>(key: string, schema: z.ZodType<T>, fallback: T): T 
 
 // Persist synchronously in the input event, before navigation can unmount the form.
 export function useSavedState<T>(key: string, schema: z.ZodType<T>, fallback: T) {
+  const storageScope = useRef(userStorageKey("")).current;
+  const storageKey = storageScope + key;
   const [snapshot, setSnapshot] = useState(() => ({ key, value: readDraft(key, schema, fallback) }));
   const [saved, setSaved] = useState(true);
   const latest = useRef(snapshot);
@@ -18,9 +20,9 @@ export function useSavedState<T>(key: string, schema: z.ZodType<T>, fallback: T)
     const previous = latest.current.key === key ? latest.current.value : readDraft(key, schema, fallback);
     const next = typeof action === "function" ? (action as (value: T) => T)(previous) : action;
     latest.current = { key, value: next };
-    try { localStorage.setItem(userStorageKey(key), JSON.stringify(next)); setSaved(true); }
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); setSaved(true); }
     catch { setSaved(false); }
     setSnapshot(latest.current);
-  }, [key, schema, fallback]);
+  }, [key, schema, fallback, storageKey]);
   return [value, setValue, saved] as const;
 }

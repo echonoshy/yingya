@@ -35,6 +35,12 @@ pub struct StudioSession {
     source_fingerprint: u64,
 }
 
+impl StudioSession {
+    pub fn source_revision(&self) -> String {
+        format!("{:016x}", self.source_fingerprint)
+    }
+}
+
 #[derive(Clone)]
 pub struct StudioSessionManager {
     private_preview: bool,
@@ -604,6 +610,47 @@ mod tests {
         assert_eq!(available_studio_port(&used).await, None);
         drop(listener);
         assert_eq!(available_studio_port(&used).await, Some(occupied_port));
+    }
+
+    #[tokio::test]
+    async fn private_preview_revision_tracks_each_source_change() {
+        let root = std::env::temp_dir().join(format!("yingya-studio-revision-{}", Uuid::new_v4()));
+        let project_id = Uuid::new_v4().to_string();
+        let project = root.join(&project_id);
+        fs::create_dir_all(&project).await.unwrap();
+        fs::write(project.join("index.html"), "first")
+            .await
+            .unwrap();
+        let manager = StudioSessionManager::new(PathBuf::new(), PathBuf::new(), root.clone());
+        let first = manager.start(&project_id, &project).await.unwrap();
+        assert_eq!(
+            first.source_revision(),
+            manager
+                .heartbeat(&project_id)
+                .await
+                .unwrap()
+                .source_revision()
+        );
+        let mut previous = first.source_revision();
+        for content in ["second frame", "third updated frame"] {
+            fs::write(project.join("index.html"), content)
+                .await
+                .unwrap();
+            assert_eq!(
+                manager.detect_source_changes().await,
+                vec![project_id.clone()]
+            );
+            let current = manager
+                .heartbeat(&project_id)
+                .await
+                .unwrap()
+                .source_revision();
+            assert_ne!(previous, current);
+            assert!(manager.detect_source_changes().await.is_empty());
+            previous = current;
+        }
+        manager.stop(&project_id).await.unwrap();
+        fs::remove_dir_all(root).await.unwrap();
     }
 
     #[tokio::test]

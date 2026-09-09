@@ -1,4 +1,4 @@
-import { scopedUrl, sessionHeaders } from "./session";
+import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
 import { feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
 import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
@@ -7,14 +7,18 @@ import { createClientRequestId } from "./requestId";
 
 const errorSchema = z.object({ code: z.string().optional(), message: z.string().optional(), error: z.string().optional() });
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) { super(message); this.name = "ApiError"; }
+}
+
 async function parseError(response: Response) {
   const body = errorSchema.safeParse(await response.json().catch(() => ({})));
   return body.success ? body.data.message ?? body.data.error ?? response.statusText : response.statusText;
 }
 
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await fetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
-  if (!response.ok) throw new Error(await parseError(response));
+  const response = await sessionFetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
+  if (!response.ok) throw new ApiError(await parseError(response), response.status);
   return schema.parse(await response.json());
 }
 
@@ -27,25 +31,26 @@ async function requestWithNetworkRetry<T>(path: string, schema: z.ZodType<T>, in
 }
 
 async function requestVoid(path: string, init?: RequestInit): Promise<void> {
-  const response = await fetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
-  if (!response.ok) throw new Error(await parseError(response));
+  const response = await sessionFetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
+  if (!response.ok) throw new ApiError(await parseError(response), response.status);
 }
 
 async function requestText(path: string): Promise<string> {
-  const response = await fetch(scopedUrl(path), { headers: sessionHeaders() });
-  if (!response.ok) throw new Error((await response.text()) || response.statusText || "文件读取失败");
+  const response = await sessionFetch(scopedUrl(path), { headers: sessionHeaders() });
+  if (!response.ok) throw new ApiError((await response.text()) || response.statusText || "文件读取失败", response.status);
   return response.text();
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const response = await fetch(scopedUrl(path), { ...init, headers: { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
-  if (!response.ok) throw new Error(await parseError(response));
+  const response = await sessionFetch(scopedUrl(path), { ...init, headers: { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
+  if (!response.ok) throw new ApiError(await parseError(response), response.status);
   return response.blob();
 }
 
 const modelListSchema = z.object({ data: z.array(codexModelSchema) });
 const uploadSchema = z.object({ path: z.string(), name: z.string() });
 const studioSchema = z.object({
+  sourceRevision: z.string().optional(),
   storyboardUrl: z.string(), previewUrl: z.string(), state: z.string(), host: z.string(), port: z.number(), projectName: z.string(), lastSeenAt: z.number(),
 });
 const imageUploadSchema = z.object({ url: z.string(), hyperframesPath: z.string() });

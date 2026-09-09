@@ -2,6 +2,8 @@
 (() => {
   let playing = true;
   let timeline;
+  let pendingTime;
+  let lastReported = performance.now();
   function fit() {
     const root = document.querySelector('[data-composition-id]');
     if (!root) return;
@@ -15,11 +17,14 @@
   function apply() {
     const root = document.querySelector('[data-composition-id]');
     timeline = window.__timelines?.[root?.dataset.compositionId] || Object.values(window.__timelines || {})[0];
-    if (timeline) { timeline.repeat?.(-1); playing ? timeline.play?.() : timeline.pause?.(); }
+    if (timeline) {
+      if (pendingTime !== undefined) { const duration = timeline.duration?.(); timeline.seek?.(Number.isFinite(duration) ? Math.min(pendingTime, duration) : pendingTime); pendingTime = undefined; }
+      timeline.repeat?.(-1); playing ? timeline.play?.() : timeline.pause?.(); }
     if (!playing) for (const media of document.querySelectorAll('video,audio')) media.pause();
   }
   addEventListener('message', event => {
     if (event.source !== parent || event.data?.type !== 'yingya-preview-playback' || typeof event.data.playing !== 'boolean') return;
+    if (Number.isFinite(event.data.time)) pendingTime = Math.max(0, event.data.time);
     playing = event.data.playing; for(const media of document.querySelectorAll('video,audio'))delete media.dataset.yingyaAutoplayBlocked; apply();
   });
   function startTime(element) {
@@ -30,6 +35,10 @@
   function syncMedia() {
     if (timeline?.time) {
       const time=timeline.time();
+      if (performance.now() - lastReported >= 250) {
+        parent.postMessage({ type: 'yingya-preview-position', time }, '*');
+        lastReported = performance.now();
+      }
       for (const media of document.querySelectorAll('video,audio')) {
         const start=startTime(media), duration=Number(media.dataset.duration)||media.duration;
         if (!playing || time<start || (Number.isFinite(duration) && time>=start+duration)) { if(!media.paused)media.pause(); continue; }

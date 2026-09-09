@@ -1,3 +1,4 @@
+import { userStorageKey } from "../session";
 import { useEffect, useRef, useState } from "react";
 import type { FeedbackAsset, VisualFeedback } from "../types";
 import { openDraftDatabase } from "../storage/draftDatabase";
@@ -7,6 +8,7 @@ export type FeedbackDraft = Omit<VisualFeedback, "screenshotAssetId" | "screensh
 const writes = new Map<string, Promise<void>>();
 
 export function useFeedbackDraft(projectId: string) {
+  const databaseName = useRef(userStorageKey("yingya-drafts")).current;
   const [items, setItems] = useState<FeedbackDraft[]>([]);
   const [status, setStatus] = useState<"loading" | "saving" | "saved" | "error">("loading");
   const latest = useRef(items);
@@ -16,7 +18,7 @@ export function useFeedbackDraft(projectId: string) {
     const initial = revision.current;
     void (async () => {
       await writes.get(projectId)?.catch(() => undefined);
-      const db = await openDraftDatabase();
+      const db = await openDraftDatabase(databaseName);
       const stored = await new Promise<unknown>((resolve, reject) => {
         const request = db.transaction("feedback").objectStore("feedback").get(projectId);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
@@ -25,12 +27,12 @@ export function useFeedbackDraft(projectId: string) {
       if (!cancelled && initial === revision.current) { latest.current = restored; setItems(restored); setStatus("saved"); }
     })().catch(() => { if (!cancelled) setStatus("error"); });
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [projectId, databaseName]);
   function update(change: (current: FeedbackDraft[]) => FeedbackDraft[]) {
     const next = change(latest.current); latest.current = next; setItems(next); setStatus("saving");
     const current = ++revision.current;
     const pending = (writes.get(projectId) ?? Promise.resolve()).catch(() => undefined).then(async () => {
-      const db = await openDraftDatabase();
+      const db = await openDraftDatabase(databaseName);
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction("feedback", "readwrite");
         if (next.length) tx.objectStore("feedback").put(next, projectId); else tx.objectStore("feedback").delete(projectId);

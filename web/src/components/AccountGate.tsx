@@ -3,14 +3,14 @@ import { ArrowLeft, ArrowRight, ChartBar, CircleNotch, EnvelopeSimple, SignOut, 
 import { z } from 'zod';
 import { App } from '../App';
 import { UsageModelFilter } from './UsageModelFilter';
-import { sessionChanged, setCurrentUser } from '../session';
+import { SESSION_EXPIRED, sessionFetch, sessionChanged, setCurrentUser } from '../session';
 const userSchema = z.object({ id:z.string(), email:z.string(), isAdmin:z.boolean() });
 type User = z.infer<typeof userSchema>;
 const rowSchema=z.object({userId:z.string(),email:z.string(),requests:z.number(),executions:z.number(),inputTokens:z.number(),outputTokens:z.number(),cachedInputTokens:z.number(),reasoningOutputTokens:z.number(),totalTokens:z.number(),unknownExecutions:z.number()});
 const usageSchema=z.object({users:z.array(rowSchema),models:z.array(z.string())});
 type Usage=z.infer<typeof usageSchema>;
 async function call(path:string, init?:RequestInit) {
- const response=await fetch(path,{...init,headers:{'Content-Type':'application/json',...init?.headers},cache:'no-store'});
+ const response=await sessionFetch(path,{...init,headers:{'Content-Type':'application/json',...init?.headers},cache:'no-store'});
  if(response.status===204)return null;
  const body=await response.json();
  if(!response.ok)throw new Error(body.message || '暂时无法连接，请重试');
@@ -24,8 +24,10 @@ export function AccountGate() {
    const value=userSchema.parse((await response.json()).user);
    if(!cancelled){setCurrentUser(value.id);setUser(value);}
  }).catch(e=>{if(!cancelled)setError(e.message);}).finally(()=>{if(!cancelled)setLoading(false);});
+ const expired=()=>{cancelled=true;setUser(null);setScreen('work');setError('登录已过期，请重新登录后继续。');setLoading(false);};
+ window.addEventListener(SESSION_EXPIRED,expired);
  const changed=(event:StorageEvent)=>{if(event.key==='yingya-session-change')window.location.reload();};window.addEventListener('storage',changed);
- return()=>{cancelled=true;window.removeEventListener('storage',changed);};},[]);
+ return()=>{cancelled=true;window.removeEventListener('storage',changed);window.removeEventListener(SESSION_EXPIRED,expired);};},[]);
  async function logout(){try{await call('/api/auth/logout',{method:'POST',body:'{}'});sessionChanged();window.location.replace('/');}catch(e){setError(e instanceof Error?e.message:'退出失败');}}
  if(loading)return <div className="state-screen" role="status"><CircleNotch className="spin"/><p>正在恢复你的工作台…</p></div>;
  if(!user)return <LoginScreen initialError={error} onLogin={value=>{setCurrentUser(value.id);setUser(value);setError('');sessionChanged();window.history.replaceState(null,'',`/app${window.location.search}${window.location.hash}`);}}/>;

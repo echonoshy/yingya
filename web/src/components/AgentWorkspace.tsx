@@ -62,6 +62,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   const [editingTitle, setEditingTitle] = useState(false); const [titleDraft, setTitleDraft] = useState(""); const [renaming, setRenaming] = useState(false); const [titleError, setTitleError] = useState("");
   const [dismissedCheckpoint, setDismissedCheckpoint] = useState("");
   const refreshGeneration = useRef(0);
+  useEffect(() => () => { refreshGeneration.current++; }, [project.id]);
   const running = Boolean(project.activeTurnId);
   const state = workflowState(project);
   const [removingQueued, setRemovingQueued] = useState("");
@@ -83,9 +84,9 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       if (generation !== refreshGeneration.current) return;
       if (latestMedia) setMedia(latestMedia);
       onProject(detail);
-    } catch { /* retain last stable project */ }
+    } catch (reason) { if (generation === refreshGeneration.current) throw reason; }
   }, [onProject, project.id]);
-  const { events, connectionState, stalled, resync } = useAgentEvents(project.id, refresh, running);
+  const { events, connectionState, syncFailed, stalled, resync } = useAgentEvents(project.id, refresh, running);
   const assistantTexts = useMemo(() => new Set(project.messages.filter(message => message.role === "assistant").map(message => message.text.trim())), [project.messages]);
   const activities = useMemo(() => buildTimeline(events, assistantTexts, project), [events, assistantTexts, project.status, project.activeTurnId]);
   const conversation = useMemo<ConversationEntry[]>(() => [
@@ -251,7 +252,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "用对话调整内容、画面与节奏"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
       <section className="timeline" aria-label="创作消息" tabIndex={0} ref={timelineRef} onScroll={onScroll}><div className="timeline-inner" ref={contentRef}>
-        {stalled || connectionState === "disconnected" ? <ConnectionNotice stalled={stalled} onRetry={() => void resync()}/> : null}
+        {syncFailed || stalled || connectionState === "disconnected" ? <ConnectionNotice syncFailed={syncFailed} stalled={stalled} onRetry={() => void resync()}/> : null}
         <ConversationFeed projectId={project.id} entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
         {(project.status === "failed" || project.status === "incomplete") && project.manifest.dirty ? <WorkflowRecoveryCard briefing={project.manifest.phase === "briefing"} incomplete={project.status === "incomplete"} statusLabel={project.statusLabel} onRecover={selectQuickReply}/> : null}
@@ -302,8 +303,8 @@ function ConnectionBadge({ state }: { state: AgentConnectionState }) {
   return <span className={`connection-badge connection-badge--${state}`} role="status"><i/>{label}</span>;
 }
 
-function ConnectionNotice({ stalled, onRetry }: { stalled: boolean; onRetry: () => void }) {
-  return <section className="connection-notice" role="status"><Warning/><div><b>{stalled ? "任务长时间没有新进度" : "实时连接已中断"}</b><p>{stalled ? "映芽仍会保留任务和队列，你可以重新同步最新状态。" : "当前内容不会丢失，重新连接后会补齐期间的进度。"}</p></div><button type="button" onClick={onRetry}><ArrowClockwise/>重新同步</button></section>;
+function ConnectionNotice({ stalled, syncFailed, onRetry }: { stalled: boolean; syncFailed: boolean; onRetry: () => void }) {
+  return <section className="connection-notice" role="status"><Warning/><div><b>{syncFailed ? "任务状态暂未同步" : stalled ? "任务长时间没有新进度" : "实时连接已中断"}</b><p>{syncFailed ? "当前显示的是上次同步的内容，请重新同步以确认任务进度。" : stalled ? "映芽仍会保留任务和队列，你可以重新同步最新状态。" : "当前内容不会丢失，重新连接后会补齐期间的进度。"}</p></div><button type="button" onClick={onRetry}><ArrowClockwise/>重新同步</button></section>;
 }
 
 function ComposerAssetPicker({ assets, folders, selected, onToggle, onClose }: { assets: AssetLibraryItem[]; folders: AssetFolder[]; selected: AssetLibraryItem[]; onToggle: (asset: AssetLibraryItem) => void; onClose: () => void }) {

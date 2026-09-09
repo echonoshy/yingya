@@ -33,10 +33,19 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
   const [nextBefore, setNextBefore] = useState<number>();
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [connectionState, setConnectionState] = useState<AgentConnectionState>("connecting");
+  const [syncFailed, setSyncFailed] = useState(false);
   const [stalled, setStalled] = useState(false);
   const callbackRef = useRef(onProjectChanged);
   const lastProgressAtRef = useRef(Date.now());
   callbackRef.current = onProjectChanged;
+
+  const refreshGeneration = useRef(0);
+  useEffect(() => () => { refreshGeneration.current++; }, [projectId]);
+  const refreshProject = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    try { await callbackRef.current(); if (generation === refreshGeneration.current) setSyncFailed(false); }
+    catch (reason) { if (generation === refreshGeneration.current) setSyncFailed(true); throw reason; }
+  }, []);
 
   const loadRecent = useCallback(async () => {
     const page = await api.eventLog(projectId, undefined, 500);
@@ -51,12 +60,12 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
     setConnectionState("recovering");
     try {
       await loadRecent();
-      await callbackRef.current();
+      await refreshProject();
       setConnectionState("connected");
     } catch {
       setConnectionState("disconnected");
     }
-  }, [loadRecent]);
+  }, [loadRecent, refreshProject]);
 
   useEffect(() => {
     let disposed = false;
@@ -78,11 +87,12 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
         source.onopen = () => {
           if (disconnectTimer) window.clearTimeout(disconnectTimer);
           setConnectionState("connected");
+          void refreshProject().catch(() => undefined);
         };
         source.onerror = () => {
           if (disposed) return;
           setConnectionState("recovering");
-          void callbackRef.current();
+          void refreshProject().catch(() => undefined);
           if (disconnectTimer) window.clearTimeout(disconnectTimer);
           disconnectTimer = window.setTimeout(() => setConnectionState("disconnected"), DISCONNECTED_AFTER_MS);
         };
@@ -97,7 +107,7 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
             setStalled(false);
           }
           setEvents(current => mergeEvents(current, [parsed.data]));
-          if (/^(project|queue|media|render)\//.test(parsed.data.method) || parsed.data.method === "turn/completed" || parsed.data.method === "turn/failed") callbackRef.current();
+          if (/^(project|queue|media|render)\//.test(parsed.data.method) || parsed.data.method === "turn/completed" || parsed.data.method === "turn/failed") void refreshProject().catch(() => undefined);
         });
         source.addEventListener("resync-required", () => { void resync(); });
       } catch {
@@ -116,7 +126,7 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
       if (disconnectTimer) window.clearTimeout(disconnectTimer);
       source?.close();
     };
-  }, [loadRecent, projectId, resync]);
+  }, [loadRecent, projectId, resync, refreshProject]);
 
   useEffect(() => {
     if (!running) {
@@ -142,5 +152,5 @@ export function useAgentEvents(projectId: string, onProjectChanged: () => void |
     }
   }, [loadingOlder, nextBefore, projectId]);
 
-  return { events, hasOlder: nextBefore !== undefined, loadOlder, loadingOlder, connectionState, stalled, resync };
+  return { events, hasOlder: nextBefore !== undefined, loadOlder, loadingOlder, connectionState, syncFailed, stalled, resync };
 }

@@ -1,10 +1,12 @@
 import { userStorageKey } from "../session";
-let database: Promise<IDBDatabase> | undefined;
+const databases = new Map<string, Promise<IDBDatabase>>();
 
-export function openDraftDatabase(): Promise<IDBDatabase> {
-  return database ??= new Promise((resolve, reject) => {
+export function openDraftDatabase(name = userStorageKey("yingya-drafts")): Promise<IDBDatabase> {
+  const existing = databases.get(name);
+  if (existing) return existing;
+  const database = new Promise<IDBDatabase>((resolve, reject) => {
     let blocked = false;
-    const request = indexedDB.open(userStorageKey("yingya-drafts"), 2);
+    const request = indexedDB.open(name, 2);
     request.onupgradeneeded = () => {
       for (const name of ["files", "feedback"]) {
         if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name);
@@ -13,10 +15,12 @@ export function openDraftDatabase(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       const db = request.result;
       if (blocked) { db.close(); return; }
-      db.onversionchange = () => { db.close(); database = undefined; };
+      db.onversionchange = () => { db.close(); databases.delete(name); };
       resolve(db);
     };
-    request.onerror = () => { database = undefined; reject(request.error); };
-    request.onblocked = () => { blocked = true; database = undefined; reject(new Error("请关闭旧版本页面后重试草稿保存")); };
+    request.onerror = () => { databases.delete(name); reject(request.error); };
+    request.onblocked = () => { blocked = true; databases.delete(name); reject(new Error("请关闭旧版本页面后重试草稿保存")); };
   });
+  databases.set(name, database);
+  return database;
 }
