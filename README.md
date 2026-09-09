@@ -14,9 +14,9 @@
 
 </div>
 
-[![映芽介绍视频 · 川味朋友旁白版](web/public/marketing/posters/yingya-intro-v4.jpg)](https://github.com/echonoshy/yingya/raw/refs/heads/master/web/public/marketing/video/yingya-intro-v4.mp4)
+[![映芽介绍视频 · 川味朋友旁白版](web/public/marketing/posters/yingya-intro-v4.jpg)](https://youtu.be/DuEsvIO0zt4)
 
-<p align="center"><sub>66 秒产品演示 · 川味朋友旁白版 · 点击封面打开 MP4</sub></p>
+<p align="center"><sub>66 秒产品演示 · 川味朋友旁白版 · 点击封面在 YouTube 观看</sub></p>
 
 ---
 
