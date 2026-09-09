@@ -950,11 +950,11 @@ async function assertCompactWorkspaceAndQueue(browser) {
       return route.fallback();
     });
     await page.goto(workspaceUrl);
-    await page.locator('.account-bar').waitFor({ state: 'visible' });
+    await page.locator('.account-panel').waitFor({ state: 'visible' });
     await page.locator('.home-project-open').first().click();
     const composer = page.getByRole('textbox', { name: '修改描述', exact: true });
     await composer.waitFor();
-    if (await page.locator('.account-bar').isVisible()) throw new Error('Workspace account navigation remains');
+    if (await page.locator('.account-panel').isVisible()) throw new Error('Workspace account navigation remains');
     if (await page.getByRole('combobox', { name: '发送方式' }).count()) throw new Error('Old send mode remains');
     if (width === 1259) {
       const separator = page.getByRole('separator', { name: '调整创作对话宽度' });
@@ -992,7 +992,7 @@ async function assertCompactWorkspaceAndQueue(browser) {
     }
     if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Workspace horizontal overflow');
     await page.getByRole('button', { name: '所有项目', exact: true }).click();
-    await page.locator('.account-bar').waitFor({ state: 'visible' });
+    await page.locator('.account-panel').waitFor({ state: 'visible' });
     if (errors.length) throw new Error(errors.join('\n'));
     await page.close();
   }

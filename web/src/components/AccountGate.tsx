@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, ChartBar, CircleNotch, EnvelopeSimple, SignOut, UserCircle } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, ChartBar, CaretUpDown, CircleNotch, EnvelopeSimple, SignOut, UserCircle } from '@phosphor-icons/react';
 import { z } from 'zod';
 import { App } from '../App';
 import { UsageModelFilter } from './UsageModelFilter';
@@ -31,11 +31,13 @@ export function AccountGate() {
  async function logout(){try{await call('/api/auth/logout',{method:'POST',body:'{}'});sessionChanged();window.location.replace('/');}catch(e){setError(e instanceof Error?e.message:'退出失败');}}
  if(loading)return <div className="state-screen" role="status"><CircleNotch className="spin"/><p>正在恢复你的工作台…</p></div>;
  if(!user)return <LoginScreen initialError={error} onLogin={value=>{setCurrentUser(value.id);setUser(value);setError('');sessionChanged();window.history.replaceState(null,'',`/app${window.location.search}${window.location.hash}`);}}/>;
+ const accountPanel = <details className="account-panel" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))event.currentTarget.open=false;}} onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
+   <summary aria-label={`账号：${user.email}`} title={user.email}><UserCircle/><span className="account-identity"><span>{user.email}</span><small>内测账号</small></span><CaretUpDown className="account-chevron"/></summary>
+   <div className="account-menu"><div className="account-menu-identity"><b>{user.email}</b><small>内测账号</small></div><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen(screen==='work'?'usage':'work');}}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button>{error?<p className="account-error" role="alert">{error}</p>:null}</div>
+ </details>;
  return <div className="account-shell">
-   <header className="account-bar"><div className="account-identity"><UserCircle/><span title={user.email}>{user.email}</span><small>内测账号</small></div><nav aria-label="账号"><button onClick={()=>setScreen(screen==='work'?'usage':'work')}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button></nav></header>
-   {error?<p className="account-error" role="alert">{error}</p>:null}
-   <div hidden={screen!=='work'}><App/></div>
-   {screen==='usage'?<UsagePage onBack={()=>setScreen('work')}/>:null}
+   <div hidden={screen!=='work'}><App accountPanel={accountPanel}/></div>
+   {screen==='usage'?<div className="home-layout"><aside className="home-nav"><div className="home-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div><nav aria-label="映芽功能"><button onClick={()=>setScreen('work')}><ArrowLeft/>返回创作</button></nav>{accountPanel}</aside><UsagePage onBack={()=>setScreen('work')}/></div>:null}
  </div>;
 }
 function LoginScreen({initialError,onLogin}:{initialError:string;onLogin:(user:User)=>void}) {

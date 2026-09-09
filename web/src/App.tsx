@@ -1,7 +1,7 @@
 import { SelectionIndicator } from "./components/SelectionIndicator";
 import { useMotionPresence } from "./hooks/useMotionPresence";
-import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, WifiHigh, X } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, X } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useDraftFiles } from "./hooks/useDraftFiles";
 import { CreationSettings, creationBrief, creationSettingsSchema, defaultCreationSettings } from "./components/CreationSettings";
 import { z } from "zod";
@@ -29,7 +29,7 @@ function savedSelection(): ModelSelection {
   return readModelSelection({ model: "gpt-5.6-terra", reasoningEffort: "high" });
 }
 
-export function App() {
+export function App({ accountPanel }: { accountPanel?: ReactNode }) {
   const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection); const [voiceId, setVoiceId] = useState(() => readStringSetting("yingya-voice-id", "default"));
   const [route, navigate] = useAppRoute();
   const [opening, setOpening] = useState(Boolean(route.projectId));
@@ -83,13 +83,13 @@ export function App() {
   const showAssets = () => navigate({ section: "assets" });
   const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
     : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showCreate}/>
-    : route.section === "assets" ? <AssetStudio models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
-    : <StartScreen openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
+    : route.section === "assets" ? <AssetStudio accountPanel={accountPanel} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
+    : <StartScreen accountPanel={accountPanel} openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
   return <>{surface}<TaskCenter projects={projects} offline={offline} onOpen={open}/></>;
 
 }
 
-function StartScreen({ openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
+function StartScreen({ accountPanel, openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { accountPanel?: ReactNode; openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
   const [prompt, setPrompt, promptSaved] = useSavedState("yingya-home-prompt", z.string(), ""); const [aspectRatio, setAspectRatio] = useSavedState("yingya-home-aspect", z.enum(["9:16", "16:9", "1:1"]), "9:16"); const [files, setFiles, fileDraftStatus] = useDraftFiles("home");
   const [settings, setSettings] = useSavedState("yingya-creation-settings", creationSettingsSchema, defaultCreationSettings);
   const [libraryIds, setLibraryIds] = useSavedState("yingya-home-library", z.array(z.string()), []); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
@@ -195,7 +195,7 @@ function StartScreen({ openingProjectId, projects, loading, openError, models, s
         <button className="active" aria-current="page" onClick={startCreating}><FilmSlate/>视频创作</button>
         <button onClick={onAssets}><Images/>素材工坊</button>
       </nav>
-      <div className="home-service" title="本地服务已连接"><span/><WifiHigh/><span>本地服务已连接</span></div>
+      {accountPanel}
     </aside>
     <main className="home-main">
       <div className="home-scroll">

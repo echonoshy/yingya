@@ -6,7 +6,7 @@ import {
   MagnifyingGlass, MusicNotes, Paperclip, Plus, Sparkle, SpeakerHigh, UploadSimple,
   VideoCamera, Waveform, X,
 } from "@phosphor-icons/react";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type FormEvent } from "react";
 import { ActionDialog } from "./ActionDialog";
 import { api } from "../api";
 import type { AssetFolder, AssetLibraryItem, ModelSelection } from "../types";
@@ -47,7 +47,7 @@ function assetFormat(asset: AssetLibraryItem) {
   return subtype.replace("vnd.openxmlformats-officedocument.", "").toUpperCase();
 }
 
-export function AssetStudio({ models, selection, voiceId, onSelection, onVoice, onCreate }: { models: Parameters<typeof ModelSelector>[0]["models"]; selection: ModelSelection; voiceId: string; onSelection: (value: ModelSelection) => void; onVoice: (value: string) => void; onCreate: () => void }) {
+export function AssetStudio({ accountPanel, models, selection, voiceId, onSelection, onVoice, onCreate }: { accountPanel?: ReactNode; models: Parameters<typeof ModelSelector>[0]["models"]; selection: ModelSelection; voiceId: string; onSelection: (value: ModelSelection) => void; onVoice: (value: string) => void; onCreate: () => void }) {
   const [tab, setTab] = useState<AssetTab>("all");
   const [previewWidth, setPreviewWidth] = useState(360);
   const [expandedAsset, setExpandedAsset] = useState<AssetLibraryItem | null>(null);
@@ -241,6 +241,7 @@ export function AssetStudio({ models, selection, voiceId, onSelection, onVoice, 
         <button className={activeFolder === "unfiled" ? "active" : ""} onClick={() => setActiveFolder("unfiled")}><FolderSimple/><span>未整理</span><small>{assets.filter(asset => !asset.folderId).length}</small></button>
         {folders.map(folder => <div className="asset-folder-row" key={folder.id}><button className={activeFolder === folder.id ? "active" : ""} onClick={() => setActiveFolder(folder.id)}><FolderSimple/><span>{folder.name}</span><small>{assets.filter(asset => asset.folderId === folder.id).length}</small></button><button aria-label={`重命名文件夹 ${folder.name}`} title="重命名文件夹" onClick={() => manage("rename-folder", folder.id, folder.name)}><PencilSimple/></button><button aria-label={`删除文件夹 ${folder.name}`} title="删除文件夹" onClick={() => manage("delete-folder", folder.id, folder.name)}><Trash/></button></div>)}
       </nav>
+      {accountPanel}
     </aside>
     <main className="asset-main asset-main--library">
       <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/>{!uploadOnly ? <div className="asset-create-control"><button ref={createTriggerRef} className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div> : null}</header>
