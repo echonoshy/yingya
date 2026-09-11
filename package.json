@@ -19,6 +19,7 @@
     "test:rust": "cargo test --all-targets",
     "test:hyperframes": "npm --prefix tests/fixtures/hyperframes-smoke run check",
     "test:ui": "node tests/ui-qa.mjs",
+    "test:marketing": "node tests/marketing-ui-qa.mjs",
     "test:admin": "node tests/admin-qa.mjs",
     "codex:version": "bash scripts/codex.sh --version",
     "codex:login-status": "bash scripts/codex.sh login status",

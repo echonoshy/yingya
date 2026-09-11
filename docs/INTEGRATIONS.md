@@ -11,7 +11,8 @@ All commands run from the repository root.
 The Rust backend invokes Codex's native `imagegen` skill through app-server. It
 accepts optional local reference images, listens for structured
 `imageGeneration` completion items, copies each `savedPath` into the local
-`data/assets/generated/` directory, and exposes the file under `/assets/`.
+`data/users/<user-id>/assets/generated/` directory, and exposes the file under
+`/assets/u/<user-id>/` with an ownership check.
 
 Upload a reference image first (maximum request size: 25 MiB):
 
@@ -27,17 +28,18 @@ curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/codex/threads/THRE
   -H 'content-type: application/json' \
   -d '{
     "prompt": "Create a cinematic 16:9 seedling image with no text.",
-    "referenceImages": ["/assets/uploads/REFERENCE_ID.png"]
+    "referenceImages": ["/assets/u/USER_ID/uploads/REFERENCE_ID.png"]
   }'
 ```
 
 Each returned image has two paths:
 
-- `url`, such as `/assets/generated/ID.png`, for `<img src>` in the frontend.
+- `url`, such as `/assets/u/USER_ID/generated/ID.png`, for `<img src>` in the frontend.
 - `hyperframesPath`, such as `assets/generated/ID.png`, for media elements in a
   HyperFrames composition.
 
-Only server-managed `/assets/` paths are accepted as reference images. Generated
+Use the upload response's `url` as the reference image; only server-managed
+asset paths belonging to the signed-in user are accepted. Generated
 and uploaded images can be browsed by the asset workshop through
 `GET /api/assets/images`; results are ordered newest first and include their
 generation prompt or original upload name when available. Generated
@@ -100,9 +102,7 @@ npm run hyperframes:skills:install
 The pinned Chrome Headless Shell is stored under
 `.runtime/hyperframes-home/.cache/`. The Rust backend discovers that executable
 at startup and passes it to Codex app-server as `HYPERFRAMES_BROWSER_PATH`.
-Yingya reuses official HyperFrames Studio sessions by their canonical project
-directory, assigns available ports from `8600–8799`, and retires sessions after
-two hours without a workspace heartbeat. In multi-user mode, live composition previews are served through a short-lived,
+Live composition previews are served through a short-lived,
 read-only Yingya preview URL tied to the login session. No public Studio port is
 started. The standalone Studio editor is not exposed in this mode.
 

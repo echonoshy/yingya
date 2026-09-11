@@ -1447,8 +1447,7 @@ async fn render_agent_video(
         };
         if !compatible {
             return Err(ApiError::Validation(format!(
-                "所选分辨率与项目画幅 {} 不匹配",
-                aspect_ratio
+                "所选分辨率与项目画幅 {aspect_ratio} 不匹配"
             )));
         }
     }
@@ -1524,7 +1523,7 @@ async fn render_agent_video(
         .agent_projects
         .update_project(&project_id, |record| {
             record.status = "rendering".to_owned();
-            record.status_label = format!("正在渲染 {} 成片", resolution_label);
+            record.status_label = format!("正在渲染 {resolution_label} 成片");
         })
         .await
     {
@@ -1677,7 +1676,7 @@ async fn run_render_job(
                         record.status_label = if dirty {
                             "成片已生成，工作区修改待检查".to_owned()
                         } else {
-                            format!("{} 成片已完成", resolution_label)
+                            format!("{resolution_label} 成片已完成")
                         };
                     })
                     .await

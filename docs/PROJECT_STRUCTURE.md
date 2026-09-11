@@ -14,11 +14,13 @@ runtime dependencies.
 | `skills/` | Project Codex integrations | Product source | Track |
 | `scripts/` | Developer tooling | Product source | Track |
 | `deploy/` | Local service operations | Product source | Track |
+| `examples/` | Editable sources for current homepage films | Product source | Track |
 | `tests/fixtures/` | Automated test inputs | Test source | Track |
 | `data/` | Yingya and its users | Mutable runtime data | Ignore |
 | `.runtime/` | Codex, HyperFrames, models, caches | Machine-local state | Ignore |
 | `target/` | Cargo | Reproducible build output | Ignore |
 | `node_modules/` | npm | Installed dependencies | Ignore |
+| `web-dist/` | Vite | Reproducible browser build, including public media | Ignore |
 
 ## Local runtime contents
 
@@ -37,8 +39,12 @@ state with different cleanup rules:
 
 ## HyperFrames project boundaries
 
-Agent-created videos live in `data/video-projects/<project-id>/`. This is the
-only supported project layout. It is mutable user data and stays out of Git.
+Agent-created videos live in `data/users/<user-id>/projects/<project-id>/`.
+Accounts and usage are stored in `data/yingya.sqlite`; each user's assets,
+voices, and runtime are siblings of `projects/`. This is mutable user data and
+stays out of Git. Earlier shared `data/video-projects/` and `data/assets/`
+directories are legacy data: retain them until ownership is established and
+they can be migrated, rather than treating them as disposable caches.
 
 Each project remains self-contained. Yingya creates the state files and base
 directories; the Agent adds composition sources and production artifacts as the
@@ -87,7 +93,7 @@ composition used to verify HyperFrames integration. Its HTML, design contract,
 motion assertions, and configuration are source files.
 
 Rendered MP4 files and inspection snapshots are outputs. Product projects keep
-them inside their own ignored `data/video-projects/<project-id>/` directory.
+them inside their own ignored `data/users/<user-id>/projects/<project-id>/` directory.
 Test runs should use a temporary directory or an ignored fixture-local output
 directory; do not add generated media to the repository unless a visual
 regression test explicitly defines it as a reviewed baseline.

@@ -92,7 +92,7 @@ cargo run -- admin-create admin admin@yingya.local
 
 共享平台模型凭据只保存在宿主侧 `YINGYA_CODEX_HOME/auth.json`（开发环境默认 `.runtime/codex-home/auth.json`），不复制到用户目录。用户 Codex home 只含不能直接访问供应商的占位登录信息；真实授权头由宿主模型中继注入。中继仅接受专属网关的内部身份，只允许指定的模型、Responses 和用量接口，禁止任意目标与重定向。启动后端时会替换旧版留在用户目录中的凭据副本。
 
-当前 Codex 0.153.4 使用 Responses HTTP/SSE 中继，保留请求压缩和流式响应。宿主侧读取最新登录，提前刷新即将到期的 ChatGPT access token；登录被撤销时明确报错，需要在宿主重新登录。平台仍统一承担模型调用，用量按用户归属记录。此隔离面向 Agent 工作区，不防御能够直接读取宿主进程或文件的本机系统用户。
+Codex 版本以 `package.json` 的固定依赖为准，使用 Responses HTTP/SSE 中继，保留请求压缩和流式响应。宿主侧读取最新登录，提前刷新即将到期的 ChatGPT access token；登录被撤销时明确报错，需要在宿主重新登录。平台仍统一承担模型调用，用量按用户归属记录。此隔离面向 Agent 工作区，不防御能够直接读取宿主进程或文件的本机系统用户。
 
 网络经过本用户专属 Unix socket 网关：普通出站只允许公共 HTTP/HTTPS，拒绝私网和宿主回环直连；语音和映芽内部请求由网关注入服务端用户身份。使用开发代理时，平台与内置 CDN 的可信域名保留域名路由，其他目的地固定到已校验的公网 IP。Chromium 也经过同一网关。代理环境只由宿主网关使用，不将宿主服务密钥传入 Agent 的环境变量。自定义后端端口需同步设置 `YINGYA_INTERNAL_API_BASE`。
 

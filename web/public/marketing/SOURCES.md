@@ -2,7 +2,6 @@
 
 ## 原创演示
 - `yingya-intro-v4.mp4`：首页当前主宣传片，来自项目 `11f96954-9d29-41b2-b068-a87701b005d6` 的封存视频 4「川味朋友旁白版」（`.yingya/versions/draft-4/artifacts/draft-4.mp4`）。完整保留 65.83 秒内容、川味旁白和配乐，1920×1080／30 fps、H.264 + AAC；视频流和音频流直接复制，不二次压缩，仅重封装启用 MP4 faststart，约 6.5 MB。对应封面 `yingya-intro-v4.jpg` 取自该版本第 64.5 秒。网页使用无需登录的独立公共副本，项目原始文件与版本记录保持不变。
-- `yingya-intro-v2.mp4`：历史首页宣传片，来自项目 `11f96954-9d29-41b2-b068-a87701b005d6` 的草稿二导出 `draft-2-landscape-4k-60fps-e3aa8f79-ed59-4a63-a546-a0467ea06a8f.mp4`。保留完整 65.83 秒内容与配音，由 4K／60 fps 转为 1080p／60 fps、H.264（CRF 23）+ AAC（160 kbps），启用 MP4 faststart，约 4.7 MB。对应封面 `yingya-intro-v2.jpg` 取自成片第 64.5 秒。项目中的原始导出保留不变；网页使用独立公共副本，无需登录。
 - `yingya-brand.mp4`：映芽品牌短片，12 秒无声；原创生成日落山景 + HyperFrames 可编辑中文动态排版。源文件在 `examples/marketing-film/`。
 - `yingya-type.mp4`：映芽动态文字短片，8 秒无声；源文件在 `examples/marketing-type/`。
 - `yingya-landscape.jpg`：原创生成山景素材的网页优化版本，仅用于对话修改示意。
@@ -12,7 +11,7 @@
 保留原视频内容，移除声音并生成静态封面供首页播放；一般示例压缩到 960 像素宽。知识动画改用原始 1920×1080 视频 `decision-tree-hd.mp4`（视频流直接复制，不二次压缩，启用 faststart），封面 `decision-tree-hd.png` 从原片第 6 秒按原始尺寸无损提取。首页与作品列表均使用高清版本。不声称为映芽客户作品，不表示示例中的公司使用或认可映芽。数据示例中的数值仅为原模板演示数据。
 
 - `product-promo.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/product-promo.mp4
-- `decision-tree.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/decision-tree.mp4
+- `decision-tree-hd.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/decision-tree.mp4
 - `nyt-graph.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/nyt-graph.mp4
 - `website-story.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1-s.mp4
 - `kinetic-type-hd.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/kinetic-type.mp4 — 作品列表的人物动效示例，原始 1920×1080、15 秒，保留原音轨与视频流，仅重封装为 faststart MP4。封面 `kinetic-type-hd.png` 在第 3.5 秒按原始尺寸无损提取。

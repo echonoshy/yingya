@@ -1,37 +1,24 @@
 import { chromium } from "playwright";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-
-const host = "127.0.0.1";
-const port = 4174;
-const baseUrl = process.env.YINGYA_UI_QA_URL ?? `http://${host}:${port}`;
+// Reuse the named tmux frontend service, as the marketing checks do.
+const baseUrl = process.env.YINGYA_UI_QA_URL ?? "http://127.0.0.1:8798";
 const workspaceUrl = `${baseUrl}/app`;
-const preview = process.env.YINGYA_UI_QA_URL ? null : spawn(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--config", "web/vite.config.ts", "--host", host, "--port", String(port), "--strictPort"], {
-  cwd: new URL("..", import.meta.url),
-  stdio: ["ignore", "pipe", "pipe"],
-});
 
-let previewOutput = "";
-preview?.stdout.on("data", chunk => { previewOutput += chunk; });
-preview?.stderr.on("data", chunk => { previewOutput += chunk; });
-
-async function waitForPreview() {
+async function waitForFrontend() {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (preview && preview.exitCode !== null) throw new Error(`Vite preview exited early:\n${previewOutput}`);
     try {
-      const response = await fetch(baseUrl);
+      const response = await fetch(baseUrl, { signal: AbortSignal.timeout(2_000) });
       if (response.ok) return;
-    } catch { /* preview is still starting */ }
+    } catch { /* the tmux service may still be starting */ }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-  throw new Error(`Timed out waiting for Vite preview:\n${previewOutput}`);
+  throw new Error(`No frontend at ${baseUrl}. Run npm run web:service:start (tmux yingya-frontend, port 8798), or set YINGYA_UI_QA_URL.`);
 }
 
 const now = 1_750_000_000_000;
 const record = {
   id: "11111111-1111-4111-8111-111111111111", title: "秋季新品短片", status: "waiting", statusLabel: "等待确认",
-  threadId: "thread-1", activeTurnId: null, queueDepth: 1, queuePaused: true, model: "gpt-5.4",
+  threadId: "thread-1", activeTurnId: null, queueDepth: 1, queuePaused: true, model: "gpt-5.6-terra",
   reasoningEffort: "medium", aspectRatio: "9:16", createdAt: now, updatedAt: now,
   voiceId: "default",
 };
@@ -125,8 +112,8 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (pathname.endsWith("/events")) return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": ready\n\n" });
     if (pathname.endsWith("/event-log")) return json(route, {
       items: [
-        { seq: 1, projectId: seed.id, turnId: "turn-1", method: "item/started", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "hyperframes lint" } } }, createdAt: now },
-        { seq: 2, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "hyperframes lint", status: "completed", aggregatedOutput: "passed" } } }, createdAt: now + 1 },
+        { seq: 1, projectId: seed.id, turnId: "turn-1", method: "item/started", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "hyperframes check" } } }, createdAt: now },
+        { seq: 2, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "hyperframes check", status: "completed", aggregatedOutput: "passed" } } }, createdAt: now + 1 },
         { seq: 3, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "update-1", type: "agentMessage", text: "画面结构已经确认，接下来整理制作文件。" } } }, createdAt: now + 4 },
         { seq: 4, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "file-1", type: "fileChange", status: "completed", changes: [{ path: "plans/production.md" }] } } }, createdAt: now + 6 },
       ],
@@ -153,8 +140,8 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       return route.fulfill({ status: 204, body: "" });
     }
     if (pathname.endsWith("/checkpoint") && method === "POST") return json(route, { turnId: "turn-confirm", status: "queued", queueDepth: 1 });
-    if (pathname.endsWith("/studio") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, state: "running", host: "0.0.0.0", port: 8600, projectName: current.id, lastSeenAt: now });
-    if (pathname.endsWith("/studio/heartbeat") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, state: "running", host: "0.0.0.0", port: 8600, projectName: current.id, lastSeenAt: Date.now() });
+    if (pathname.endsWith("/studio") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: now });
+    if (pathname.endsWith("/studio/heartbeat") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: Date.now() });
     if (pathname.endsWith("/studio") && method === "DELETE") return route.fulfill({ status: 204, body: "" });
     if (pathname.endsWith("/studio/dirty") && method === "POST") return route.fulfill({ status: 204, body: "" });
     if (pathname.endsWith("/render") && method === "POST") {
@@ -1160,7 +1147,7 @@ async function assertFrontendRecovery(browser) {
 
 let browser;
 try {
-  await waitForPreview();
+  await waitForFrontend();
   browser = await chromium.launch({ headless: true });
   await assertFrontendRecovery(browser);
   await assertCompactWorkspaceAndQueue(browser);
@@ -1183,6 +1170,4 @@ try {
   console.log("Screenshots: /tmp/yingya-ui-asset-bulk-select.png, /tmp/yingya-ui-asset-bulk-moved.png, /tmp/yingya-ui-asset-bulk-mobile.png, /tmp/yingya-ui-home-desktop.png, /tmp/yingya-ui-hyperframes-live.png, /tmp/yingya-ui-hyperframes-live-mobile.png, /tmp/yingya-ui-hyperframes-live-320.png, /tmp/yingya-ui-waiting-desktop.png, /tmp/yingya-ui-waiting-mobile.png, /tmp/yingya-ui-checkpoint.png, /tmp/yingya-ui-desktop.png, /tmp/yingya-ui-creation-pending-mobile.png, /tmp/yingya-ui-mobile.png");
 } finally {
   await browser?.close();
-  preview?.kill("SIGTERM");
-  if (preview && preview.exitCode === null) await Promise.race([once(preview, "exit"), new Promise(resolve => setTimeout(resolve, 2_000))]);
 }
