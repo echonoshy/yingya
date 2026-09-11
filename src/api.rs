@@ -74,6 +74,7 @@ struct AppState {
     render_jobs: RenderJobStore,
     studio_sessions: StudioSessionManager,
     voices: VoiceClient,
+    control: crate::runtime::Control,
 }
 
 #[derive(Debug, Deserialize)]
@@ -336,6 +337,8 @@ async fn user_router(
     accounts: Accounts,
     user: User,
     service_token: &str,
+    service_base: &str,
+    control: crate::runtime::Control,
 ) -> Result<Router, Box<dyn std::error::Error>> {
     for directory in [&paths.cache, &paths.runtime] {
         fs::create_dir_all(directory).await?;
@@ -349,6 +352,7 @@ async fn user_router(
         root.clone(),
         hyperframes_browser.clone(),
         service_token,
+        service_base,
     )
     .await
     .map_err(std::io::Error::other)?;
@@ -401,12 +405,29 @@ async fn user_router(
         render_jobs,
         studio_sessions,
         voices,
+        control,
     };
     audit_existing_project_workflows(&state).await;
     reconcile_render_jobs(&state).await;
     if let Err(error) = state.studio_sessions.adopt_existing().await {
         warn!(%error, "failed to adopt existing HyperFrames Studio sessions");
     }
+    // Resume accepted, undispatched work without waiting for a browser visit.
+    let recovery_state = state.clone();
+    let recovery_work = state.control.enter();
+    tokio::spawn(async move {
+        let _work = recovery_work;
+        if let Ok(projects) = recovery_state.agent_projects.list().await {
+            for project in projects {
+                let _gate = recovery_state.agent_jobs.lock(&project.id).await;
+                if let Err(error) =
+                    start_next_agent_turn_locked(recovery_state.clone(), project.id).await
+                {
+                    warn!(%error,"queued task recovery failed");
+                }
+            }
+        }
+    });
     spawn_studio_maintenance(state.clone());
     let app = Router::new()
         .route("/health", get(health))
@@ -957,7 +978,9 @@ async fn create_agent_project(
         let title_prompt = request.prompt.clone();
         let title_model = request.model.clone();
         let expected_title = created.title.clone();
+        let work = state.control.enter();
         tokio::spawn(async move {
+            let _work = work;
             if let Err(error) = summarize_and_update_project_title(
                 &title_state,
                 &title_project_id,
@@ -1401,6 +1424,15 @@ async fn render_agent_video(
     Path(project_id): Path<String>,
     Json(request): Json<RenderAgentVideoRequest>,
 ) -> Result<(StatusCode, Json<RenderAgentVideoResponse>), ApiError> {
+    start_render_job(state, project_id, request, None).await
+}
+
+async fn start_render_job(
+    state: AppState,
+    project_id: String,
+    request: RenderAgentVideoRequest,
+    retry: Option<RenderJob>,
+) -> Result<(StatusCode, Json<RenderAgentVideoResponse>), ApiError> {
     let (resolution, resolution_pixels, resolution_label) = match request.resolution.as_str() {
         "landscape" => ("landscape", "1920x1080", "1920 × 1080 p"),
         "landscape-4k" => ("landscape-4k", "3840x2160", "3840 × 2160 p"),
@@ -1429,6 +1461,17 @@ async fn render_agent_video(
         )));
     }
 
+    if retry.is_none()
+        && state
+            .render_jobs
+            .list(&project_id, 50)
+            .await
+            .map_err(ApiError::Project)?
+            .iter()
+            .any(RenderJob::is_active)
+    {
+        return Err(ApiError::Conflict("项目已有等待执行的渲染任务".into()));
+    }
     let manifest = state
         .agent_projects
         .manifest(&project_id)
@@ -1484,7 +1527,10 @@ async fn render_agent_video(
         ));
     }
 
-    let job_id = Uuid::new_v4().to_string();
+    let job_id = retry
+        .as_ref()
+        .map(|j| j.id.clone())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let relative_output =
         render_output_relative_path(&version.id, resolution, request.fps, &job_id);
     let output_path = state
@@ -1515,9 +1561,32 @@ async fn render_agent_video(
         request.fps,
         started_at,
     );
-    if let Err(error) = state.render_jobs.create(&project_id, queued_job).await {
+    if retry.is_none()
+        && let Err(error) = state.render_jobs.create(&project_id, queued_job).await
+    {
         state.agent_jobs.remove_render(&project_id).await;
         return Err(ApiError::Project(error));
+    }
+    if state.control.draining() {
+        state.agent_jobs.remove_render(&project_id).await;
+        state
+            .agent_projects
+            .update_project(&project_id, |record| {
+                record.status = "rendering".into();
+                record.status_label = "等待导出成片".into();
+            })
+            .await
+            .map_err(ApiError::Project)?;
+        emit_agent_state_event(&state, &project_id, None, "project/updated").await;
+        return Ok((
+            StatusCode::ACCEPTED,
+            Json(RenderAgentVideoResponse {
+                job_id,
+                status: "queued".into(),
+                resolution: resolution_pixels.into(),
+                fps: request.fps,
+            }),
+        ));
     }
     if let Err(error) = state
         .agent_projects
@@ -1532,6 +1601,10 @@ async fn render_agent_video(
     }
     if let Err(error) = update_render_job(&state, &project_id, &job_id, "render/started", |job| {
         job.status = RenderJobStatus::Running;
+        job.attempts = job.attempts.saturating_add(1);
+        job.retry_pending = false;
+        job.error = None;
+        job.ended_at = None;
         job.progress = 5;
         job.message = "正在准备渲染环境".to_owned();
     })
@@ -1548,7 +1621,9 @@ async fn render_agent_video(
     let render_resolution = resolution.to_owned();
     let render_resolution_pixels = resolution_pixels.to_owned();
     let render_resolution_label = resolution_label.to_owned();
+    let work = state.control.enter();
     tokio::spawn(async move {
+        let _work = work;
         run_render_job(
             render_state,
             render_project_id,
@@ -1598,6 +1673,13 @@ async fn run_render_job(
     })
     .await;
     let result = async {
+        if fs::try_exists(&output_path)
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            verify_render_output(&output_path).await?;
+            return Ok(());
+        }
         preflight_render_source(&state, &project_id, &job_id, &version, &source_dir).await?;
         update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
             job.progress = 12;
@@ -1642,6 +1724,7 @@ async fn run_render_job(
                     version.label, resolution_label, fps
                 );
                 let artifact_id = format!("final-{job_id}");
+                manifest.artifacts.retain(|a| a.id != artifact_id);
                 manifest.artifacts.push(AgentArtifact {
                     id: artifact_id,
                     kind: "final-video".to_owned(),
@@ -2433,6 +2516,18 @@ async fn emit_render_event(state: &AppState, project_id: &str, method: &str, job
 }
 
 async fn reconcile_render_jobs(state: &AppState) {
+    let mut retry_jobs = Vec::new();
+    if let Ok(projects) = state.agent_projects.list().await {
+        for project in projects {
+            if let Ok(jobs) = state.render_jobs.list(&project.id, 50).await {
+                for job in jobs {
+                    if (job.is_active() || job.retry_pending) && job.attempts < 3 {
+                        retry_jobs.push((project.id.clone(), job));
+                    }
+                }
+            }
+        }
+    }
     let interrupted = match state
         .render_jobs
         .reconcile_interrupted(agent_projects::now_millis())
@@ -2453,6 +2548,18 @@ async fn reconcile_render_jobs(state: &AppState) {
             })
             .await;
         emit_render_event(state, &project_id, "render/interrupted", &job).await;
+    }
+    for (project_id, job) in retry_jobs {
+        let request = RenderAgentVideoRequest {
+            version_id: job.version_id.clone(),
+            resolution: job.resolution.clone(),
+            fps: job.fps,
+        };
+        if let Err(error) =
+            start_render_job(state.clone(), project_id.clone(), request, Some(job)).await
+        {
+            warn!(%error,%project_id,"render recovery requires review");
+        }
     }
 }
 
@@ -3007,6 +3114,9 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
 
 async fn start_next_agent_turn_locked(state: AppState, project_id: String) -> Result<(), ApiError> {
     let _runtime = state.agent_jobs.lock_runtime().await;
+    if state.control.draining() {
+        return Ok(());
+    }
     if state.agent_jobs.contains(&project_id).await
         || state.agent_jobs.active_render(&project_id).await.is_some()
     {
@@ -3033,7 +3143,9 @@ async fn start_next_agent_turn_locked(state: AppState, project_id: String) -> Re
         )
         .await;
     let run_state = state.clone();
+    let work = state.control.enter();
     tokio::spawn(async move {
+        let _work = work;
         run_agent_queue(run_state, project_id, queued, cancellation).await;
     });
     Ok(())
@@ -3049,6 +3161,10 @@ async fn run_agent_queue(
         run_agent_turn(&state, &project_id, queued, &cancellation).await;
         let _gate = state.agent_jobs.lock(&project_id).await;
         let _runtime = state.agent_jobs.lock_runtime().await;
+        if state.control.draining() {
+            state.agent_jobs.remove(&project_id).await;
+            break;
+        }
         let next = state
             .agent_projects
             .claim_next(&project_id)
@@ -3081,6 +3197,18 @@ async fn run_agent_turn(
     queued: QueuedTurn,
     cancellation: &TurnCancellation,
 ) {
+    if let Err(error) = state
+        .agent_projects
+        .mark_turn_dispatched(project_id, &queued.id)
+        .await
+    {
+        warn!(%error, %project_id, "task dispatch journal unavailable");
+        let _ = state
+            .agent_projects
+            .set_queue_paused(project_id, true)
+            .await;
+        return;
+    }
     let generation = state.codex.generation();
     let mut project = match state.agent_projects.read_project(project_id).await {
         Ok(value) => value,
@@ -3174,6 +3302,13 @@ async fn run_agent_turn(
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
     let prompt = format!("{prompt}{}", feedback::prompt_context(&queued.feedback));
+    let prompt = if queued.recovery {
+        format!(
+            "这是一次经用户确认的中断恢复。先读取已有对话、项目 manifest、检查点、文件及外部任务记录，核对已完成工作，只继续缺失步骤。已完成的生成、付费调用和导出不得重复执行；外部请求结果不明确且无法查询时停止并说明需要核对的信息。以下是原始任务：\n{prompt}"
+        )
+    } else {
+        prompt
+    };
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Value>();
     let event_store = state.agent_projects.clone();
     let event_bus = state.agent_events.clone();
@@ -3712,7 +3847,9 @@ async fn audit_existing_project_workflows(state: &AppState) {
         return;
     };
     for project in projects {
-        if project.active_turn_id.is_some() {
+        if project.active_turn_id.is_some()
+            || (project.queue_paused && project.status == "interrupted")
+        {
             continue;
         }
         let Ok(mut manifest) = state.agent_projects.manifest(&project.id).await else {

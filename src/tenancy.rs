@@ -37,7 +37,7 @@ async fn tenant_slot(tenants: &TenantRouters, id: &str) -> Arc<OnceCell<Router>>
         .clone()
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct PreviewGrant {
     user: User,
     project: String,
@@ -53,6 +53,11 @@ struct Gateway {
     model_relay: crate::model_relay::ModelRelay,
     tenants: TenantRouters,
     service_tokens: ServiceTokens,
+    registry: Option<crate::runtime::Registry>,
+    pool: Option<crate::runtime::Pool>,
+    worker: Option<crate::runtime::Worker>,
+    control: crate::runtime::Control,
+    service_base: String,
 }
 #[derive(Deserialize)]
 struct Login {
@@ -97,7 +102,7 @@ fn same_origin(headers: &HeaderMap) -> bool {
     true
 }
 pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
+    crate::config::load_env();
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -118,13 +123,68 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .collect(),
     )
     .map_err(std::io::Error::other)?;
-    accounts
-        .recover_accounting()
-        .map_err(std::io::Error::other)?;
+    let mode = env::var("YINGYA_MODE").unwrap_or_else(|_| "gateway".into());
+    if !matches!(mode.as_str(), "gateway" | "worker" | "standalone") {
+        return Err("invalid YINGYA_MODE".into());
+    }
+    let registry = crate::runtime::Registry::open(&paths.app_data)?;
+    let _topology = if mode == "standalone" {
+        crate::runtime::Ownership::acquire(&registry.root.join("topology.lock"))?
+    } else {
+        crate::runtime::Ownership::shared(&registry.root.join("topology.lock"))?
+    };
+    let worker_user = if mode == "worker" {
+        Some(env::var("YINGYA_WORKER_USER")?)
+    } else {
+        None
+    };
+    let _owner = worker_user
+        .as_ref()
+        .map(|id| {
+            registry
+                .owner_path(id)
+                .and_then(|p| crate::runtime::Ownership::acquire(&p))
+        })
+        .transpose()?;
+    if let Some(id) = &worker_user {
+        accounts.recover_user_accounting(id)?;
+    } else if mode == "standalone" {
+        accounts.recover_accounting()?;
+    }
+    let address: SocketAddr = env::var("YINGYA_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:8797".into())
+        .parse()?;
+    if mode == "worker" && !address.ip().is_loopback() {
+        return Err("worker must bind to loopback".into());
+    }
+    let listener = TcpListener::bind(address).await?;
+    let address = listener.local_addr()?;
+    let release = crate::runtime::Release::current(&paths.resources)?;
+    let worker = worker_user.map(|user| crate::runtime::Worker {
+        user,
+        instance: env::var("YINGYA_WORKER_INSTANCE").unwrap_or_else(|_| Uuid::new_v4().to_string()),
+        session: env::var("YINGYA_WORKER_SESSION").unwrap_or_default(),
+        endpoint: format!("http://{address}"),
+        release: release.id.clone(),
+        token: crate::accounts::secret(),
+        heartbeat: crate::accounts::now(),
+    });
+    let pool = if mode == "gateway" {
+        registry.initialize_target(&release)?;
+        Some(crate::runtime::Pool::new(
+            paths.app_data.clone(),
+            registry.clone(),
+        )?)
+    } else {
+        None
+    };
     let model_relay = crate::model_relay::ModelRelay::new(&paths.codex_home)?;
     // Remove legacy credential copies before accepting requests, including dormant tenants.
     let mut users = fs::read_dir(paths.app_data.join("users")).await?;
     while let Some(entry) = users.next_entry().await? {
+        if mode != "standalone" {
+            break;
+        }
         if entry.file_type().await?.is_dir() {
             let home = entry.path().join("runtime/codex-home");
             if home.is_dir() {
@@ -135,19 +195,41 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    let state = Gateway {
+    let mut state = Gateway {
         previews: Default::default(),
         paths,
         accounts,
         model_relay,
         tenants: Default::default(),
         service_tokens: Default::default(),
+        registry: None,
+        pool: None,
+        worker: None,
+        control: Default::default(),
+        service_base: "http://127.0.0.1:8797".into(),
     };
+    state.registry = Some(registry.clone());
+    state.pool = pool;
+    state.worker = worker.clone();
+    state.service_base = format!("http://{address}");
+    if let Some(worker) = &worker {
+        let user = state.accounts.runtime_user(&worker.user)?;
+        let _ = state.router(&user).await?;
+        registry.register(worker)?;
+        info!(tmux=%worker.session, port=address.port(), release=%worker.release, "user worker ready");
+    }
+    if let Some(pool) = &state.pool {
+        pool.supervise();
+    }
+    let lifecycle = state.clone();
     let app = Router::new()
+        .route("/ready", get(readiness))
+        .route("/internal/runtime", get(runtime_status))
+        .route("/internal/drain", post(drain_runtime))
         .route(
             "/health",
             get(|| async {
-                Json(json!({"status":"ok","backend":"rust","loginMode":"invite-password"}))
+                Json(json!({"status":"ok","backend":"rust","loginMode":"invite-password","release":env::var("YINGYA_RELEASE_ID").unwrap_or_else(|_|"development".into())}))
             }),
         )
         .route(
@@ -207,14 +289,141 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .fallback(dispatch)
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            runtime_admission,
+        ))
         .with_state(state);
-    let address: SocketAddr = env::var("YINGYA_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:8797".into())
-        .parse()?;
-    let listener = TcpListener::bind(address).await?;
-    info!(%address,"Yingya multi-user backend is listening");
-    axum::serve(listener, app).await?;
+    info!(%address,%mode,"Yingya backend is listening");
+    let shutdown = async move {
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("SIGTERM");
+        let mut hup =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup()).expect("SIGHUP");
+        let mut last_heartbeat = tokio::time::Instant::now();
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => lifecycle.control.drain(),
+                _ = term.recv() => lifecycle.control.drain(),
+                _ = hup.recv() => lifecycle.control.drain(),
+                _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+            }
+            if let Some(worker) = &lifecycle.worker
+                && last_heartbeat.elapsed() >= Duration::from_secs(5)
+            {
+                last_heartbeat = tokio::time::Instant::now();
+                if let Err(error) = registry.heartbeat(worker) {
+                    warn!(%error,"worker heartbeat failed");
+                }
+            }
+            if lifecycle.control.finish_if_idle() {
+                break;
+            }
+        }
+    };
+    // SSE connections can remain open indefinitely. Once all finite work has
+    // drained, close these connections; clients replay their saved event cursor.
+    tokio::select! {
+        result = axum::serve(listener, app) => { result?; }
+        _ = shutdown => {}
+    }
+    if worker.is_some() {
+        std::process::exit(0);
+    }
     Ok(())
+}
+async fn readiness(State(g): State<Gateway>) -> Response {
+    if [
+        "web-dist/index.html",
+        "node_modules/.bin/codex",
+        "node_modules/.bin/hyperframes",
+        "scripts/sandbox-gateway.mjs",
+        "scripts/sandbox-bridge.mjs",
+        "skills/yingya-video-agent/SKILL.md",
+    ]
+    .iter()
+    .any(|path| !g.paths.resources.join(path).is_file())
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    if let Some(registry) = &g.registry
+        && registry.users().is_err()
+    {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    if g.model_relay.ready().await.is_err() {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    StatusCode::OK.into_response()
+}
+async fn runtime_status(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    let Some(worker) = &g.worker else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if headers.get("x-yingya-worker").and_then(|v| v.to_str().ok()) != Some(&worker.token) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    Json(json!({"instance":worker.instance,"release":worker.release,"draining":g.control.draining(),"active":g.control.active()})).into_response()
+}
+async fn drain_runtime(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    let Some(worker) = &g.worker else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if headers.get("x-yingya-worker").and_then(|v| v.to_str().ok()) != Some(&worker.token) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    g.control.drain();
+    StatusCode::ACCEPTED.into_response()
+}
+async fn runtime_admission(
+    State(g): State<Gateway>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if request.uri().path().starts_with("/internal/") {
+        return next.run(request).await;
+    }
+    if let Some(worker) = &g.worker {
+        let proxy = request
+            .headers()
+            .get("x-yingya-worker")
+            .and_then(|v| v.to_str().ok())
+            == Some(&worker.token);
+        let internal = request
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .is_some_and(|token| g.service_tokens.lock().unwrap().contains_key(token));
+        if !proxy && !internal {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    }
+    let Some(guard) = g.control.enter() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [("x-yingya-not-accepted", "1"), ("retry-after", "1")],
+        )
+            .into_response();
+    };
+    let response = next.run(request).await;
+    if response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("text/event-stream"))
+    {
+        // Model relay streams are finite and belong to active Agent jobs; public
+        // SSE subscriptions must not prevent worker retirement.
+        drop(guard);
+        return response;
+    }
+    let (parts, body) = response.into_parts();
+    let stream = body.into_data_stream().map(move |chunk| {
+        let _keep_alive = &guard;
+        chunk
+    });
+    Response::from_parts(parts, Body::from_stream(stream))
 }
 async fn login(State(g): State<Gateway>, headers: HeaderMap, Json(input): Json<Login>) -> Response {
     authenticate(g, headers, input, "login").await
@@ -821,9 +1030,16 @@ impl Gateway {
             hyperframes_home: root.join("runtime/hyperframes-home"),
         };
         // Reuse the installed browser binary as read-only tooling.
-        let router = user_router(paths, self.accounts.clone(), user.clone(), &token)
-            .await
-            .map_err(|e| e.to_string())?;
+        let router = user_router(
+            paths,
+            self.accounts.clone(),
+            user.clone(),
+            &token,
+            &self.service_base,
+            self.control.clone(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
         registration.committed = true;
         Ok(router)
     }
@@ -839,6 +1055,22 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
             .into_response();
     }
 
+    if let Some(pool) = &g.pool {
+        let owner = if let Some(rest) = request.uri().path().strip_prefix("/api/preview/") {
+            let token = rest.split('/').next().unwrap_or("");
+            match pool.registry.preview(token) {
+                Ok(Some((owner, _))) => Some(owner),
+                _ => None,
+            }
+        } else {
+            user(&g, request.headers()).map(|u| u.id)
+        };
+        let Some(owner) = owner else {
+            return failure(StatusCode::UNAUTHORIZED, "请先登录");
+        };
+        return pool.forward(&owner, request).await;
+    }
+
     let preview_request = if let Some(rest) = request.uri().path().strip_prefix("/api/preview/") {
         if request.method() != "GET" && request.method() != "HEAD" {
             return failure(StatusCode::METHOD_NOT_ALLOWED, "预览只支持读取文件");
@@ -846,7 +1078,15 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
         let Some((token, tail)) = rest.split_once('/') else {
             return failure(StatusCode::NOT_FOUND, "预览不存在");
         };
-        let grant = g.previews.lock().await.get(token).cloned();
+        let grant = if let Some(registry) = &g.registry {
+            registry
+                .preview(token)
+                .ok()
+                .flatten()
+                .and_then(|(_, payload)| serde_json::from_str::<PreviewGrant>(&payload).ok())
+        } else {
+            g.previews.lock().await.get(token).cloned()
+        };
         let Some(grant) = grant.filter(|p| {
             p.expires > crate::accounts::now() && g.accounts.session(&p.session).is_some()
         }) else {
@@ -875,6 +1115,9 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
     else {
         return failure(StatusCode::UNAUTHORIZED, "请先登录");
     };
+    if g.worker.as_ref().is_some_and(|w| w.user != user.id) {
+        return failure(StatusCode::NOT_FOUND, "用户运行环境不匹配");
+    }
     if g.accounts.quota(&user.id).map_or(true, |q| q.disabled) {
         return failure(StatusCode::FORBIDDEN, "账号已停用，请联系管理员");
     }
@@ -1026,6 +1269,18 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
                     expires: crate::accounts::now() + 1800,
                 },
             );
+            if let Some(registry) = &g.registry {
+                let grant = grants.get(&token).unwrap();
+                if let Err(error) = registry.save_preview(
+                    &token,
+                    &user.id,
+                    &serde_json::to_string(grant).unwrap(),
+                    grant.expires,
+                ) {
+                    warn!(%error,"preview grant persistence failed");
+                    return failure(StatusCode::SERVICE_UNAVAILABLE, "预览暂不可用");
+                }
+            }
             Some(format!("/api/preview/{token}/index.html"))
         } else {
             None
@@ -1262,6 +1517,11 @@ mod tests {
             previews: Default::default(),
             tenants: Default::default(),
             service_tokens: Default::default(),
+            registry: None,
+            pool: None,
+            worker: None,
+            control: Default::default(),
+            service_base: "http://127.0.0.1:8797".into(),
         };
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -1369,6 +1629,11 @@ mod tests {
             previews: Default::default(),
             tenants: Default::default(),
             service_tokens: Default::default(),
+            registry: None,
+            pool: None,
+            worker: None,
+            control: Default::default(),
+            service_base: "http://127.0.0.1:8797".into(),
         };
         tenant_slot(&g.tenants, &user.id)
             .await

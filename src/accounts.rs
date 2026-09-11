@@ -49,6 +49,8 @@ pub fn secret() -> String {
 impl Accounts {
     pub fn open(path: &Path, admins: Vec<String>) -> Result<Self, String> {
         let db = Connection::open(path).map_err(|e| e.to_string())?;
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| e.to_string())?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
           CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,created_at INTEGER NOT NULL);
           CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires_at INTEGER NOT NULL);
@@ -69,6 +71,9 @@ impl Accounts {
                     .collect(),
             ),
         ))
+    }
+    pub fn runtime_user(&self, id: &str) -> Result<User, String> {
+        self.0.lock().unwrap().query_row("SELECT u.id,u.email,a.admin FROM users u JOIN account_access a ON a.user_id=u.id WHERE u.id=?1 AND a.disabled=0",[id],|r|Ok(User{id:r.get(0)?,email:r.get(1)?,is_admin:r.get(2)?})).map_err(|e|e.to_string())
     }
     #[cfg(test)]
     pub fn login(&self, email: &str) -> Result<(User, String), String> {

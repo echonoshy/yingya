@@ -124,6 +124,20 @@ impl Accounts {
         tx.commit().map_err(|e| e.to_string())
     }
 
+    /// Called only after acquiring this user's exclusive runtime ownership.
+    pub fn recover_user_accounting(&self, user: &str) -> Result<(), String> {
+        let mut db = self.0.lock().map_err(|e| e.to_string())?;
+        let tx = db.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE turns SET status='interrupted' WHERE user_id=?1 AND status='running'",
+            [user],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute("UPDATE account_access SET used_tokens=used_tokens+COALESCE((SELECT SUM(reserved) FROM model_charges WHERE user_id=?1 AND status='running'),0),used_media=used_media+COALESCE((SELECT SUM(media) FROM model_charges WHERE user_id=?1 AND status='running'),0) WHERE user_id=?1",[user]).map_err(|e|e.to_string())?;
+        tx.execute("UPDATE model_charges SET tokens=reserved,status='unknown' WHERE user_id=?1 AND status='running'",[user]).map_err(|e|e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
     pub fn invite(&self, input: InviteInput, admin: bool) -> Result<Value, String> {
         if !(1..=365).contains(&input.expires_in_days)
             || !(1..=1000).contains(&input.max_uses)

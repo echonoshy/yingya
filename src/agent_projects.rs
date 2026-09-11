@@ -128,6 +128,18 @@ pub struct QueuedTurn {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub created_at: u64,
+    #[serde(default)]
+    pub recovery: bool,
+    #[serde(default)]
+    pub needs_confirmation: bool,
+}
+
+/// Write-ahead claim. Persisted and synced before removing a queue entry.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct ActiveTurnJournal {
+    turn: QueuedTurn,
+    #[serde(default)]
+    dispatched: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -685,7 +697,7 @@ impl AgentProjectStore {
                 });
             }
             project.queue_depth = queue.len();
-            project.queue_paused = false;
+            project.queue_paused = queue.first().is_some_and(|t| t.needs_confirmation);
             project.updated_at = now_millis();
             write_json(&message_path, &messages).await?;
             write_json(&project_path, &project).await?;
@@ -714,6 +726,8 @@ impl AgentProjectStore {
                     model: None,
                     reasoning_effort: None,
                     created_at: existing.created_at,
+                    recovery: false,
+                    needs_confirmation: false,
                 });
             return Ok(SubmittedTurn {
                 turn,
@@ -730,6 +744,8 @@ impl AgentProjectStore {
             model: request.model,
             reasoning_effort: request.reasoning_effort,
             created_at: now_millis(),
+            recovery: false,
+            needs_confirmation: false,
         };
         let message = AgentMessage {
             id: Uuid::new_v4().to_string(),
@@ -750,7 +766,7 @@ impl AgentProjectStore {
         }
         messages.push(message);
         project.queue_depth = queue.len();
-        project.queue_paused = false;
+        project.queue_paused = queue.first().is_some_and(|t| t.needs_confirmation);
         project.updated_at = now_millis();
         write_json(&queue_path, &queue).await?;
         write_json(&message_path, &messages).await?;
@@ -773,7 +789,21 @@ impl AgentProjectStore {
             return Ok(None);
         }
         let mut queue: Vec<QueuedTurn> = read_json_or_default(&queue_path).await?;
-        let next = (!queue.is_empty()).then(|| queue.remove(0));
+        if queue.first().is_some_and(|t| t.needs_confirmation) {
+            return Ok(None);
+        }
+        let next = queue.first().cloned();
+        if let Some(turn) = &next {
+            write_json(
+                &directory.join(".yingya/active-turn.json"),
+                &ActiveTurnJournal {
+                    turn: turn.clone(),
+                    dispatched: false,
+                },
+            )
+            .await?;
+            queue.remove(0);
+        }
         let mut messages: Vec<AgentMessage> = read_json_or_default(&message_path).await?;
         if let Some(turn) = &next {
             if let Some(message) = messages
@@ -794,6 +824,24 @@ impl AgentProjectStore {
         Ok(next)
     }
 
+    pub async fn mark_turn_dispatched(
+        &self,
+        project_id: &str,
+        turn_id: &str,
+    ) -> Result<(), String> {
+        let lock = self.project_lock(project_id).await?;
+        let _guard = lock.lock().await;
+        let path = self
+            .project_dir(project_id)?
+            .join(".yingya/active-turn.json");
+        let mut active: ActiveTurnJournal = read_json(&path).await?;
+        if active.turn.id != turn_id {
+            return Err("active task identity changed".into());
+        }
+        active.dispatched = true;
+        write_json(&path, &active).await
+    }
+
     pub async fn prioritize_queued(&self, project_id: &str, turn_id: &str) -> Result<bool, String> {
         let lock = self.project_lock(project_id).await?;
         let _guard = lock.lock().await;
@@ -803,7 +851,8 @@ impl AgentProjectStore {
         let Some(index) = queue.iter().position(|turn| turn.id == turn_id) else {
             return Ok(false);
         };
-        let turn = queue.remove(index);
+        let mut turn = queue.remove(index);
+        turn.needs_confirmation = false;
         queue.insert(0, turn);
         let project_path = directory.join("project.json");
         let mut project: AgentProjectRecord = read_json(&project_path).await?;
@@ -847,6 +896,16 @@ impl AgentProjectStore {
         project_id: &str,
         paused: bool,
     ) -> Result<AgentProjectRecord, String> {
+        if !paused {
+            let lock = self.project_lock(project_id).await?;
+            let _guard = lock.lock().await;
+            let path = self.project_dir(project_id)?.join("queue.json");
+            let mut queue: Vec<QueuedTurn> = read_json_or_default(&path).await?;
+            for turn in &mut queue {
+                turn.needs_confirmation = false;
+            }
+            write_json(&path, &queue).await?;
+        }
         self.update_project(project_id, |record| {
             record.queue_paused = paused;
             if paused {
@@ -1230,7 +1289,76 @@ impl AgentProjectStore {
 
     pub async fn recover_interrupted(&self) -> Result<(), String> {
         for project in self.list().await? {
-            if project.active_turn_id.is_some() || project.status == "running" {
+            let directory = self.project_dir(&project.id)?;
+            let journal_path = directory.join(".yingya/active-turn.json");
+            let journal: Option<ActiveTurnJournal> = match fs::read(&journal_path).await {
+                Ok(bytes) => Some(serde_json::from_slice(&bytes).map_err(|e| e.to_string())?),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(e.to_string()),
+            };
+            if let Some(journal) = journal {
+                let messages: Vec<AgentMessage> =
+                    read_json_or_default(&directory.join("messages.json")).await?;
+                let terminal = messages.iter().any(|m| {
+                    m.turn_id.as_deref() == Some(&journal.turn.id)
+                        && m.role == "user"
+                        && matches!(
+                            m.status.as_str(),
+                            "completed" | "failed" | "cancelled" | "interrupted"
+                        )
+                });
+                if !terminal && !project.queue_paused {
+                    let mut queue: Vec<QueuedTurn> =
+                        read_json_or_default(&directory.join("queue.json")).await?;
+                    let mut recovered = journal.turn.clone();
+                    recovered.recovery |= journal.dispatched;
+                    recovered.needs_confirmation |= journal.dispatched;
+                    queue.retain(|t| t.id != recovered.id);
+                    queue.insert(0, recovered);
+                    write_json(&directory.join("queue.json"), &queue).await?;
+                    self.update_message_status(&project.id, &journal.turn.id, "queued")
+                        .await?;
+                    self.update_project(&project.id, |r| {
+                        r.active_turn_id = None;
+                        r.queue_depth = queue.len();
+                        r.queue_paused = journal.dispatched;
+                        r.status = if journal.dispatched {
+                            "interrupted"
+                        } else {
+                            "queued"
+                        }
+                        .into();
+                        r.status_label = if journal.dispatched {
+                            "执行中断，原请求已保留；请核对已有成果后继续"
+                        } else {
+                            "任务已恢复，等待继续执行"
+                        }
+                        .into();
+                    })
+                    .await?;
+                    if journal.dispatched {
+                        let mut manifest = self.manifest(&project.id).await?;
+                        manifest.dirty = true;
+                        self.write_manifest(&project.id, &manifest).await?;
+                    }
+                } else {
+                    self.update_project(&project.id, |r| {
+                        r.active_turn_id = None;
+                        if matches!(r.status.as_str(), "running" | "stopping") {
+                            r.status = if r.queue_paused {
+                                "interrupted"
+                            } else {
+                                "idle"
+                            }
+                            .into();
+                        }
+                    })
+                    .await?;
+                }
+                fs::remove_file(&journal_path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            } else if project.active_turn_id.is_some() || project.status == "running" {
                 if let Some(turn_id) = project.active_turn_id.as_deref() {
                     self.update_message_status(&project.id, turn_id, "interrupted")
                         .await?;
@@ -1657,17 +1785,129 @@ async fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(),
     reject_symlink_components(path)?;
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
     let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
-    fs::write(&temporary, bytes)
+    let mut file = fs::File::create(&temporary)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|e| e.to_string())?;
+    file.write_all(&bytes).await.map_err(|e| e.to_string())?;
+    file.sync_all().await.map_err(|e| e.to_string())?;
     fs::rename(&temporary, path)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::File::open(parent)
+            .await
+            .map_err(|e| e.to_string())?
+            .sync_all()
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn claim_journal_recovers_payload_once_at_both_dequeue_crash_boundaries() {
+        for queue_was_removed in [false, true] {
+            let root =
+                std::env::temp_dir().join(format!("yingya-claim-recovery-{}", Uuid::new_v4()));
+            let store = AgentProjectStore::new(root.clone()).await.unwrap();
+            let project = store.create(&request()).await.unwrap();
+            let mut input = turn("preserve my original task");
+            input.model = Some("gpt-5.6-terra".into());
+            input.reasoning_effort = Some("high".into());
+            input.attachments = vec!["assets/original.png".into()];
+            let accepted = store.submit_turn(&project.id, input, false).await.unwrap();
+            store.claim_next(&project.id).await.unwrap();
+            if !queue_was_removed {
+                write_json(
+                    &store.project_dir(&project.id).unwrap().join("queue.json"),
+                    &vec![accepted.turn.clone()],
+                )
+                .await
+                .unwrap();
+            }
+            drop(store);
+            let reopened = AgentProjectStore::new(root.clone()).await.unwrap();
+            reopened.recover_interrupted().await.unwrap();
+            reopened.recover_interrupted().await.unwrap();
+            let detail = reopened.get(&project.id).await.unwrap();
+            assert_eq!(detail.queue.len(), 1);
+            assert!(!detail.project.queue_paused);
+            assert_eq!(
+                serde_json::to_value(&detail.queue[0]).unwrap(),
+                serde_json::to_value(&accepted.turn).unwrap()
+            );
+            assert_eq!(
+                reopened.claim_next(&project.id).await.unwrap().unwrap().id,
+                accepted.turn.id
+            );
+            fs::remove_dir_all(root).await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn uncertain_execution_requires_explicit_resume_even_after_a_new_submission() {
+        let root = std::env::temp_dir().join(format!("yingya-confirm-recovery-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let project = store.create(&request()).await.unwrap();
+        let accepted = store
+            .submit_turn(&project.id, turn("possibly paid external operation"), false)
+            .await
+            .unwrap();
+        store.claim_next(&project.id).await.unwrap();
+        store
+            .mark_turn_dispatched(&project.id, &accepted.turn.id)
+            .await
+            .unwrap();
+        store.recover_interrupted().await.unwrap();
+        store.recover_interrupted().await.unwrap();
+        assert!(store.get(&project.id).await.unwrap().project.queue_paused);
+        store
+            .submit_turn(&project.id, turn("another message"), false)
+            .await
+            .unwrap();
+        assert!(store.claim_next(&project.id).await.unwrap().is_none());
+        store.set_queue_paused(&project.id, false).await.unwrap();
+        let resumed = store.claim_next(&project.id).await.unwrap().unwrap();
+        assert_eq!(resumed.id, accepted.turn.id);
+        assert!(resumed.recovery);
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn completed_and_user_stopped_tasks_are_never_automatically_replayed() {
+        for completed in [false, true] {
+            let root =
+                std::env::temp_dir().join(format!("yingya-terminal-recovery-{}", Uuid::new_v4()));
+            let store = AgentProjectStore::new(root.clone()).await.unwrap();
+            let project = store.create(&request()).await.unwrap();
+            let accepted = store
+                .submit_turn(&project.id, turn("task"), false)
+                .await
+                .unwrap();
+            store.claim_next(&project.id).await.unwrap();
+            store
+                .mark_turn_dispatched(&project.id, &accepted.turn.id)
+                .await
+                .unwrap();
+            if completed {
+                store
+                    .update_message_status(&project.id, &accepted.turn.id, "completed")
+                    .await
+                    .unwrap();
+            } else {
+                store.set_queue_paused(&project.id, true).await.unwrap();
+            }
+            store.recover_interrupted().await.unwrap();
+            store.recover_interrupted().await.unwrap();
+            assert!(store.get(&project.id).await.unwrap().queue.is_empty());
+            assert!(store.claim_next(&project.id).await.unwrap().is_none());
+            fs::remove_dir_all(root).await.unwrap();
+        }
+    }
 
     fn request() -> CreateAgentProjectRequest {
         CreateAgentProjectRequest {

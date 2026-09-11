@@ -1,3 +1,11 @@
+pub fn load_env() {
+    if let Some(path) = std::env::var_os("YINGYA_ENV_FILE") {
+        dotenvy::from_path(path).ok();
+    } else {
+        dotenvy::dotenv().ok();
+    }
+}
+
 use std::{env, path::PathBuf};
 
 #[derive(Clone, Debug)]

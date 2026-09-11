@@ -42,7 +42,11 @@
     "backend:service:status": "bash scripts/dev-service.sh backend status",
     "test:services": "node --test tests/dev-service.test.mjs tests/sandbox-stdio.test.mjs",
     "codex": "bash scripts/codex.sh",
-    "codex:login": "bash scripts/codex.sh login"
+    "codex:login": "bash scripts/codex.sh login",
+    "release:build": "python3 scripts/release.py build",
+    "release:activate": "python3 scripts/release.py activate",
+    "release:status": "python3 scripts/release.py status",
+    "test:rolling": "cargo build --locked && python3 tests/rolling-runtime.test.py"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-sc": "^5.3.0",

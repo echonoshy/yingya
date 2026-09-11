@@ -11,7 +11,7 @@ case "${service}" in
     session="yingya-backend"
     port="${YINGYA_ADDR:-127.0.0.1:8797}"
     port="${port##*:}"
-    command=(cargo run)
+    command=(env "YINGYA_MODE=${YINGYA_MODE:-standalone}" cargo run)
     ;;
   frontend)
     session="yingya-frontend"
@@ -59,7 +59,23 @@ start_service() {
 }
 
 stop_service() {
-  if has_session; then tmux kill-session -t "=${session}"; fi
+  if has_session; then
+    if [[ "${service}" == backend ]]; then
+      tmux send-keys -t "=${session}:" C-c
+      # Keep a draining backend visible in its session. Never kill its tasks to
+      # satisfy a restart deadline or launch another writer while it is alive.
+      for ((attempt=0; attempt<240; attempt++)); do
+        if ! has_session; then break; fi
+        sleep 0.25
+      done
+      if has_session; then
+        echo "Draining: tmux=${session} port=${port}; existing tasks are still finishing. Retry after they complete." >&2
+        return 1
+      fi
+    else
+      tmux kill-session -t "=${session}"
+    fi
+  fi
   echo "Stopped: tmux=${session} port=${port}"
 }
 

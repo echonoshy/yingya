@@ -59,6 +59,21 @@ impl ModelRelay {
         write_auth(&home.join("auth.json"), &placeholder).await
     }
 
+    pub async fn ready(&self) -> Result<(), String> {
+        let auth = self.read_auth().await?;
+        if auth["OPENAI_API_KEY"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+            || auth["tokens"]["access_token"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty())
+        {
+            Ok(())
+        } else {
+            Err("模型凭据不可用".into())
+        }
+    }
+
     async fn read_auth(&self) -> Result<Value, String> {
         let bytes = fs::read(&self.auth_path)
             .await
@@ -69,6 +84,19 @@ impl ModelRelay {
     async fn credentials(&self) -> Result<Value, String> {
         // One refresh for all tenants; reread the host file to pick up a fresh login.
         let _guard = self.refresh.lock().await;
+        // All user workers share the host refresh credential. Serialize refresh
+        // across processes as well as tasks, without using the user sandbox.
+        let lock_path = self.auth_path.with_extension("refresh.lock");
+        let wait_started = tokio::time::Instant::now();
+        let _process_guard = loop {
+            if wait_started.elapsed() > Duration::from_secs(30) {
+                return Err("模型凭据正在刷新，请稍后重试".into());
+            }
+            match crate::runtime::Ownership::acquire(&lock_path) {
+                Ok(guard) => break guard,
+                Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
+            }
+        };
         let mut auth = self.read_auth().await?;
         if !access_token_expiring(&auth) {
             return Ok(auth);

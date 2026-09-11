@@ -16,3 +16,5 @@
 
 - [VoxCPM2 运维说明](../deploy/voxcpm2/README.md)：语音服务生命周期、音色与请求示例。
 - [首页媒体来源](../web/public/marketing/SOURCES.md)：介绍视频与演示案例的素材出处。
+
+- [不停机更新与任务恢复](ROLLING_UPDATES.md)：独立 Worker、滚动发布、回滚和故障恢复。

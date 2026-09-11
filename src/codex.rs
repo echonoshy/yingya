@@ -152,6 +152,7 @@ pub struct CodexClient {
     next_id: AtomicU64,
     generation: AtomicU64,
     _child: Mutex<Child>,
+    loaded_threads: Mutex<std::collections::HashSet<String>>,
 }
 
 impl CodexClient {
@@ -170,6 +171,7 @@ impl CodexClient {
             next_id: AtomicU64::new(1),
             generation: AtomicU64::new(0),
             _child: Mutex::new(child),
+            loaded_threads: Mutex::new(Default::default()),
         });
 
         client.initialize().await?;
@@ -188,6 +190,7 @@ impl CodexClient {
     pub async fn restart(&self) -> Result<(), CodexError> {
         self.generation.fetch_add(1, Ordering::AcqRel);
         self.pending.lock().await.clear();
+        self.loaded_threads.lock().await.clear();
         {
             let mut current = self._child.lock().await;
             current.kill().await?;
@@ -319,6 +322,7 @@ impl CodexClient {
                 )
                 .map_err(CodexError::Rpc)?;
         }
+        self.loaded_threads.lock().await.insert(thread_id.clone());
         Ok(ThreadStarted { thread_id })
     }
 
@@ -373,6 +377,17 @@ impl CodexClient {
             accounts
                 .set_model(thread_id, options.model.unwrap_or(&self.config.model))
                 .map_err(CodexError::Rpc)?;
+        }
+        // A restarted app-server must load the persisted conversation before
+        // turn/start. Keep the existing thread instead of silently losing history.
+        {
+            let mut loaded = self.loaded_threads.lock().await;
+            if !loaded.contains(thread_id) {
+                self.request("thread/resume", json!({
+                    "threadId": thread_id, "approvalPolicy": "on-request", "sandbox": "workspace-write"
+                })).await?;
+                loaded.insert(thread_id.to_owned());
+            }
         }
         let submitted_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

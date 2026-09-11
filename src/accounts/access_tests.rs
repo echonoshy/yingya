@@ -258,3 +258,21 @@ fn reopening_does_not_settle_live_reservations_but_recovery_does_once() {
     drop(db);
     let _ = std::fs::remove_file(path);
 }
+
+#[test]
+fn worker_recovery_never_settles_another_users_live_charge() {
+    let db = Accounts::open(Path::new(":memory:"), vec![]).unwrap();
+    let (first, _) = register(&db, "first@example.com", 100);
+    let (second, _) = register(&db, "second@example.com", 200);
+    let mut first_charge = db.reserve_model(&first.id).unwrap();
+    first_charge.mark_sent();
+    let mut second_charge = db.reserve_model(&second.id).unwrap();
+    second_charge.mark_sent();
+    db.recover_user_accounting(&first.id).unwrap();
+    db.recover_user_accounting(&first.id).unwrap();
+    assert_eq!(db.quota(&first.id).unwrap().used_tokens, 100);
+    assert_eq!(db.quota(&second.id).unwrap().used_tokens, 0);
+    assert_eq!(db.quota(&second.id).unwrap().reserved_tokens, 200);
+    drop(first_charge);
+    drop(second_charge);
+}

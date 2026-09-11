@@ -30,6 +30,10 @@ pub struct RenderJob {
     pub resolution: String,
     pub fps: u16,
     pub progress: u8,
+    #[serde(default)]
+    pub attempts: u8,
+    #[serde(default)]
+    pub retry_pending: bool,
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_path: Option<String>,
@@ -51,6 +55,8 @@ impl RenderJob {
             resolution,
             fps,
             progress: 0,
+            attempts: 0,
+            retry_pending: false,
             message: "等待开始渲染".to_owned(),
             output_path: None,
             error: None,
@@ -180,6 +186,7 @@ impl RenderJobStore {
                             .join(".yingya/exports/.tmp")
                             .join(format!("{}.partial.mp4", job.id)),
                     );
+                    job.retry_pending = job.attempts < 3;
                     job.status = RenderJobStatus::Interrupted;
                     job.progress = 0;
                     job.message = "服务重启导致渲染中断，可按原设置重试".to_owned();
@@ -221,12 +228,23 @@ async fn write_jobs(path: &Path, jobs: &[RenderJob]) -> Result<(), String> {
     }
     let bytes = serde_json::to_vec_pretty(jobs).map_err(|error| error.to_string())?;
     let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
-    fs::write(&temporary, bytes)
+    use tokio::io::AsyncWriteExt;
+    let mut file = fs::File::create(&temporary)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|e| e.to_string())?;
+    file.write_all(&bytes).await.map_err(|e| e.to_string())?;
+    file.sync_all().await.map_err(|e| e.to_string())?;
     if let Err(error) = fs::rename(&temporary, path).await {
         let _ = fs::remove_file(&temporary).await;
         return Err(error.to_string());
+    }
+    if let Some(parent) = path.parent() {
+        fs::File::open(parent)
+            .await
+            .map_err(|e| e.to_string())?
+            .sync_all()
+            .await
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }

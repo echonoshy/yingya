@@ -23,6 +23,7 @@ impl Sandbox {
         resources: PathBuf,
         browser: Option<PathBuf>,
         token: &str,
+        service_base: &str,
     ) -> Result<Self, String> {
         let node = std::env::var_os("PATH")
             .and_then(|p| {
@@ -39,11 +40,7 @@ impl Sandbox {
             .arg(resources.join("scripts/sandbox-gateway.mjs"))
             .env("YINGYA_GATEWAY_SOCKET", &socket)
             .env("YINGYA_SERVICE_TOKEN", token)
-            .env(
-                "YINGYA_BACKEND_BASE",
-                std::env::var("YINGYA_INTERNAL_API_BASE")
-                    .unwrap_or_else(|_| "http://127.0.0.1:8797".into()),
-            )
+            .env("YINGYA_BACKEND_BASE", service_base)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
@@ -182,6 +179,7 @@ mod tests {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")),
             None,
             "test-only",
+            "http://127.0.0.1:8797",
         )
         .await
         .unwrap();
