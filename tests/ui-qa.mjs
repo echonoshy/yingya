@@ -1147,6 +1147,7 @@ async function assertFrontendRecovery(browser) {
     if (await page.getByRole('heading', { name: '本地服务未连接' }).count()) throw new Error('401 displayed as offline');
     await page.screenshot({ path: '/tmp/yingya-fixed-expired-session-390.png' });
     await page.locator('#login-email').fill('qa@example.com');
+    await page.locator('#login-password').fill('qa-test-password');
     await page.getByRole('button', { name: '进入工作台', exact: true }).click();
     await page.locator('.composer--hero textarea').waitFor();
     if (await page.locator('.composer--hero textarea').inputValue() !== '登录过期前的草稿') throw new Error('Login recovery lost the draft');

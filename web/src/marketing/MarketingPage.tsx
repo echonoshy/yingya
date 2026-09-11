@@ -4,8 +4,6 @@ import { categories, examples, featuredIntro, featuredLeft, featuredRight, poste
 import { BrandLogo as Brand } from './BrandLogo';
 import './marketing.css';
 
-const sourceUrl = 'https://hyperframes.heygen.com/examples';
-
 function HeroReel({ onOpen, suspended }: { onOpen: (example: VideoExample) => void; suspended: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -68,7 +66,7 @@ function Showcase({ onOpen }: { onOpen: (example: VideoExample) => void }) {
       <div className="marketing-example-image"><img src={posterPath(example.id)} alt="" width="960" height="540" loading="lazy" /><span className="marketing-play-icon"><Play weight="fill" /></span></div>
       <div className="marketing-example-caption"><h3>{example.title}</h3><ArrowUpRight /></div><p>{example.description}</p>
     </button>)}</div>
-    <p className="marketing-source">中文品牌与文字短片为映芽原创演示，其余为 <a href={sourceUrl} target="_blank" rel="noreferrer">HyperFrames 官方示例<ArrowUpRight /></a>。仅作效果参考。</p>
+    <p className="marketing-source">作品灵感包含映芽原创演示与第三方效果参考，并非客户案例。实际作品将根据你的内容与素材制作。</p>
   </section>;
 }
 
@@ -127,7 +125,7 @@ export function MarketingPage() {
       <section className="marketing-section marketing-faq" id="faq" aria-labelledby="faq-title"><h2 id="faq-title">开始之前，<br className="marketing-mobile-break" />你可能想问</h2><div>{faqs.map(([question, answer]) => <details key={question}><summary>{question}<Plus /></summary><p>{answer}</p></details>)}</div></section>
       <section className="marketing-closing"><h2>你的下一个作品，<br className="marketing-mobile-break" />从这里开始。</h2><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a></section>
     </main>
-    <footer className="marketing-footer"><Brand /><p>把内容，做成会动的视频。</p><a href={sourceUrl} target="_blank" rel="noreferrer">探索 HyperFrames<ArrowUpRight /></a></footer>
+    <footer className="marketing-footer"><Brand /><p>把内容，做成会动的视频。</p><a href="/app">进入映芽工作台<ArrowUpRight /></a></footer>
     {selected ? <ExampleDialog key={selected.id} example={selected} onClose={() => setSelected(null)} /> : null}
   </div>;
 }

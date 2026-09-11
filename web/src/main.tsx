@@ -4,6 +4,7 @@ import "@fontsource-variable/noto-sans-sc";
 import "@fontsource/fragment-mono";
 import { WebsiteRouter } from "./marketing/WebsiteRouter";
 import "./styles.css";
+import "./dropdowns.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

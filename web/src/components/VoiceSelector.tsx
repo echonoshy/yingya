@@ -1,3 +1,4 @@
+import { VoiceAudioInput } from "./VoiceAudioInput";
 import { ActionDialog } from "./ActionDialog";
 import { CaretDown, Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +28,7 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
   const [description, setDescription] = useState<string>(voiceIdeas[0][1]);
   const [refText, setRefText] = useState("");
   const [audio, setAudio] = useState<File | null>(null);
+  const [audioBusy, setAudioBusy] = useState(false);
   const [authorized, setAuthorized] = useState(false);
 
   const load = useCallback(async () => {
@@ -77,7 +79,7 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
   }
 
   async function createClone() {
-    if (!name.trim() || !refText.trim() || !audio || !authorized) return;
+    if (!name.trim() || !refText.trim() || !audio || audioBusy || !authorized) return;
     setWorking("clone"); setError("");
     try {
       const created = await api.cloneVoice({ name: name.trim(), description: description.trim(), refText: refText.trim(), audio, authorized });
@@ -99,7 +101,7 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
             const label = voice === "default" ? "默认音色" : detail?.name ?? voice;
             return <div className={`voice-row ${value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? "active" : ""}`} key={voice}>
               <button type="button" className="voice-choice" disabled={Boolean(working)} onClick={() => void choose(voice)}>
-                <span><SpeakerHigh/></span><div><b>{label}</b><small>{detail?.speaker_description ?? (voice === "default" ? "适合日常讲解的基础音色" : "已保存的项目音色")}</small></div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
+                <span><SpeakerHigh/></span><div><b>{label}</b>{voice !== "default" ? <small>{detail?.speaker_description || "已保存的项目音色"}</small> : null}</div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
               </button>
               <button type="button" className="voice-preview" aria-label={`试听 ${label}`} disabled={Boolean(previewing)} onClick={() => void preview(voice)}>{previewing === voice ? <CircleNotch className="spin"/> : <Play weight="fill"/>}</button>
             </div>;
@@ -107,9 +109,9 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
           {loading ? <div className="voice-loading"><CircleNotch className="spin"/>正在读取音色…</div> : null}
         </div>
         {audioUrl ? <audio className="voice-audio" src={audioUrl} controls autoPlay/> : null}
-        <div className="voice-create-actions"><button type="button" onClick={() => setMode("design")}><MagicWand/>描述生成</button><button type="button" onClick={() => setMode("clone")}><UploadSimple/>上传克隆</button></div>
+        <div className="voice-create-actions"><button type="button" onClick={() => setMode("design")}><MagicWand/>描述生成</button><button type="button" onClick={() => setMode("clone")}><UploadSimple/>克隆音色</button></div>
       </> : <div className="voice-editor">
-        <div className="voice-mode-tabs"><button type="button" className={mode === "design" ? "active" : ""} onClick={() => setMode("design")}>描述生成</button><button type="button" className={mode === "clone" ? "active" : ""} onClick={() => setMode("clone")}>上传克隆</button></div>
+        <div className="voice-mode-tabs"><button type="button" className={mode === "design" ? "active" : ""} onClick={() => setMode("design")}>描述生成</button><button type="button" className={mode === "clone" ? "active" : ""} onClick={() => setMode("clone")}>克隆音色</button></div>
         <label><span>音色名称</span><input value={name} maxLength={32} onChange={event => setName(event.target.value)} placeholder="例如：温暖女声"/></label>
         {mode === "design" ? <>
           <label><span>声音描述</span><textarea value={description} maxLength={200} onChange={event => setDescription(event.target.value)} placeholder="描述年龄、音色、语速、情绪与适用场景"/></label>
@@ -117,11 +119,11 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
           <p>映芽会先生成一段固定声音样本，再保存为可复用音色。后续旁白不会重新设计声音。</p>
           <button type="button" className="voice-create-primary" disabled={!name.trim() || description.trim().length < 4 || Boolean(working)} onClick={() => void createDesign()}>{working === "design" ? <CircleNotch className="spin"/> : <MagicWand/>}{working === "design" ? "正在生成并固化音色…" : "生成并使用这个音色"}</button>
         </> : <>
-          <label><span>参考音频</span><input type="file" accept="audio/*" onChange={event => setAudio(event.target.files?.[0] ?? null)}/><small>1–30 秒、10 MB 以内的清晰单人声音</small></label>
+          <VoiceAudioInput value={audio} onChange={setAudio} disabled={Boolean(working)} onBusyChange={setAudioBusy}/>
           <label><span>参考音频原文</span><textarea value={refText} maxLength={500} onChange={event => setRefText(event.target.value)} placeholder="逐字填写音频中说出的内容，可显著提高相似度"/></label>
           <label><span>音色说明（可选）</span><input value={description} maxLength={200} onChange={event => setDescription(event.target.value)} placeholder="例如：沉稳、清晰、适合知识讲解"/></label>
           <label className="voice-consent"><input type="checkbox" checked={authorized} onChange={event => setAuthorized(event.target.checked)}/><span>我确认已获得声音所有者授权，并同意将此声音用于合成。</span></label>
-          <button type="button" className="voice-create-primary" disabled={!name.trim() || !refText.trim() || !audio || !authorized || Boolean(working)} onClick={() => void createClone()}>{working === "clone" ? <CircleNotch className="spin"/> : <UploadSimple/>}{working === "clone" ? "正在保存音色…" : "创建并使用克隆音色"}</button>
+          <button type="button" className="voice-create-primary" disabled={!name.trim() || !refText.trim() || !audio || audioBusy || !authorized || Boolean(working)} onClick={() => void createClone()}>{working === "clone" ? <CircleNotch className="spin"/> : <UploadSimple/>}{working === "clone" ? "正在保存音色…" : "创建并使用克隆音色"}</button>
         </>}
         <button type="button" className="voice-back" onClick={() => setMode("list")}>返回音色列表</button>
       </div>}

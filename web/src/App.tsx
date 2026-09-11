@@ -19,9 +19,9 @@ import type { CodexModel, ModelSelection, ProjectDetail, ProjectRecord } from ".
 import { readModelSelection, readStringSetting, writeModelSelection, writeStringSetting } from "./storage";
 import { newCreationAttempt, readCreationAttempt, saveCreationAttempt } from "./creationAttempt";
 import { userStorageKey } from "./session";
-import { includeAstra } from "./models";
+import { selectableModels, modelAllowed } from "./models";
 
-const fallbackModels: CodexModel[] = includeAstra([
+const fallbackModels: CodexModel[] = selectableModels([
   ["gpt-5.6-terra", "GPT-5.6 Terra", "均衡的质量与速度"], ["gpt-5.6-sol", "GPT-5.6 Sol", "复杂创作与高质量推理"], ["gpt-5.6-luna", "GPT-5.6 Luna", "快速迭代"],
 ].map(([model, displayName, description], index) => ({ id: model, model, displayName, description, hidden: false, supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map(reasoningEffort => ({ reasoningEffort, description: "" })), defaultReasoningEffort: "medium", isDefault: index === 0 })));
 
@@ -37,7 +37,7 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
   const saveVoice = (next: string) => { setVoiceId(next); writeStringSetting("yingya-voice-id", next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
   const updateActiveProject = useCallback((detail: ProjectDetail) => { if (readRoute().projectId === detail.id) setActive(current => current?.id === detail.id ? detail : current); setProjects(current => current.map(project => project.id === detail.id ? projectSummary(detail) : project)); }, []);
-  useEffect(() => { void refreshProjects(); void api.listModels().then(value => value.data.length && setModels(includeAstra(value.data))).catch(() => undefined); }, [refreshProjects]);
+  useEffect(() => { void refreshProjects(); void api.listModels().then(value => setModels(selectableModels(value.data))).catch(() => undefined); }, [refreshProjects]);
   const open = (id: string) => navigate({ section: "create", projectId: id });
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +45,7 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
     setOpening(true); setOpenError("");
     void api.getProject(route.projectId).then(detail => {
       if (cancelled) return;
-      setActive(detail); setSelection({ model: detail.model, reasoningEffort: detail.reasoningEffort }); setVoiceId(detail.voiceId); setOffline(false);
+      setActive(detail); setSelection(modelAllowed(detail.model) ? { model: detail.model, reasoningEffort: detail.reasoningEffort } : savedSelection()); setVoiceId(detail.voiceId); setOffline(false);
     }).catch(reason => { if (!cancelled) { setActive(null); setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } }).finally(() => { if (!cancelled) setOpening(false); });
     return () => { cancelled = true; };
   }, [route.projectId]);

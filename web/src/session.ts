@@ -6,7 +6,7 @@ export function userStorageKey(key: string) { return currentUser ? `yingya-user:
 export function scopedUrl(path: string) {
   if (!currentUser) return path;
   if (path.startsWith('/api/u/') || path.startsWith('/assets/u/')) return path;
-  if (path.startsWith('/api/') && !/^\/api\/(auth|admin|usage)(\/|$|\?)/.test(path)) return `/api/u/${currentUser}/${path.slice(5)}`;
+  if (path.startsWith('/api/') && !/^\/api\/(auth|admin|usage|quota|billing)(\/|$|\?)/.test(path)) return `/api/u/${currentUser}/${path.slice(5)}`;
   if (path.startsWith('/assets/')) return `/assets/u/${currentUser}/${path.slice(8)}`;
   return path;
 }

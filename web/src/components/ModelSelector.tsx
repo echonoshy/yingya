@@ -1,4 +1,4 @@
-import { prioritizeAstra } from "../models";
+import { selectableModels } from "../models";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { useMotionPresence } from "../hooks/useMotionPresence";
 import { CaretDown, CaretRight, Check } from "@phosphor-icons/react";
@@ -22,7 +22,7 @@ export function ModelSelector({ models, value, onChange }: {
   value: ModelSelection;
   onChange: (value: ModelSelection) => void;
 }) {
-  const menuModels = useMemo(() => prioritizeAstra(models), [models]);
+  const menuModels = useMemo(() => selectableModels(models), [models]);
   const [open, setOpen] = useState(false);
   const presence = useMotionPresence(open ? true : null);
   const root = useRef<HTMLDivElement>(null);

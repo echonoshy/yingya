@@ -1,5 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { SESSION_EXPIRED, sessionFetch, setCurrentUser } from "./session";
+import { SESSION_EXPIRED, sessionFetch, setCurrentUser, scopedUrl } from "./session";
+
+it('keeps billing endpoints on the authenticated gateway', () => {
+  setCurrentUser('a');
+  expect(scopedUrl('/api/billing?month=2026-09')).toBe('/api/billing?month=2026-09');
+  expect(scopedUrl('/api/billing/invoices/YY-test')).toBe('/api/billing/invoices/YY-test');
+});
 
 afterEach(() => { setCurrentUser(""); vi.unstubAllGlobals(); });
 

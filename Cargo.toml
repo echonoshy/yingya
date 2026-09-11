@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 
 [dependencies]
+argon2 = "0.5"
 axum = { version = "0.8", features = ["multipart"] }
 base64 = "0.22"
 dotenvy = "0.15"
@@ -21,3 +22,4 @@ tower-http = { version = "0.6", features = ["fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+zstd = "0.13"

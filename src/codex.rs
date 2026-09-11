@@ -369,6 +369,7 @@ impl CodexClient {
             if !accounts.owns_thread(thread_id, user) {
                 return Err(CodexError::Rpc("会话不存在".into()));
             }
+            accounts.check_quota(user).map_err(CodexError::Rpc)?;
             accounts
                 .set_model(thread_id, options.model.unwrap_or(&self.config.model))
                 .map_err(CodexError::Rpc)?;

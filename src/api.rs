@@ -615,7 +615,15 @@ async fn list_skills(State(state): State<AppState>) -> Result<Json<Value>, ApiEr
 }
 
 async fn list_models(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    Ok(Json(state.codex.list_models().await?))
+    let mut catalog = state.codex.list_models().await?;
+    if let Some(models) = catalog["data"].as_array_mut() {
+        models.retain(|model| {
+            model["model"]
+                .as_str()
+                .is_some_and(crate::model_settings::model_allowed)
+        });
+    }
+    Ok(Json(catalog))
 }
 
 async fn list_agent_projects(State(state): State<AppState>) -> Result<Json<Vec<Value>>, ApiError> {

@@ -57,6 +57,9 @@ struct Gateway {
 #[derive(Deserialize)]
 struct Login {
     email: String,
+    password: String,
+    invite_code: Option<String>,
+    reset_code: Option<String>,
 }
 #[derive(Default, Deserialize)]
 struct UsageQuery {
@@ -115,6 +118,9 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .collect(),
     )
     .map_err(std::io::Error::other)?;
+    accounts
+        .recover_accounting()
+        .map_err(std::io::Error::other)?;
     let model_relay = crate::model_relay::ModelRelay::new(&paths.codex_home)?;
     // Remove legacy credential copies before accepting requests, including dormant tenants.
     let mut users = fs::read_dir(paths.app_data.join("users")).await?;
@@ -141,14 +147,64 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .route(
             "/health",
             get(|| async {
-                Json(json!({"status":"ok","backend":"rust","loginMode":"email-preview"}))
+                Json(json!({"status":"ok","backend":"rust","loginMode":"invite-password"}))
             }),
         )
-        .route("/api/auth/login", post(login))
+        .route(
+            "/api/auth/login",
+            post(login).layer(DefaultBodyLimit::max(4096)),
+        )
+        .route(
+            "/api/auth/register",
+            post(register).layer(DefaultBodyLimit::max(4096)),
+        )
+        .route(
+            "/api/auth/reset",
+            post(reset_password).layer(DefaultBodyLimit::max(4096)),
+        )
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/usage", get(usage))
         .route("/api/admin/usage", get(admin_usage))
+        .route("/api/billing", get(billing))
+        .route("/api/admin/billing", get(admin_billing))
+        .route("/api/billing/invoices", post(create_invoice))
+        .route("/api/admin/billing/invoices", post(create_admin_invoice))
+        .route("/api/billing/invoices/{id}", get(get_invoice))
+        .route("/api/admin/billing/invoices/{id}", get(get_admin_invoice))
+        .route(
+            "/api/admin/login",
+            post(admin_login).layer(DefaultBodyLimit::max(4096)),
+        )
+        .route("/api/admin/me", get(admin_me))
+        .route("/api/admin/audit", get(admin_audit))
+        .route(
+            "/api/admin/password",
+            post(change_admin_password).layer(DefaultBodyLimit::max(4096)),
+        )
+        .route("/api/quota", get(account_quota))
+        .route(
+            "/api/admin/accounts",
+            get(admin_accounts).post(create_managed_user),
+        )
+        .route(
+            "/api/admin/accounts/{id}/profile",
+            axum::routing::patch(edit_profile),
+        )
+        .route(
+            "/api/admin/accounts/{id}/sessions",
+            axum::routing::delete(revoke_user_sessions),
+        )
+        .route("/api/admin/password-reset", post(create_password_reset))
+        .route(
+            "/api/admin/accounts/{id}",
+            axum::routing::patch(update_account),
+        )
+        .route("/api/admin/invites", get(list_invites).post(create_invite))
+        .route(
+            "/api/admin/invites/{id}",
+            axum::routing::delete(revoke_invite).patch(edit_invite),
+        )
         .fallback(dispatch)
         .layer(DefaultBodyLimit::max(25 * 1024 * 1024))
         .with_state(state);
@@ -161,16 +217,107 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 async fn login(State(g): State<Gateway>, headers: HeaderMap, Json(input): Json<Login>) -> Response {
+    authenticate(g, headers, input, "login").await
+}
+#[derive(Deserialize)]
+struct AdminLogin {
+    email: String,
+    password: String,
+}
+async fn admin_login(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<AdminLogin>,
+) -> Response {
+    authenticate(
+        g,
+        headers,
+        Login {
+            email: input.email,
+            password: input.password,
+            invite_code: None,
+            reset_code: None,
+        },
+        "admin",
+    )
+    .await
+}
+async fn register(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<Login>,
+) -> Response {
+    authenticate(g, headers, input, "register").await
+}
+async fn reset_password(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<Login>,
+) -> Response {
+    authenticate(g, headers, input, "reset").await
+}
+async fn authenticate(
+    g: Gateway,
+    headers: HeaderMap,
+    input: Login,
+    mode: &'static str,
+) -> Response {
+    let register = mode == "register";
     if !same_origin(&headers) {
         return failure(StatusCode::FORBIDDEN, "不允许跨站登录");
     }
-    match g.accounts.login(&input.email) {
+    static AUTH_WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+    let Ok(permit) = AUTH_WORKERS.try_acquire() else {
+        return failure(StatusCode::TOO_MANY_REQUESTS, "登录服务繁忙，请稍后重试");
+    };
+    if register
+        && input
+            .invite_code
+            .as_deref()
+            .is_none_or(|code| code.trim().is_empty())
+    {
+        return failure(StatusCode::BAD_REQUEST, "请输入邀请码");
+    }
+    let accounts = g.accounts.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        if mode == "admin" {
+            return accounts.admin_login(&input.email, &input.password);
+        }
+        if mode == "reset" {
+            accounts.reset_password(
+                &input.email,
+                &input.password,
+                input.reset_code.as_deref().ok_or("缺少重置凭据")?,
+            )?;
+        }
+        accounts.authenticate(
+            &input.email,
+            &input.password,
+            if register {
+                input.invite_code.as_deref()
+            } else {
+                None
+            },
+        )
+    })
+    .await;
+    let result = match result {
+        Ok(value) => value,
+        Err(_) => {
+            return failure(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "暂时无法登录，请稍后重试",
+            );
+        }
+    };
+    match result {
         Ok((user, token)) => {
             if let Some(old) = cookie(&headers) {
                 let _ = g.accounts.logout(old);
             }
             let mut response =
-                Json(json!({"user":user,"loginMode":"email-preview"})).into_response();
+                Json(json!({"user":user,"loginMode":"invite-password"})).into_response();
             let secure = env_bool("YINGYA_SECURE_COOKIES", false);
             response.headers_mut().insert(
                 SET_COOKIE,
@@ -211,11 +358,364 @@ async fn me(State(g): State<Gateway>, headers: HeaderMap) -> Response {
     let Some(user) = user(&g, &headers) else {
         return failure(StatusCode::UNAUTHORIZED, "请先登录");
     };
-    let mut r = Json(json!({"user":user,"loginMode":"email-preview"})).into_response();
+    let mut r = Json(json!({"user":user,"loginMode":"invite-password"})).into_response();
     r.headers_mut()
         .insert("cache-control", "no-store".parse().unwrap());
     r
 }
+fn admin(g: &Gateway, headers: &HeaderMap) -> Result<User, Box<Response>> {
+    let user =
+        user(g, headers).ok_or_else(|| Box::new(failure(StatusCode::UNAUTHORIZED, "请先登录")))?;
+    if !user.is_admin || !same_origin(headers) {
+        return Err(Box::new(failure(
+            StatusCode::FORBIDDEN,
+            "仅管理员可以执行此操作",
+        )));
+    }
+    Ok(user)
+}
+fn account_result(result: Result<Value, String>) -> Response {
+    match result {
+        Ok(value) => {
+            let mut r = Json(value).into_response();
+            r.headers_mut()
+                .insert("cache-control", "no-store".parse().unwrap());
+            r
+        }
+        Err(error) => failure(StatusCode::BAD_REQUEST, &error),
+    }
+}
+async fn account_quota(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    let Some(user) = user(&g, &headers) else {
+        return failure(StatusCode::UNAUTHORIZED, "请先登录");
+    };
+    account_result(g.accounts.quota(&user.id).map(|q| json!(q)))
+}
+async fn admin_accounts(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    if let Err(r) = admin(&g, &headers) {
+        return *r;
+    }
+    account_result(g.accounts.managed_users())
+}
+async fn admin_me(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(Ok(json!({"user":actor})))
+}
+async fn admin_audit(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    if let Err(r) = admin(&g, &headers) {
+        return *r;
+    }
+    account_result(g.accounts.audit_log())
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PasswordChange {
+    current_password: String,
+    new_password: String,
+}
+async fn change_admin_password(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<PasswordChange>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    static PASSWORD_WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+    let Ok(permit) = PASSWORD_WORKERS.try_acquire() else {
+        return failure(StatusCode::TOO_MANY_REQUESTS, "请稍后重试");
+    };
+    account_result(
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            g.accounts
+                .change_own_password(&actor.id, &input.current_password, &input.new_password)
+                .map(|_| json!({"ok":true}))
+        })
+        .await
+        .unwrap_or_else(|_| Err("修改密码失败".into())),
+    )
+}
+async fn create_managed_user(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<crate::accounts::ManagedUserInput>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    static CREATE_WORKERS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+    let Ok(permit) = CREATE_WORKERS.try_acquire() else {
+        return failure(StatusCode::TOO_MANY_REQUESTS, "请稍后再创建用户");
+    };
+    account_result(
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            g.accounts.create_managed_user(&actor.id, input)
+        })
+        .await
+        .unwrap_or_else(|_| Err("创建用户失败".into())),
+    )
+}
+async fn edit_profile(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::accounts::ProfileUpdate>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(
+        g.accounts
+            .edit_profile(&actor.id, &id, input)
+            .map(|_| json!({"ok":true})),
+    )
+}
+async fn edit_invite(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::accounts::InviteUpdate>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(
+        g.accounts
+            .edit_invite(&actor.id, &id, input)
+            .map(|_| json!({"ok":true})),
+    )
+}
+async fn revoke_user_sessions(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(
+        g.accounts
+            .revoke_user_sessions(&actor.id, &id)
+            .map(|_| json!({"ok":true})),
+    )
+}
+#[derive(Deserialize)]
+struct ResetTarget {
+    email: String,
+}
+async fn create_password_reset(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<ResetTarget>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(g.accounts.password_reset(&input.email).and_then(|value| {
+        g.accounts
+            .record_admin_action(&actor.id, "生成密码重置链接", &input.email, json!({}))?;
+        Ok(value)
+    }))
+}
+async fn list_invites(State(g): State<Gateway>, headers: HeaderMap) -> Response {
+    if let Err(r) = admin(&g, &headers) {
+        return *r;
+    }
+    account_result(g.accounts.managed_invites())
+}
+async fn create_invite(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<crate::accounts::InviteInput>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(g.accounts.invite(input, false).and_then(|value| {
+        g.accounts.record_admin_action(
+            &actor.id,
+            "创建邀请",
+            value["id"].as_str().unwrap_or_default(),
+            json!({}),
+        )?;
+        Ok(value)
+    }))
+}
+async fn revoke_invite(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(g.accounts.revoke_invite(&id).and_then(|_| {
+        g.accounts
+            .record_admin_action(&actor.id, "撤销邀请", &id, json!({}))?;
+        Ok(json!({"ok":true}))
+    }))
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AccountUpdate {
+    tokens: i64,
+    media: i64,
+    disabled: Option<bool>,
+    request_id: String,
+}
+async fn update_account(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<AccountUpdate>,
+) -> Response {
+    let actor = match admin(&g, &headers) {
+        Ok(actor) => actor,
+        Err(r) => return *r,
+    };
+    account_result(
+        g.accounts
+            .update_account(
+                &actor.id,
+                &id,
+                input.tokens,
+                input.media,
+                input.disabled,
+                &input.request_id,
+            )
+            .map(|_| json!({"ok":true})),
+    )
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BillingQuery {
+    month: String,
+    user_id: Option<String>,
+}
+fn billing_owner(
+    g: &Gateway,
+    headers: &HeaderMap,
+    input: &BillingQuery,
+    administrative: bool,
+) -> Result<(User, Option<String>), Box<Response>> {
+    let identity =
+        user(g, headers).ok_or_else(|| Box::new(failure(StatusCode::UNAUTHORIZED, "请先登录")))?;
+    if !same_origin(headers) {
+        return Err(Box::new(failure(StatusCode::FORBIDDEN, "请求来源无效")));
+    }
+    if administrative {
+        if !identity.is_admin {
+            return Err(Box::new(failure(
+                StatusCode::FORBIDDEN,
+                "仅管理员可以查看所有人的账单",
+            )));
+        }
+        Ok((identity, input.user_id.clone().filter(|s| !s.is_empty())))
+    } else {
+        if input.user_id.as_deref().is_some_and(|id| id != identity.id) {
+            return Err(Box::new(failure(
+                StatusCode::FORBIDDEN,
+                "只能查看自己的账单",
+            )));
+        }
+        let owner = identity.id.clone();
+        Ok((identity, Some(owner)))
+    }
+}
+async fn billing(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Query(input): Query<BillingQuery>,
+) -> Response {
+    billing_report(g, headers, input, false, false)
+}
+async fn admin_billing(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Query(input): Query<BillingQuery>,
+) -> Response {
+    billing_report(g, headers, input, true, false)
+}
+async fn create_invoice(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<BillingQuery>,
+) -> Response {
+    billing_report(g, headers, input, false, true)
+}
+async fn create_admin_invoice(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Json(input): Json<BillingQuery>,
+) -> Response {
+    billing_report(g, headers, input, true, true)
+}
+fn billing_report(
+    g: Gateway,
+    headers: HeaderMap,
+    input: BillingQuery,
+    administrative: bool,
+    create: bool,
+) -> Response {
+    let (actor, owner) = match billing_owner(&g, &headers, &input, administrative) {
+        Ok(value) => value,
+        Err(response) => return *response,
+    };
+    let value = if create {
+        g.accounts
+            .create_invoice(&actor.id, owner.as_deref(), &input.month)
+            .map(|invoice| json!({"invoice":invoice}))
+    } else {
+        g.accounts.billing_report(owner.as_deref(), &input.month)
+    };
+    account_result(value)
+}
+async fn get_invoice(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    invoice_response(g, headers, id, false)
+}
+async fn get_admin_invoice(
+    State(g): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    invoice_response(g, headers, id, true)
+}
+fn invoice_response(g: Gateway, headers: HeaderMap, id: String, administrative: bool) -> Response {
+    let identity = if administrative {
+        match admin(&g, &headers) {
+            Ok(user) => user,
+            Err(response) => return *response,
+        }
+    } else {
+        match user(&g, &headers) {
+            Some(user) => user,
+            None => return failure(StatusCode::UNAUTHORIZED, "请先登录"),
+        }
+    };
+    match g.accounts.invoice(&identity.id, administrative, &id) {
+        Ok(Some(invoice)) => account_result(Ok(json!({"invoice":invoice}))),
+        Ok(None) => failure(StatusCode::NOT_FOUND, "账单不存在"),
+        Err(message) => failure(StatusCode::INTERNAL_SERVER_ERROR, &message),
+    }
+}
+
 async fn usage(
     State(g): State<Gateway>,
     headers: HeaderMap,
@@ -375,6 +875,9 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
     else {
         return failure(StatusCode::UNAUTHORIZED, "请先登录");
     };
+    if g.accounts.quota(&user.id).map_or(true, |q| q.disabled) {
+        return failure(StatusCode::FORBIDDEN, "账号已停用，请联系管理员");
+    }
     if !internal && preview_request.is_none() && !same_origin(request.headers()) {
         return failure(StatusCode::FORBIDDEN, "不允许跨站请求");
     }
@@ -414,10 +917,37 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
         return failure(StatusCode::NOT_FOUND, "接口不存在");
     }
     if path.starts_with("/api/internal/model/") {
-        return g.model_relay.forward(request).await;
+        return g
+            .model_relay
+            .forward(request, g.accounts.clone(), &user.id)
+            .await;
     }
-    if path.starts_with("/api/auth/") || path.starts_with("/api/admin/") || path == "/api/usage" {
+    if path.starts_with("/api/auth/")
+        || path.starts_with("/api/admin/")
+        || path == "/api/usage"
+        || path == "/api/quota"
+    {
         return failure(StatusCode::NOT_FOUND, "接口不存在");
+    }
+    if request.method() == "POST" {
+        let model_action = path == "/api/agent-projects"
+            || path == "/api/codex/threads"
+            || path.ends_with("/turns")
+            || path.ends_with("/images")
+            || path.ends_with("/title")
+            || path.ends_with("/resume")
+            || path.ends_with("/execute")
+            || path.ends_with("/checkpoint");
+        if model_action && let Err(error) = g.accounts.check_quota(&user.id) {
+            return failure(StatusCode::PAYMENT_REQUIRED, &error);
+        }
+        if matches!(
+            path.as_str(),
+            "/api/voices" | "/api/voices/design" | "/api/voices/preview"
+        ) && let Err(error) = g.accounts.consume_media(&user.id)
+        {
+            return failure(StatusCode::PAYMENT_REQUIRED, &error);
+        }
     }
     let root = g.paths.app_data.join("users").join(&user.id);
     if let Some(rest) = path.strip_prefix("/api/agent-projects/") {
@@ -675,6 +1205,9 @@ pub(super) async fn voice_proxy(
         };
     }
     if path == "v1/audio/speech" && request.method() == "POST" {
+        if let Err(error) = state.accounts.consume_media(&state.user.id) {
+            return failure(StatusCode::PAYMENT_REQUIRED, &error);
+        }
         let bytes = match to_bytes(request.into_body(), 1024 * 1024).await {
             Ok(b) => b,
             Err(_) => return failure(StatusCode::BAD_REQUEST, "请求过大"),
@@ -696,6 +1229,107 @@ pub(super) async fn voice_proxy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn account_permissions_and_empty_quota_are_enforced_before_tenant_work() {
+        let root = env::temp_dir().join(format!("yingya-account-gateway-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let accounts = Accounts::open(&root.join("db.sqlite"), vec![]).unwrap();
+        let invitation = accounts
+            .invite(
+                crate::accounts::InviteInput {
+                    email: None,
+                    expires_in_days: 1,
+                    max_uses: 1,
+                    token_limit: 0,
+                    media_limit: 0,
+                },
+                false,
+            )
+            .unwrap();
+        let (member, session) = accounts
+            .authenticate(
+                "member@example.test",
+                "a-test-password",
+                invitation["code"].as_str(),
+            )
+            .unwrap();
+        let mut paths = AppPaths::from_env().unwrap();
+        paths.app_data = root.clone();
+        let g = Gateway {
+            paths,
+            accounts,
+            model_relay: crate::model_relay::ModelRelay::new(&root).unwrap(),
+            previews: Default::default(),
+            tenants: Default::default(),
+            service_tokens: Default::default(),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "cookie",
+            format!("yingya_session={session}").parse().unwrap(),
+        );
+        assert_eq!(
+            admin_accounts(State(g.clone()), headers.clone())
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            account_quota(State(g.clone()), headers.clone())
+                .await
+                .status(),
+            StatusCode::OK
+        );
+        tenant_slot(&g.tenants, &member.id)
+            .await
+            .set(Router::new().fallback(|| async { StatusCode::OK }))
+            .unwrap();
+        for (method, path, status) in [
+            ("GET", "/api/codex/models", StatusCode::OK),
+            (
+                "POST",
+                "/api/codex/threads/test/turns",
+                StatusCode::PAYMENT_REQUIRED,
+            ),
+            ("POST", "/api/voices/preview", StatusCode::PAYMENT_REQUIRED),
+        ] {
+            let mut request = Request::builder()
+                .method(method)
+                .uri(path)
+                .body(Body::empty())
+                .unwrap();
+            *request.headers_mut() = headers.clone();
+            assert_eq!(dispatch(State(g.clone()), request).await.status(), status);
+        }
+        g.service_tokens
+            .lock()
+            .unwrap()
+            .insert("worker".into(), member.clone());
+        g.accounts
+            .update_account(
+                "admin",
+                &member.id,
+                0,
+                0,
+                Some(true),
+                &Uuid::new_v4().to_string(),
+            )
+            .unwrap();
+        let request = Request::builder()
+            .uri("/api/internal/model/backend-api/codex/models")
+            .header("authorization", "Bearer worker")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            dispatch(State(g.clone()), request).await.status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            account_quota(State(g), headers).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let _ = fs::remove_dir_all(root).await;
+    }
     #[tokio::test]
     async fn broken_generated_link_does_not_block_another_project_or_deletion() {
         let root = env::temp_dir().join(format!("yingya-gateway-path-{}", Uuid::new_v4()));

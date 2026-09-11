@@ -1,9 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, ChartBar, CaretUpDown, CircleNotch, EnvelopeSimple, SignOut, UserCircle } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, ChartBar, CaretUpDown, CircleNotch, ShieldCheck, Receipt, SignOut, UserCircle } from '@phosphor-icons/react';
 import { z } from 'zod';
 import { App } from '../App';
 import { UsageModelFilter } from './UsageModelFilter';
 import { SESSION_EXPIRED, sessionFetch, sessionChanged, setCurrentUser } from '../session';
+import { LoginScreen, QuotaOverview } from './AccountAccess';
+import { formatUsage as number } from '../usage';
+import { BillingPanel } from './BillingPanel';
 const userSchema = z.object({ id:z.string(), email:z.string(), isAdmin:z.boolean() });
 type User = z.infer<typeof userSchema>;
 const rowSchema=z.object({userId:z.string(),email:z.string(),requests:z.number(),executions:z.number(),inputTokens:z.number(),outputTokens:z.number(),cachedInputTokens:z.number(),reasoningOutputTokens:z.number(),totalTokens:z.number(),unknownExecutions:z.number()});
@@ -17,7 +20,7 @@ async function call(path:string, init?:RequestInit) {
  return body;
 }
 export function AccountGate() {
- const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[screen,setScreen]=useState<'work'|'usage'>('work');
+ const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[screen,setScreen]=useState<'work'|'usage'|'billing'>('work');
  useEffect(()=>{let cancelled=false;void fetch('/api/auth/me',{cache:'no-store'}).then(async response=>{
    if(response.status===401)return;
    if(!response.ok)throw new Error('无法读取登录状态，请刷新重试');
@@ -33,17 +36,12 @@ export function AccountGate() {
  if(!user)return <LoginScreen initialError={error} onLogin={value=>{setCurrentUser(value.id);setUser(value);setError('');sessionChanged();window.history.replaceState(null,'',`/app${window.location.search}${window.location.hash}`);}}/>;
  const accountPanel = <details className="account-panel" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))event.currentTarget.open=false;}} onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
    <summary aria-label={`账号：${user.email}`} title={user.email}><UserCircle/><span className="account-identity"><span>{user.email}</span><small>内测账号</small></span><CaretUpDown className="account-chevron"/></summary>
-   <div className="account-menu"><div className="account-menu-identity"><b>{user.email}</b><small>内测账号</small></div><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen(screen==='work'?'usage':'work');}}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button>{error?<p className="account-error" role="alert">{error}</p>:null}</div>
+   <div className="account-menu"><div className="account-menu-identity"><b>{user.email}</b><small>内测账号</small></div><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen(screen==='work'?'usage':'work');}}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen('billing');}}><Receipt/><span>API 等价账单</span></button>{user.isAdmin?<button onClick={()=>window.location.assign('/admin')}><ShieldCheck/><span>账号管理</span></button>:null}<button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button>{error?<p className="account-error" role="alert">{error}</p>:null}</div>
  </details>;
  return <div className="account-shell">
    <div hidden={screen!=='work'}><App accountPanel={accountPanel}/></div>
-   {screen==='usage'?<div className="home-layout"><aside className="home-nav"><div className="home-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div><nav aria-label="映芽功能"><button onClick={()=>setScreen('work')}><ArrowLeft/>返回创作</button></nav>{accountPanel}</aside><UsagePage onBack={()=>setScreen('work')}/></div>:null}
+   {screen!=='work'?<div className="home-layout"><aside className="home-nav"><div className="home-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div><nav aria-label="映芽功能"><button onClick={()=>setScreen('work')}><ArrowLeft/>返回创作</button></nav>{accountPanel}</aside>{screen==='billing'?<main className="billing-page"><button className="usage-back" onClick={()=>setScreen('work')}><ArrowLeft/>返回工作台</button><BillingPanel/></main>:<UsagePage onBack={()=>setScreen('work')}/>}</div>:null}
  </div>;
-}
-function LoginScreen({initialError,onLogin}:{initialError:string;onLogin:(user:User)=>void}) {
- const [email,setEmail]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(initialError);
- async function submit(event:FormEvent){event.preventDefault();if(busy)return;setBusy(true);setError('');try{const body=await call('/api/auth/login',{method:'POST',body:JSON.stringify({email})});onLogin(userSchema.parse(body.user));}catch(e){setError(e instanceof Error?e.message:'登录失败');}finally{setBusy(false);}}
- return <main className="login-screen"><a className="login-brand" href="/" aria-label="返回映芽首页"><img src="/brand/yingya-ghost.png" alt=""/><span>映芽</span></a><section className="login-content"><span className="login-eyebrow">你的创作，从这里继续</span><h1>进入你的<br/>视频工作台。</h1><p className="login-intro">用对话，把想法做成视频。<br/>项目、素材和创作记录，保存在你的账号空间。</p><form onSubmit={event=>void submit(event)}><label htmlFor="login-email">邮箱地址</label><div className="login-input"><EnvelopeSimple/><input id="login-email" type="email" autoComplete="email" inputMode="email" placeholder="you@example.com" value={email} onChange={event=>setEmail(event.target.value)} required maxLength={254} autoFocus/></div><button className="login-submit" disabled={busy}>{busy?<CircleNotch className="spin"/>:null}{busy?'正在进入…':'进入工作台'}{!busy?<ArrowRight/>:null}</button>{error?<p className="account-error" role="alert">{error}</p>:null}</form><aside className="login-notice"><b>内测版 · 邮箱直接登录</b><p>首次使用自动创建账号。目前不验证邮箱归属，知道该邮箱的人也可进入同一账号。仅用于可信内测。</p></aside></section><footer>映芽 · 对话式动画视频制作工作台</footer></main>;
 }
 function UsagePage({onBack}:{onBack:()=>void}) {
  const [{since,until},setDateRange]=useState(()=>{
@@ -57,10 +55,11 @@ function UsagePage({onBack}:{onBack:()=>void}) {
  useEffect(()=>{let disposed=false;const controller=new AbortController();setLoading(true);setError('');
  const params=new URLSearchParams();if(since)params.set('since',String(new Date(`${since}T00:00:00`).getTime()/1000));if(until){const date=new Date(`${until}T00:00:00`);date.setDate(date.getDate()+1);params.set('until',String(date.getTime()/1000));}if(model)params.set('model',model);
  void call(`/api/usage?${params}`,{signal:controller.signal}).then(value=>{if(!disposed)setData(usageSchema.parse(value));}).catch(e=>{if(!disposed)setError(e.message);}).finally(()=>{if(!disposed)setLoading(false);});return()=>{disposed=true;controller.abort();};},[since,until,model,refresh]);
- const rows=data?.users??[], number=(n:number)=>n.toLocaleString('zh-CN');
+ const rows=data?.users??[];
  const sum=(key:'requests'|'executions'|'totalTokens'|'unknownExecutions')=>rows.reduce((n,row)=>n+row[key],0);
  return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><span>创作记录</span><h1>用量统计</h1><p>查看当前账号的请求次数与模型实际返回的 token 用量。</p></div></div>
  <div className="usage-toolbar"><b>我的用量</b><button className="usage-refresh" disabled={loading} onClick={()=>setRefresh(v=>v+1)}>{loading?'正在更新…':'刷新数据'}</button></div>
+ <QuotaOverview refresh={refresh}/>
  <div className="usage-filters"><label>开始日期<input type="date" value={since} onChange={e=>{const since=e.target.value;setDateRange(range=>({...range,since}));}}/></label><label>结束日期<input type="date" value={until} onChange={e=>{const until=e.target.value;setDateRange(range=>({...range,until}));}}/></label><UsageModelFilter models={data?.models ?? []} value={model} onChange={setModel}/></div>
  {error?<p className="account-error" role="alert">{error}</p>:null}
  <section className="usage-metrics" aria-label="用量汇总" aria-busy={loading}>{[['请求次数',sum('requests'),'次'],['Agent 执行',sum('executions'),'轮'],['总 token',sum('totalTokens'),'tokens']].map(([label,value,unit])=><div key={String(label)}><span>{label}</span><strong>{loading?'—':number(Number(value))}</strong><small>{unit}</small></div>)}</section>

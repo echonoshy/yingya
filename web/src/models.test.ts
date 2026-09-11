@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { includeAstra, prioritizeAstra } from "./models";
+import { includeAstra, prioritizeAstra, selectableModels, allowedModelIds, modelAllowed } from "./models";
+
+it('limits the product catalog to four exact IDs, preserving provider metadata', () => {
+  const [astra]=includeAstra([]);
+  const catalog=[{...astra,id:'older',model:'gpt-5.5'},{...astra,description:'provider metadata'}];
+  const result=selectableModels(catalog);
+  expect(result.map(model=>model.model)).toEqual([...allowedModelIds]);
+  expect(result[0].description).toBe('provider metadata');
+  expect(modelAllowed('gpt-5.5-sol')).toBe(false);
+  expect(selectableModels([])).toHaveLength(4);
+});
 
 describe("includeAstra", () => {
   it("adds Astra to an older catalog without changing existing defaults", () => {

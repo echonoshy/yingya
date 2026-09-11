@@ -13,6 +13,9 @@ try {
   page.on('request', request => requests.push(request.url()));
   await page.goto(baseUrl);
   await page.locator('#marketing-title').waitFor();
+  assert.doesNotMatch(await page.locator('body').innerText(), /hyperframes/i);
+  assert.equal(await page.locator('a[href*="hyperframes"]').count(), 0);
+  assert.equal(await page.getByRole('link', { name: '进入映芽工作台', exact: true }).getAttribute('href'), '/app');
   assert.equal(await page.title(), '映芽 | 对话式动画视频制作工作台');
   assert.equal(await page.locator('.marketing-example').count(), 6);
   assert.equal(requests.some(url => url.includes('/api/')), false, 'Public homepage must not require authentication or load workspace data');
@@ -74,6 +77,7 @@ try {
   for (const button of await page.locator('.marketing-side-film').all()) {
     await button.click();
     await page.waitForFunction(() => document.querySelector('dialog video').currentTime > .1);
+    assert.doesNotMatch(await page.locator('dialog').innerText(), /hyperframes/i);
     const media = await page.locator('dialog video').evaluate(video => ({ src: video.currentSrc, width: video.videoWidth, height: video.videoHeight }));
     featuredSources.add(media.src);
     if (await button.getAttribute('aria-label') === '播放品牌动效示例') {
@@ -108,6 +112,7 @@ try {
   for (const button of await page.locator('.marketing-example').all()) {
     await button.click();
     await page.waitForFunction(() => document.querySelector('dialog video').readyState >= 2);
+    assert.doesNotMatch(await page.locator('dialog').innerText(), /hyperframes/i);
     assert.equal(await page.locator('dialog video').evaluate(video => video.error), null);
     assert.equal(featuredSources.has(await page.locator('dialog video').evaluate(video => video.currentSrc)), false, 'Gallery never repeats a featured video');
     await page.keyboard.press('Escape');

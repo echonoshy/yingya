@@ -1,6 +1,7 @@
 import { userStorageKey } from "./session";
 import { z } from "zod";
 import type { ModelSelection } from "./types";
+import { modelAllowed } from './models';
 
 const selectionSchema = z.object({
   version: z.literal(1),
@@ -12,7 +13,7 @@ const stringSchema = z.object({ version: z.literal(1), value: z.string().min(1) 
 export function readModelSelection(fallback: ModelSelection): ModelSelection {
   try {
     const parsed = selectionSchema.safeParse(JSON.parse(localStorage.getItem(userStorageKey("yingya-agent-model")) ?? "null"));
-    return parsed.success ? parsed.data.value : fallback;
+    return parsed.success && modelAllowed(parsed.data.value.model) ? parsed.data.value : fallback;
   } catch { return fallback; }
 }
 

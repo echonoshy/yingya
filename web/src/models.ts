@@ -1,5 +1,8 @@
 import type { CodexModel } from "./types";
 
+export const allowedModelIds = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'] as const;
+export const modelAllowed = (model: string) => allowedModelIds.some(id => id === model);
+
 const astra: CodexModel = {
   id: "gpt-6-astra",
   model: "gpt-6-astra",
@@ -14,6 +17,14 @@ const astra: CodexModel = {
 export function includeAstra(models: CodexModel[]): CodexModel[] {
   // Older Codex catalogs may omit Astra. Prefer server metadata when available.
   return models.some(model => model.model === astra.model) ? models : [...models, astra];
+}
+
+export function selectableModels(models: CodexModel[]): CodexModel[] {
+  const catalog = includeAstra(models);
+  return allowedModelIds.map(id => catalog.find(model => model.model === id) ?? {
+    ...astra, id, model: id, displayName: id === 'gpt-6-astra' ? 'GPT-6 Astra' : `GPT-5.6 ${id.split('-').at(-1)!.replace(/^./, letter => letter.toUpperCase())}`,
+    isDefault: id === 'gpt-5.6-terra',
+  });
 }
 
 /** Pin Astra in menus while keeping the catalog's defaults and relative order intact. */

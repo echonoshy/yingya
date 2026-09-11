@@ -9,6 +9,20 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+mod access;
+mod billing;
+mod management;
+pub use access::{InviteInput, ModelCharge};
+pub use billing::TokenUsage;
+pub use management::{InviteUpdate, ManagedUserInput, ProfileUpdate};
+pub const DEFAULT_TOKEN_LIMIT: i64 = 1_000_000_000;
+pub const DEFAULT_MEDIA_LIMIT: i64 = 40;
+#[cfg(test)]
+mod access_tests;
+#[cfg(test)]
+mod billing_tests;
+#[cfg(test)]
+mod management_tests;
 
 #[derive(Clone)]
 pub struct Accounts(Arc<Mutex<Connection>>, Arc<Vec<String>>);
@@ -42,7 +56,10 @@ impl Accounts {
           CREATE TABLE IF NOT EXISTS threads(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,model TEXT NOT NULL,project_id TEXT,kind TEXT NOT NULL,totals TEXT NOT NULL DEFAULT '{}');
           CREATE TABLE IF NOT EXISTS turns(id TEXT PRIMARY KEY,thread_id TEXT NOT NULL,user_id TEXT NOT NULL,model TEXT NOT NULL,project_id TEXT,kind TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'running',known INTEGER NOT NULL DEFAULT 0,input INTEGER NOT NULL DEFAULT 0,output INTEGER NOT NULL DEFAULT 0,cached INTEGER NOT NULL DEFAULT 0,reasoning INTEGER NOT NULL DEFAULT 0,total INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
           CREATE INDEX IF NOT EXISTS turns_user_date ON turns(user_id,created_at);
-          UPDATE turns SET status='interrupted' WHERE status='running';").map_err(|e| e.to_string())?;
+          ").map_err(|e| e.to_string())?;
+        access::migrate(&db)?;
+        management::migrate(&db)?;
+        billing::migrate(&db)?;
         Ok(Self(
             Arc::new(Mutex::new(db)),
             Arc::new(
@@ -53,6 +70,7 @@ impl Accounts {
             ),
         ))
     }
+    #[cfg(test)]
     pub fn login(&self, email: &str) -> Result<(User, String), String> {
         let email = email.trim().to_lowercase();
         let parts: Vec<_> = email.split('@').collect();
@@ -79,6 +97,7 @@ impl Accounts {
             })
             .map_err(|e| e.to_string())?;
         let token = secret();
+        tx.execute("INSERT OR IGNORE INTO account_access(user_id,password_hash,token_limit,media_limit) VALUES(?1,'test-only',1000000,20)", [&id]).map_err(|e|e.to_string())?;
         tx.execute("DELETE FROM sessions WHERE expires_at<=?1", [now()])
             .map_err(|e| e.to_string())?;
         tx.execute(
@@ -97,7 +116,7 @@ impl Accounts {
         ))
     }
     pub fn session(&self, token: &str) -> Option<User> {
-        self.0.lock().ok()?.query_row("SELECT u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.hash=?1 AND s.expires_at>?2",params![digest(token),now()],|r| { let email:String=r.get(1)?; Ok(User{id:r.get(0)?,is_admin:self.1.contains(&email),email}) }).optional().ok().flatten()
+        self.0.lock().ok()?.query_row("SELECT u.id,u.email,a.admin FROM sessions s JOIN users u ON u.id=s.user_id JOIN account_access a ON a.user_id=u.id WHERE s.hash=?1 AND s.expires_at>?2 AND a.disabled=0 AND a.password_hash IS NOT NULL",params![digest(token),now()],|r| { let email:String=r.get(1)?; Ok(User{id:r.get(0)?,is_admin:r.get::<_,bool>(2)? || self.1.contains(&email),email}) }).optional().ok().flatten()
     }
     pub fn logout(&self, token: &str) -> Result<(), String> {
         self.0

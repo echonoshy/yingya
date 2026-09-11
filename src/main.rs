@@ -15,5 +15,72 @@ mod voices;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("accounts-upgrade-defaults") {
+        dotenvy::dotenv().ok();
+        let paths = config::AppPaths::from_env()?;
+        let accounts = accounts::Accounts::open(&paths.app_data.join("yingya.sqlite"), vec![])?;
+        println!("{}", accounts.upgrade_default_quotas()?);
+        return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some("admin-create") {
+        dotenvy::dotenv().ok();
+        let username = std::env::args()
+            .nth(2)
+            .ok_or("Usage: admin-create USERNAME EMAIL")?;
+        let email = std::env::args()
+            .nth(3)
+            .ok_or("Usage: admin-create USERNAME EMAIL")?;
+        let paths = config::AppPaths::from_env()?;
+        std::fs::create_dir_all(&paths.app_data)?;
+        let accounts = accounts::Accounts::open(&paths.app_data.join("yingya.sqlite"), vec![])?;
+        let password = format!("Yy-{}", &accounts::secret()[..24]);
+        let result = accounts.create_managed_user(
+            "宿主终端",
+            accounts::ManagedUserInput {
+                email: email.clone(),
+                username: username.clone(),
+                name: "管理员".into(),
+                password: password.clone(),
+                is_admin: true,
+                token_limit: accounts::DEFAULT_TOKEN_LIMIT,
+                media_limit: accounts::DEFAULT_MEDIA_LIMIT,
+            },
+        )?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(
+                &serde_json::json!({"id":result["id"],"username":username,"email":email,"password":password})
+            )?
+        );
+        return Ok(());
+    }
+    if matches!(
+        std::env::args().nth(1).as_deref(),
+        Some("account-invite" | "account-reset")
+    ) {
+        dotenvy::dotenv().ok();
+        let email = std::env::args()
+            .nth(2)
+            .ok_or("Usage: cargo run -- account-invite EMAIL [--admin]")?;
+        let paths = config::AppPaths::from_env()?;
+        std::fs::create_dir_all(&paths.app_data)?;
+        let accounts = accounts::Accounts::open(&paths.app_data.join("yingya.sqlite"), vec![])?;
+        let value = if std::env::args().nth(1).as_deref() == Some("account-reset") {
+            accounts.password_reset(&email)?
+        } else {
+            accounts.invite(
+                accounts::InviteInput {
+                    email: Some(email),
+                    expires_in_days: 7,
+                    max_uses: 1,
+                    token_limit: accounts::DEFAULT_TOKEN_LIMIT,
+                    media_limit: accounts::DEFAULT_MEDIA_LIMIT,
+                },
+                std::env::args().any(|arg| arg == "--admin"),
+            )?
+        };
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
+    }
     api::run().await
 }

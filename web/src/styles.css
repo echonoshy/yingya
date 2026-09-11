@@ -32,6 +32,7 @@
   --warning: #a05a00;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC Variable", "Noto Sans SC", sans-serif;
   --font-mono: "Fragment Mono", "SFMono-Regular", Consolas, monospace;
+  --text-search: var(--text-control);
   --radius-control: 12px;
   --radius-button: 14px;
   --radius-panel: 18px;
@@ -447,7 +448,7 @@ button:not(:disabled) { cursor: pointer; }
 .artifact-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); }
 .artifact-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .artifact-search > svg { flex: 0 0 18px; color: var(--dim); }
-.artifact-search input { min-width: 0; width: 100%; height: 44px; padding: 0; border: 0; outline: none; background: transparent; font: var(--text-input) var(--font-ui); color: var(--text); }
+.artifact-search input { min-width: 0; width: 100%; height: 44px; padding: 0; border: 0; outline: none; background: transparent; font: var(--text-search) var(--font-ui); color: var(--text); }
 .artifact-search button { display: grid; place-items: center; flex: 0 0 32px; height: 32px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); }
 .artifact-search button:hover { background: var(--surface-hover); }
 .artifact-list-hint { margin: 10px 0 18px; font-size: var(--text-caption); color: var(--dim); line-height: var(--leading-ui); }
@@ -786,7 +787,7 @@ button:not(:disabled) { cursor: pointer; }
 .asset-search { width: min(260px, 24vw); height: 38px; padding: 0 11px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--dim); }
 .asset-search:focus-within { border-color: var(--accent-text); outline: 2px solid color-mix(in srgb, var(--accent) 18%, transparent); }
 .asset-search svg { flex: 0 0 auto; width: 16px; }
-.asset-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; }
+.asset-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--text-search); }
 .asset-search kbd { white-space: nowrap; color: var(--dim); font: var(--text-caption) var(--font-ui); }
 .asset-upload-button, .asset-create-button { min-height: 38px; padding: 0 14px; border-radius: 11px !important; display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 650; }
 .asset-upload-button { border: 1px solid var(--line) !important; background: var(--canvas) !important; }
@@ -1336,7 +1337,7 @@ button:not(:disabled) { cursor: pointer; }
 .home-project-search { width: 240px; min-height: 40px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--dim); }
 .home-project-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .home-project-search > svg { width: 17px; height: 17px; flex-shrink: 0; }
-.home-project-search input { width: 100%; min-width: 0; padding: 8px 0; outline: none; border: 0; background: transparent; color: var(--text); font-size: 13px; }
+.home-project-search input { width: 100%; min-width: 0; padding: 8px 0; outline: none; border: 0; background: transparent; color: var(--text); font-size: var(--text-search); }
 .home-project-search input::placeholder { color: var(--dim); }
 .home-project-search input::-webkit-search-cancel-button { display: none; }
 .home-project-search button { width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border: 0; border-radius: var(--radius-control); background: var(--background); }
@@ -1811,6 +1812,8 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .reference-picker { padding: 12px; }
 .reference-picker-tools { display: flex; gap: 8px; }
 .reference-picker-tools input, .reference-picker-tools select { min-width: 0; width: 50%; min-height: 38px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); padding: 8px; }
+.reference-picker-tools input, .reference-picker-tools select { font-size: var(--text-caption); }
+.reference-picker-tools input, .audio-library input { font-size: var(--text-search); }
 .reference-picker p { font-size: 12px; color: var(--muted); }
 .reference-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; max-height: 300px; overflow: auto; }
 .reference-picker-grid > label { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); cursor: pointer; }
@@ -1985,7 +1988,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .workspace.workspace--canvas .thread-footer .composer:focus-within { border-color: var(--accent); }
 .workspace.workspace--canvas .thread-footer textarea { min-height: 54px; padding: 4px 4px 8px; font-size: var(--text-control); line-height: var(--leading-body); }
 .workspace.workspace--canvas .message, .workspace.workspace--canvas .message .markdown-body { font-size: var(--text-control); }
-.workspace.workspace--canvas .artifact-search input { font-size: var(--text-control); }
+.workspace.workspace--canvas .artifact-search input { font-size: var(--text-search); }
 .workspace.workspace--canvas .composer-feedback:empty { min-height: 0; }
 .workspace.workspace--canvas .composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 8px; }
 .workspace.workspace--canvas .composer-toolbar > .composer-resources { flex: 0 0 auto; display: flex; gap: 6px; }
@@ -2168,3 +2171,55 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 .usage-filters input { min-width: 0; width: 100%; }
 @media(max-width: 799px) { .account-shell .task-center { top: 11px; } }
 @media(max-width: 980px) { .account-shell:has(> div:not([hidden]) .workspace--canvas) .task-center { top: 11px; } }
+
+.account-login h1 { font-size: var(--text-title); letter-spacing: 0; }
+.account-login .login-intro { margin-bottom: 20px; }
+.account-login form > label { margin: 20px 0 8px; }
+.account-tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-inset); border-radius: var(--radius-control); width: fit-content; max-width: 100%; }
+.account-tabs button { padding: 8px 16px; min-height: 40px; border: 0; border-radius: var(--radius-control); background: transparent; font-size: var(--text-control); color: var(--muted); }
+.account-tabs button[aria-pressed="true"] { background: var(--canvas); color: var(--text); }
+.account-help { color: var(--muted); font-size: var(--text-caption); line-height: 1.8; }
+.account-quota { max-width: 1200px; margin: 24px auto 32px; padding: 24px 0; border-block: 1px solid var(--line); }
+.account-quota h2, .account-editor h2 { font-size: var(--text-section); font-weight: 600; margin: 0 0 20px; overflow-wrap: anywhere; }
+.account-quota-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; }
+.account-quota-grid > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.account-quota-grid span { color: var(--muted); font-size: var(--text-control); }
+.account-quota-grid strong { font-size: var(--text-title); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.account-quota-grid progress { width: 100%; height: 6px; accent-color: var(--accent); }
+.account-quota-grid small { font-size: var(--text-caption); color: var(--muted); overflow-wrap: anywhere; }
+.account-status { display: flex; align-items: center; gap: 6px; font-size: var(--text-control); line-height: 1.6; }
+.account-status svg { flex-shrink: 0; }
+.account-admin { min-width: 0; }
+.account-admin > * { max-width: 1200px; margin-left: auto; margin-right: auto; }
+.account-admin .usage-heading h1 { font-size: var(--text-title); }
+.account-admin-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+.account-actions { display: flex; align-items: center; gap: 8px; }
+.account-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: 0 0 40px; border: 0; background: transparent; border-radius: var(--radius-control); color: var(--muted); }
+.account-icon:hover { background: var(--surface-hover); }
+.account-icon svg, .account-primary svg { width: 18px; height: 18px; flex-shrink: 0; }
+.account-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 10px 16px; border: 0; border-radius: var(--radius-control); background: var(--primary); color: var(--canvas); font-size: var(--text-control); }
+.account-admin button:disabled { opacity: .5; cursor: not-allowed; }
+.account-editor { border-block: 1px solid var(--line); padding: 24px 0; margin-bottom: 24px; }
+.account-editor-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.account-editor-heading h2 { margin-top: 8px; }
+.account-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.account-form-grid label, .account-invite-result > label { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: var(--text-control); }
+.account-field-wide { grid-column: 1 / -1; }
+.account-form-grid input, .account-invite-result input { width: 100%; min-width: 0; height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font-size: var(--text-input); }
+.account-checkbox { display: flex; align-items: center; gap: 8px; font-size: var(--text-control); margin: 16px 0; }
+.account-checkbox input { width: 18px; height: 18px; accent-color: var(--accent); }
+.account-invite-result { padding: 20px 0; border-block: 1px solid var(--line); margin-bottom: 20px; }
+.account-invite-result > div { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.account-invite-result p { font-size: var(--text-caption); color: var(--muted); }
+.account-admin table th:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 140px; max-width: 280px; }
+.account-admin table .account-status { margin: 4px 0 0; font-size: var(--text-caption); color: var(--muted); }
+@media(max-width: 599px) {
+ .account-login { padding: 28px 0; }
+ .account-form-grid, .account-quota-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+ .account-tabs button { padding: 8px 12px; }
+ .account-admin-toolbar { align-items: flex-start; }
+}
+
+@media (max-width: 799px) {
+  :root { --text-search: var(--text-input); }
+}
