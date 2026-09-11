@@ -95,19 +95,20 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
     {open ? <ActionDialog title="旁白音色" busy={Boolean(working)} onClose={() => setOpen(false)}><section className="voice-menu">
 
       {mode === "list" ? <>
-        <div className="voice-list">
-          {voices.map(voice => {
+        <div className="voice-list" aria-busy={loading}>
+          {voices.map((voice, index) => {
             const detail = metadata.get(voice.toLocaleLowerCase());
             const label = voice === "default" ? "默认音色" : detail?.name ?? voice;
             return <div className={`voice-row ${value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? "active" : ""}`} key={voice}>
               <button type="button" className="voice-choice" disabled={Boolean(working)} onClick={() => void choose(voice)}>
-                <span><SpeakerHigh/></span><div><b>{label}</b>{voice !== "default" ? <small>{detail?.speaker_description || "已保存的项目音色"}</small> : null}</div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
+                <span aria-hidden="true">{loading && index === 0 ? <CircleNotch className="spin"/> : <SpeakerHigh/>}</span><div><b>{label}</b>{voice !== "default" ? <small>{detail?.speaker_description || "已保存的项目音色"}</small> : null}</div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
               </button>
               <button type="button" className="voice-preview" aria-label={`试听 ${label}`} disabled={Boolean(previewing)} onClick={() => void preview(voice)}>{previewing === voice ? <CircleNotch className="spin"/> : <Play weight="fill"/>}</button>
             </div>;
           })}
-          {loading ? <div className="voice-loading"><CircleNotch className="spin"/>正在读取音色…</div> : null}
         </div>
+        {/* Keep loading feedback out of the centered dialog's height calculation. */}
+        <span className="sr-only" role="status">{loading ? "正在读取音色…" : ""}</span>
         {audioUrl ? <audio className="voice-audio" src={audioUrl} controls autoPlay/> : null}
         <div className="voice-create-actions"><button type="button" onClick={() => setMode("design")}><MagicWand/>描述生成</button><button type="button" onClick={() => setMode("clone")}><UploadSimple/>克隆音色</button></div>
       </> : <div className="voice-editor">

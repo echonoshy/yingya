@@ -3,7 +3,8 @@ import { MarketingPage } from './MarketingPage';
 
 const AccountGate = lazy(() => import('../components/AccountGate').then(module => ({ default: module.AccountGate })));
 const AdminApp = lazy(() => import('../admin/AdminApp').then(module => ({ default: module.AdminApp })));
-function currentRoute(){return /^\/admin(?:\/|$)/.test(window.location.pathname)?'admin':isWorkspaceRoute()?'workspace':'marketing';}
+const HomePrototype = lazy(() => import('./prototype/HomePrototype').then(module => ({ default: module.HomePrototype })));
+function currentRoute(){return window.location.pathname === '/prototype-home' ? 'prototype' : /^\/admin(?:\/|$)/.test(window.location.pathname)?'admin':isWorkspaceRoute()?'workspace':'marketing';}
 
 function isWorkspaceRoute() {
   // Keep existing bookmarks to projects, assets, and the original create page working.
@@ -22,5 +23,6 @@ export function WebsiteRouter() {
       window.removeEventListener('hashchange', sync);
     };
   }, []);
+  if (route === 'prototype') return <Suspense fallback={<main className="state-screen" role="status">正在打开首页原型…</main>}><HomePrototype /></Suspense>;
   return route==='admin'?<Suspense fallback={<main className="state-screen" role="status">正在打开管理后台…</main>}><AdminApp/></Suspense>:route==='workspace' ? <Suspense fallback={<main className="state-screen" role="status">正在打开工作台…</main>}><AccountGate /></Suspense> : <MarketingPage />;
 }

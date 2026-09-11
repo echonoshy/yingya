@@ -118,7 +118,7 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
         if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|flac|aac|webm)$/i.test(file.name)) { setError("请选择音频文件。"); return; }
         setError(""); onChange(file);
       }}/>
-      <p className={`voice-reference-status ${busy ? "is-busy" : ""}`} role="status">{status === "recording" ? <><Microphone/>正在录音 <time>00:{String(seconds).padStart(2, "0")} / 00:30</time></> : status === "requesting" ? "请允许使用麦克风…" : status === "processing" ? "正在保存录音…" : "建议 1–30 秒，文件不超过 10 MB"}</p>
+      <p className={`voice-reference-status ${busy ? "is-busy" : ""}`} role="status">{status === "recording" ? <><Microphone/>正在录音 <time>00:{String(seconds).padStart(2, "0")} / 00:30</time></> : status === "requesting" ? "请允许使用麦克风…" : status === "processing" ? "正在保存录音…" : "建议 30 秒，文件不超过 10 MB"}</p>
       {value && !busy ? <div className="voice-reference-preview"><div><span title={value.name}>{value.name}</span><button type="button" aria-label="移除参考音频" title="移除参考音频" disabled={disabled} onClick={() => { onChange(null); setError(""); }}><X/></button></div><audio src={url || undefined} controls aria-label="试听参考音频"/></div> : null}
     </div>
     {error ? <p className="voice-reference-error" role="alert">{error}</p> : null}
