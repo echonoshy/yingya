@@ -2182,7 +2182,7 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 @media(max-width: 799px) { .account-shell .task-center { top: 11px; } }
 @media(max-width: 980px) { .account-shell:has(> div:not([hidden]) .workspace--canvas) .task-center { top: 11px; } }
 
-.account-login h1 { font-size: var(--text-title); letter-spacing: 0; }
+.account-login h1 { font-size: var(--text-display); letter-spacing: 0; }
 .account-login .login-intro { margin-bottom: 20px; }
 .account-login form > label { margin: 20px 0 8px; }
 .account-tabs { display: flex; gap: 4px; padding: 4px; background: var(--surface-inset); border-radius: var(--radius-control); width: fit-content; max-width: 100%; }
