@@ -1624,7 +1624,7 @@ mod tests {
                 "/api/codex/threads/test/turns",
                 StatusCode::PAYMENT_REQUIRED,
             ),
-            ("POST", "/api/voices/preview", StatusCode::PAYMENT_REQUIRED),
+            ("POST", "/api/voices/preview", StatusCode::OK),
         ] {
             let mut request = Request::builder()
                 .method(method)

@@ -221,7 +221,8 @@ fn disabling_revokes_sessions_and_blocks_internal_work_without_deleting_usage() 
     let (user, session) = register(&db, "a@example.com", 100);
     db.consume_media(&user.id).unwrap();
     db.consume_media(&user.id).unwrap();
-    assert!(db.consume_media(&user.id).is_err());
+    db.consume_media(&user.id).unwrap();
+    assert!(db.quota(&user.id).unwrap().media_unlimited);
     db.update_account(
         "admin",
         &user.id,
@@ -234,7 +235,8 @@ fn disabling_revokes_sessions_and_blocks_internal_work_without_deleting_usage() 
     assert!(db.session(&session).is_none());
     assert!(db.check_quota(&user.id).is_err());
     assert!(db.reserve_model(&user.id).is_err());
-    assert_eq!(db.quota(&user.id).unwrap().used_media, 2);
+    assert!(db.consume_media(&user.id).is_err());
+    assert_eq!(db.quota(&user.id).unwrap().used_media, 3);
     assert!(
         db.authenticate("a@example.com", "a-test-password", None)
             .is_err()

@@ -62,6 +62,10 @@ Playwright can help distinguish a source error from HyperFrames bundling behavio
 
 ## Audio and command results
 
+Yingya does not limit media generation by count. Token limits and disabled-account
+checks still apply. Reuse valid existing narration on retries and visual-only
+edits; unlimited counts do not make repeated synthesis useful.
+
 Invoke the installed `hyperframes` command directly. Do not use `npx` to find or
 download it in a project. A CLI on PATH does not imply its packages can be imported
 from a project; use the explicit shared dependency path above for Playwright.

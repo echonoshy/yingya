@@ -250,3 +250,18 @@ Unconfigured HeyGen is disclosed in the turn. The current model relay does not
 implement standalone web search or Apps MCP: their Codex capabilities are
 explicitly disabled. Known public webpages remain readable through the sandbox
 HTTP gateway; that is not a replacement for search-based source discovery.
+
+
+## 素材次数策略
+
+素材生成对全部启用账号不限次数，包括旧账号、新账号与通过邀请注册的账号。
+配音、素材接口和模型内图片生成均不再使用 `media_limit` 拦截；Token 额度、
+账号停用、接口权限和服务商自身限制仍然有效。无需修改用户数据库额度。
+
+`/api/quota` 和管理用户详情返回 `mediaUnlimited: true`。数据库与旧 API 的
+`mediaLimit` / `remainingMedia` 字段为兼容历史客户端保留，不能再作为权限判断。
+管理后台不再提供素材次数编辑，用户页和 CSV 显示“不限次数”。`usedMedia` 与
+`reservedMedia` 保留现有统计口径，不清空历史记录；语音失败请求的统计口径仍待
+单独改为成功结算，不能将历史计数视为成功生成文件数。
+
+回滚到取消限制之前的版本会恢复历史素材限制，执行回滚前需评估这一行为变化。

@@ -539,7 +539,7 @@ mod tests {
         assert!(model_body(br#"{"model":"gpt-5.5"}"#, "", &charge).is_err());
     }
     #[test]
-    fn image_tools_obey_shared_media_reservations_in_compressed_requests() {
+    fn image_tools_remain_available_after_legacy_media_limit_in_compressed_requests() {
         let db = crate::accounts::Accounts::open(Path::new(":memory:"), vec![]).unwrap();
         let (user, _) = db.login("image@example.com").unwrap();
         for _ in 0..20 {
@@ -550,8 +550,9 @@ mod tests {
         let compressed = zstd::stream::encode_all(input.to_string().as_bytes(), 1).unwrap();
         let body: Value =
             serde_json::from_slice(&model_body(&compressed, "zstd", &charge).unwrap()).unwrap();
-        assert_eq!(body["tools"].as_array().unwrap().len(), 1);
-        assert_eq!(body["tools"][0]["type"], "function");
+        assert_eq!(body["tools"].as_array().unwrap().len(), 2);
+        assert_eq!(body["tools"][0]["type"], "image_generation");
+        assert_eq!(db.quota(&user.id).unwrap().reserved_media, 1);
         charge.settle(Some(0), 0).unwrap();
     }
     #[tokio::test]

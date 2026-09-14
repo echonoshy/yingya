@@ -31,6 +31,8 @@ pub struct InviteInput {
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Quota {
+    /// Legacy media limit fields are retained for API compatibility only.
+    pub media_unlimited: bool,
     pub token_limit: i64,
     pub used_tokens: i64,
     pub reserved_tokens: i64,
@@ -288,9 +290,14 @@ impl Accounts {
     }
     pub fn consume_media(&self, user: &str) -> Result<(), String> {
         let db = self.0.lock().map_err(|e| e.to_string())?;
-        let changed=db.execute("UPDATE account_access SET used_media=used_media+1 WHERE user_id=?1 AND disabled=0 AND used_media+COALESCE((SELECT SUM(media) FROM model_charges WHERE user_id=?1 AND status='running'),0)<media_limit",[user]).map_err(|e|e.to_string())?;
+        let changed = db
+            .execute(
+                "UPDATE account_access SET used_media=used_media+1 WHERE user_id=?1 AND disabled=0",
+                [user],
+            )
+            .map_err(|e| e.to_string())?;
         if changed == 0 {
-            return Err("素材生成额度已用完或账号已停用，请联系管理员".into());
+            return Err("账号不存在或已停用，请联系管理员".into());
         }
         Ok(())
     }
@@ -402,7 +409,7 @@ pub(super) fn quota(db: &Connection, user: &str) -> Result<Quota, String> {
       COALESCE((SELECT SUM(media) FROM model_charges WHERE user_id=?1 AND status='running'),0) FROM account_access WHERE user_id=?1",[user],|r| {
         let token_limit:i64=r.get(0)?;let used_tokens:i64=r.get(1)?;let media_limit:i64=r.get(2)?;let used_media:i64=r.get(3)?;let reserved_tokens:i64=r.get(5)?;
         let reserved_media:i64=r.get(7)?;
-        Ok(Quota{token_limit,used_tokens,reserved_tokens,remaining_tokens:(token_limit-used_tokens-reserved_tokens).max(0),media_limit,used_media,reserved_media,remaining_media:(media_limit-used_media-reserved_media).max(0),disabled:r.get(4)?,unknown_calls:r.get(6)?})
+        Ok(Quota{media_unlimited:true,token_limit,used_tokens,reserved_tokens,remaining_tokens:(token_limit-used_tokens-reserved_tokens).max(0),media_limit,used_media,reserved_media,remaining_media:(media_limit-used_media-reserved_media).max(0),disabled:r.get(4)?,unknown_calls:r.get(6)?})
     }).map_err(|_|"账号额度不可用".into())
 }
 
@@ -426,7 +433,7 @@ impl ModelCharge {
     }
     pub fn reserve_image(&self) -> Result<bool, String> {
         let db = self.accounts.0.lock().map_err(|e| e.to_string())?;
-        db.execute("UPDATE model_charges SET media=1 WHERE id=?1 AND status='running' AND EXISTS(SELECT 1 FROM account_access a WHERE a.user_id=model_charges.user_id AND a.disabled=0 AND a.used_media+COALESCE((SELECT SUM(c.media) FROM model_charges c WHERE c.user_id=a.user_id AND c.status='running'),0)<a.media_limit)",[&self.id]).map(|n|n==1).map_err(|e|e.to_string())
+        db.execute("UPDATE model_charges SET media=1 WHERE id=?1 AND status='running' AND EXISTS(SELECT 1 FROM account_access a WHERE a.user_id=model_charges.user_id AND a.disabled=0)",[&self.id]).map(|n|n==1).map_err(|e|e.to_string())
     }
     pub fn settle(&mut self, tokens: Option<i64>, media: i64) -> Result<(), String> {
         let mut db = self.accounts.0.lock().map_err(|e| e.to_string())?;

@@ -62,11 +62,11 @@ export function QuotaOverview({ refresh }: { refresh: number }) {
     load(); const timer = window.setInterval(load, 15000); return () => { controller.abort(); window.clearInterval(timer); };
   }, [refresh]);
   return <section className="account-quota" aria-label="内测额度"><h2>我的额度</h2>{error ? <p className="account-error" role="alert">{error}</p> : null}
-    {quota ? <><div className="account-quota-grid">{[['Token', quota.remainingTokens, quota.usedTokens, quota.tokenLimit], ['素材生成', quota.remainingMedia, quota.usedMedia, quota.mediaLimit]].map(([label, remaining, used, limit]) => <div key={label}><span>剩余{label === 'Token' ? ' Token' : '素材生成次数'}</span><strong>{number(Number(remaining))}</strong><progress aria-label={`${label} 已用额度`} value={Math.min(Number(used), Number(limit))} max={Number(limit) || 1} /><small>已用 {number(Number(used))} / 总额 {number(Number(limit))}</small></div>)}</div>
+    {quota ? <><div className="account-quota-grid"><div><span>剩余 Token</span><strong>{number(quota.remainingTokens)}</strong><progress aria-label="Token 已用额度" value={Math.min(quota.usedTokens, quota.tokenLimit)} max={quota.tokenLimit || 1} /><small>已用 {number(quota.usedTokens)} / 总额 {number(quota.tokenLimit)}</small></div><div><span>素材生成</span><strong>不限次数</strong><small>已用 {number(quota.usedMedia)} 次</small></div></div>
       {quota.remainingTokens === 0 ? <p className="account-status"><Prohibit />Token 额度已用完或正在使用。已有作品仍可查看和下载。</p> : null}
       {quota.reservedTokens > 0 ? <p className="account-help">运行中预留 {number(quota.reservedTokens)} Token，调用结束后按实际用量结算。</p> : null}
-      {quota.reservedMedia > 0 ? <p className="account-help">图片调用预留 {quota.reservedMedia} 次素材额度，未使用的次数会在调用结束后释放。</p> : null}
+      {quota.reservedMedia > 0 ? <p className="account-help">运行中图片调用 {quota.reservedMedia} 次。</p> : null}
       {quota.unknownCalls > 0 ? <p className="account-help">有 {quota.unknownCalls} 次模型调用尚未确认用量，暂按预留额度扣除，请联系管理员核对。</p> : null}
-      <p className="account-help">额度不自动重置，需要追加请联系管理员。素材额度用于图片生成与语音操作。</p></> : !error ? <p role="status">正在读取额度…</p> : null}
+      <p className="account-help">Token 额度不自动重置，需要追加请联系管理员。图片生成与语音操作不限次数。</p></> : !error ? <p role="status">正在读取额度…</p> : null}
   </section>;
 }

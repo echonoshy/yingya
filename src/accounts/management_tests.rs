@@ -250,7 +250,12 @@ fn roles_reserved_emails_and_inflight_quotas_cannot_be_overwritten() {
     edit.token_limit = 10;
     assert!(db.edit_profile(&owner, &member, edit).is_err());
     drop(charge);
+    for _ in 0..12 {
+        db.consume_media(&member).unwrap();
+    }
     let mut edit = profile(&db, &member);
+    // Historical media limits no longer block unrelated profile edits.
+    edit.media_limit = 0;
     edit.is_admin = true;
     db.edit_profile(&owner, &member, edit).unwrap();
     assert!(

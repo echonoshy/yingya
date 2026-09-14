@@ -296,9 +296,7 @@ impl Accounts {
             .map_err(|e| e.to_string())?
             .flatten();
         let q = quota(&tx, id)?;
-        if input.token_limit < q.used_tokens + q.reserved_tokens
-            || input.media_limit < q.used_media + q.reserved_media
-        {
+        if input.token_limit < q.used_tokens + q.reserved_tokens {
             return Err("总额度不能低于已用额度与运行中的预留额度之和".into());
         }
         let before = json!({"email":old.0,"username":old_profile,"isAdmin":old.1||self.1.contains(&old.0),"tokenLimit":q.token_limit,"mediaLimit":q.media_limit,"disabled":q.disabled});
