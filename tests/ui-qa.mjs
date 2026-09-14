@@ -1208,10 +1208,70 @@ async function assertFeedbackLifecycle(browser) {
   console.log('Feedback lifecycle QA passed: direct execution, asset feedback typing/expiry, snapshot recovery at 1280/390/320px');
 }
 
+async function assertComposerFileDrop(browser) {
+  for (const width of [1440, 390, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (['error', 'warning'].includes(message.type())) errors.push(message.text()); });
+    await installApiMock(page);
+    await page.goto(workspaceUrl);
+    const prompt = page.locator('.composer textarea');
+    await prompt.fill('使用附件制作动画');
+    await page.locator('.composer input[type=file]').setInputFiles({ name: 'existing.txt', mimeType: 'text/plain', buffer: Buffer.from('existing') });
+    await page.getByText('附件已保存', { exact: true }).waitFor();
+    const transfer = await page.evaluateHandle(() => {
+      const data = new DataTransfer();
+      data.items.add(new File(['reference'], 'reference.png', { type: 'image/png' }));
+      data.items.add(new File(['brief'], 'brief.txt', { type: 'text/plain' }));
+      return data;
+    });
+    await prompt.dispatchEvent('dragenter', { dataTransfer: transfer });
+    await page.getByText('松开以添加附件', { exact: true }).waitFor();
+    await page.screenshot({ path: `/tmp/yingya-drop-hover-${width}.png` });
+    await prompt.dispatchEvent('dragleave', { dataTransfer: transfer });
+    await page.locator('.composer-drop-overlay').waitFor({ state: 'detached' });
+    await prompt.dispatchEvent('dragenter', { dataTransfer: transfer });
+    await prompt.dispatchEvent('dragover', { dataTransfer: transfer });
+    await prompt.dispatchEvent('drop', { dataTransfer: transfer });
+    await page.getByText('已添加 2 个附件，发送时上传', { exact: true }).waitFor();
+    if (await page.locator('.attachment-row > span').count() !== 3) throw new Error('Drop replaced existing files');
+    if (await prompt.inputValue() !== '使用附件制作动画') throw new Error('Drop changed prompt');
+    await page.getByText('附件已保存', { exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole('button', { name: '移除 reference.png', exact: true }).waitFor();
+    if (await page.locator('.attachment-row > span').count() !== 3) throw new Error('File draft was not restored');
+    await page.getByRole('button', { name: '移除 brief.txt', exact: true }).click();
+    const uploads = [];
+    page.on('request', request => { if (request.url().endsWith('/assets') && request.method() === 'POST') uploads.push(request); });
+    const turn = page.waitForRequest(request => request.url().endsWith('/turns') && request.method() === 'POST');
+    await page.getByRole('button', { name: '创建视频任务', exact: true }).click();
+    if ((await turn).postDataJSON().attachments.length !== 2 || uploads.length !== 2) throw new Error('Dropped files were not uploaded on creation');
+    await page.getByRole('textbox', { name: '修改描述', exact: true }).waitFor();
+    const textarea = page.getByRole('textbox', { name: '修改描述', exact: true });
+    await textarea.fill('再补充参考文件');
+    const projectTransfer = await page.evaluateHandle(() => { const data = new DataTransfer(); data.items.add(new File(['more'], 'extra.txt', { type: 'text/plain' })); return data; });
+    await textarea.dispatchEvent('dragenter', { dataTransfer: projectTransfer });
+    await page.getByText('松开以添加附件', { exact: true }).waitFor();
+    await textarea.dispatchEvent('drop', { dataTransfer: projectTransfer });
+    await page.getByRole('button', { name: '移除 extra.txt', exact: true }).waitFor();
+    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Composer overflows viewport');
+    await page.screenshot({ path: `/tmp/yingya-drop-workspace-${width}.png` });
+    const sent = page.waitForRequest(request => request.url().endsWith('/turns') && request.method() === 'POST');
+    await page.getByRole('button', { name: '发送消息', exact: true }).click();
+    if ((await sent).postDataJSON().attachments.length !== 1 || uploads.length !== 3) throw new Error('Workspace dropped file was not uploaded');
+    await page.getByRole('button', { name: '移除 extra.txt', exact: true }).waitFor({ state: 'detached' });
+    if (errors.length) throw new Error(errors.join('\n'));
+    console.log(`Composer file drop QA passed at ${width}px: hover, leave, append, draft restore, removal, creation and message uploads; ${await page.title()}`);
+    await page.close();
+  }
+}
+
 let browser;
 try {
   await waitForFrontend();
   browser = await chromium.launch({ headless: true });
+  await assertComposerFileDrop(browser);
   await assertFeedbackLifecycle(browser);
   await assertFrontendRecovery(browser);
   await assertCompactWorkspaceAndQueue(browser);

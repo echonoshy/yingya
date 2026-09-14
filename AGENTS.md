@@ -15,6 +15,91 @@
 - When reporting service status, include the tmux session name and the listening
   port. Do not treat a systemd unit as the source of truth for this repository.
 
+## Updating development and the live website
+
+- The user-facing website is `https://yingya.art/app#/`. The Vite development
+  server at port `8798` is a different frontend. HMR, a successful
+  `npm run web:build`, or restarting `yingya-frontend` does **not** publish to
+  `yingya.art`. Never tell the user to refresh the website based only on a
+  development-server check.
+- For requested product changes, include publishing and verifying the live
+  website in the work unless the user explicitly limits the task to local
+  development, review, or preparation. Report local-only work as local-only.
+  Documentation-only changes do not require deployment.
+- Before changing services, inspect `data/deployment/active.json`,
+  `npm run release:status`, and the named tmux sessions. The deployed entry
+  normally owns port `8797`; its API uses a dynamically assigned port.
+  Do not start `yingya-backend` on that occupied port or replace the deployed
+  entry with a development server. Use isolated data and a free port for a
+  separate backend development instance.
+
+### Frontend changes
+
+- In development, React/CSS changes use Vite HMR in `yingya-frontend` on port
+  `8798`. Restart that session with `npm run web:service:reload` only when
+  configuration/dependency changes require it or HMR is demonstrably stale.
+- Run `npm run typecheck`, `npm run web:build`, relevant frontend tests, and
+  the visual checks required below before publishing.
+- Production serves a release snapshot's `web-dist`, not the worktree's
+  `web/` or `web-dist`. Publish a new immutable release and activate it using
+  `scripts/release.py`; never overwrite the active release in place.
+- A frontend-only release may reuse the active Rust binary after verifying
+  that its backend source and build inputs are unchanged. Keep an independent
+  release snapshot with the updated frontend source, built `web-dist`, and a
+  `release.json` pointing to the new release paths. Reuse runtime dependencies
+  only when their manifests/lockfiles match. If these checks cannot be made,
+  use the full release build below.
+- There is currently no dedicated frontend-only build command. The standard
+  release build is the supported default. Even a release reusing the Rust
+  binary currently switches the API gateway: it selects frontend resources
+  through the release resource directory. Frontend and backend are packaged
+  together, rather than independently deployed services.
+
+### Backend or combined changes
+
+- In an isolated development setup, Rust changes require recompilation and
+  restarting the owned `yingya-backend` session with
+  `npm run backend:service:restart`; they do not use Vite HMR.
+- Run `npm run format:check`, `npm run lint:rust`, relevant Rust tests, and
+  any affected frontend/API checks. Build a new Rust binary for backend
+  changes; do not reuse a stale executable.
+- Use the existing rolling release workflow from the repository directory
+  with a new, unique release ID, preserving the invoking environment:
+
+  ```bash
+  yingya_release_id="$(date +%Y%m%d-%H%M%S)-update"
+  npm run release:build -- "$yingya_release_id"
+  npm run release:activate -- "$yingya_release_id"
+  npm run release:status
+  ```
+
+- `release:build` snapshots the worktree, including uncommitted changes;
+  inspect the diff first so unrelated work is not accidentally published.
+  `release:activate` checks readiness, publishes hashed static assets,
+  switches the nginx entry, and updates the worker release target. Existing
+  workers drain before handing off; activation is not proof that every
+  worker has already upgraded. Do not kill running video tasks to force an
+  update. Release services run from their immutable snapshot directories
+  under the existing tmux release manager.
+- Retain previous releases and their static assets. For a compatible rollback,
+  reactivate the previous release ID with `npm run release:activate -- ID`;
+  first check data/schema compatibility if the update changed persistence.
+
+### Verify the actual published result
+
+- Fetch `https://yingya.art/app` after activation and verify its script/CSS
+  filenames match the new release, then check those public assets load.
+  A new build on disk or a healthy API alone is insufficient.
+- Exercise the changed behavior using the public website's frontend in a
+  browser. For frontend-only interaction checks, isolated API mocks are
+  acceptable, but report that limitation; they do not verify live backend
+  changes. Verify backend changes against the active API and relevant worker
+  version as well, using controlled data.
+- Inspect the active tmux logs and readiness. Report the public URL, release
+  ID, relevant tmux session names/ports, checks performed, and any remaining
+  limitations. If the public page still references old assets, investigate
+  routing and cache headers before asking the user to clear browser storage.
+
 ## UI design source of truth
 
 - Any work that creates or changes user-facing UI must read and follow

@@ -195,6 +195,11 @@ button:not(:disabled) { cursor: pointer; }
 .attachment-row, .context-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .attachment-row > span, .context-chips > span, .context-line span { padding: 6px 9px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-750); color: var(--muted); font: var(--text-caption) var(--font-mono); }
 .attachment-row button, .context-chips button { padding: 0 0 0 7px; border: 0; background: transparent; color: var(--dim); }
+.composer-drop-overlay { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 16px; border: 2px dashed var(--accent); border-radius: inherit; background: var(--canvas); color: var(--accent-text); font-size: var(--text-control); pointer-events: none; }
+.composer-drop-overlay svg { flex-shrink: 0; width: 20px; height: 20px; }
+.composer-drop-notice { color: var(--muted); font-size: var(--text-caption); }
+.composer-drop-notice:not(:empty) { margin-top: 8px; }
+.attachment-row > span { max-width: 100%; overflow-wrap: anywhere; }
 .form-error { margin: 9px 3px; color: var(--danger); font-size: 12px; }
 .open-project-error { position: fixed; top: 82px; left: 50%; z-index: 20; max-width: min(560px, calc(100vw - 32px)); padding: 10px 14px; border: 1px solid rgba(255, 111, 106, .45); border-radius: var(--radius-control); background: #211313; color: #ffaaa6; font-size: 12px; line-height: 1.5; box-shadow: 0 12px 32px rgba(0, 0, 0, .4); transform: translateX(-50%); }
 .primary-button { min-height: 42px; padding: 0 18px; border: 0; border-radius: var(--radius-button); background: var(--purple-500); color: white; font-size: 13px; font-weight: 650; }
