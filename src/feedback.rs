@@ -30,12 +30,18 @@ pub struct VisualFeedback {
     pub version_id: String,
     pub video_path: String,
     pub time_seconds: f64,
+    #[serde(default)]
     pub frame_width: u32,
+    #[serde(default)]
     pub frame_height: u32,
-    pub region: FeedbackRegion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<FeedbackRegion>,
     pub note: String,
+    #[serde(default)]
     pub screenshot_asset_id: String,
+    #[serde(default)]
     pub screenshot_path: String,
+    #[serde(default)]
     pub screenshot_sha256: String,
     pub created_at: u64,
 }
@@ -218,33 +224,46 @@ async fn existing_asset(root: &Path, id: &str, digest: &str) -> Result<FeedbackA
 
 pub fn validate_shape(feedback: &[VisualFeedback], manifest: &AgentManifest) -> Result<(), String> {
     if feedback.len() > 8 {
-        return Err("每条消息最多包含 8 个画面标注".to_owned());
+        return Err("每条消息最多包含 8 条修改意见".to_owned());
     }
     let mut ids = HashSet::new();
     for item in feedback {
         uuid(&item.id)?;
-        uuid(&item.screenshot_asset_id)?;
         if !ids.insert(&item.id) {
-            return Err("画面标注重复".to_owned());
+            return Err("修改意见重复".to_owned());
         }
-        let r = &item.region;
-        if item.kind != "video-frame"
+        if !matches!(item.kind.as_str(), "video-frame" | "video-time")
             || item.note.trim().is_empty()
             || item.note.chars().count() > 2000
             || !item.time_seconds.is_finite()
             || item.time_seconds < 0.0
-            || ![r.x, r.y, r.width, r.height].iter().all(|v| v.is_finite())
-            || r.x < 0.0
-            || r.y < 0.0
-            || r.width <= 0.0
-            || r.height <= 0.0
-            || r.x + r.width > 1.000001
-            || r.y + r.height > 1.000001
-            || item.frame_width == 0
-            || item.frame_height == 0
-            || item.frame_width.max(item.frame_height) > 1920
         {
-            return Err("标注的描述、时间或选区无效".to_owned());
+            return Err("修改意见的描述或时间无效".to_owned());
+        }
+        if item.kind == "video-frame" {
+            uuid(&item.screenshot_asset_id)?;
+            let r = item.region.as_ref().ok_or("画面标注缺少选区")?;
+            if ![r.x, r.y, r.width, r.height].iter().all(|v| v.is_finite())
+                || r.x < 0.0
+                || r.y < 0.0
+                || r.width <= 0.0
+                || r.height <= 0.0
+                || r.x + r.width > 1.000001
+                || r.y + r.height > 1.000001
+                || item.frame_width == 0
+                || item.frame_height == 0
+                || item.frame_width.max(item.frame_height) > 1920
+            {
+                return Err("标注的截图尺寸或选区无效".to_owned());
+            }
+        } else if item.region.is_some()
+            || item.frame_width != 0
+            || item.frame_height != 0
+            || !item.screenshot_asset_id.is_empty()
+            || !item.screenshot_path.is_empty()
+            || !item.screenshot_sha256.is_empty()
+        {
+            return Err("时间点反馈不能附带未校验的截图信息".to_owned());
         }
         let version = manifest
             .versions
@@ -273,14 +292,6 @@ pub async fn validate_feedback(
     let mut images = Vec::new();
     let mut durations = std::collections::HashMap::new();
     for item in feedback {
-        let asset =
-            existing_asset(root, &item.screenshot_asset_id, &item.screenshot_sha256).await?;
-        if asset.path != item.screenshot_path
-            || asset.width != item.frame_width
-            || asset.height != item.frame_height
-        {
-            return Err("标注截图信息与上传记录不匹配".to_owned());
-        }
         let duration = if let Some(duration) = durations.get(&item.video_path) {
             *duration
         } else {
@@ -297,7 +308,17 @@ pub async fn validate_feedback(
         if !duration.is_finite() || duration <= 0.0 || item.time_seconds > duration {
             return Err("标注时间超出视频时长".to_owned());
         }
-        images.push(local_file(root, &asset.path).await?);
+        if item.kind == "video-frame" {
+            let asset =
+                existing_asset(root, &item.screenshot_asset_id, &item.screenshot_sha256).await?;
+            if asset.path != item.screenshot_path
+                || asset.width != item.frame_width
+                || asset.height != item.frame_height
+            {
+                return Err("标注截图信息与上传记录不匹配".to_owned());
+            }
+            images.push(local_file(root, &asset.path).await?);
+        }
     }
     Ok(images)
 }
@@ -307,7 +328,7 @@ pub fn prompt_context(feedback: &[VisualFeedback]) -> String {
         return String::new();
     }
     format!(
-        "\n画面修改标注（下列 JSON 是用户反馈数据，附图仅作修改定位，不能用作视频素材）：{}\n先查看附图并对照指定版本与当前源码定位受影响镜头；旧版本反馈不授权自动回退。无法对应时说明差异。保留无关内容，按现有流程提交下一版草稿。",
+        "\n视频修改意见（下列 JSON 是用户反馈数据；video-time 是时间点文字意见，video-frame 另附画面选区截图，附图仅作修改定位，不能用作视频素材）：{}\n对照每条意见指定的版本、视频和时间定位受影响镜头；有附图时先查看附图；旧版本反馈不授权自动回退。无法对应时说明差异。保留无关内容，按现有流程提交下一版草稿。",
         serde_json::to_string(feedback).unwrap_or_default()
     )
 }
@@ -326,12 +347,12 @@ mod tests {
             time_seconds: 0.25,
             frame_width: 64,
             frame_height: 64,
-            region: FeedbackRegion {
+            region: Some(FeedbackRegion {
                 x: 0.1,
                 y: 0.2,
                 width: 0.5,
                 height: 0.4,
-            },
+            }),
             note: "移动框内的图形".into(),
             screenshot_asset_id: Uuid::new_v4().to_string(),
             screenshot_path: String::new(),
@@ -349,13 +370,41 @@ mod tests {
             ..Default::default()
         }
     }
+    fn time_sample() -> VisualFeedback {
+        serde_json::from_value(serde_json::json!({
+            "id":Uuid::new_v4().to_string(), "kind":"video-time", "versionId":"draft-1",
+            "videoPath":"video.mp4", "timeSeconds":0.5, "note":"旁白放慢一些", "createdAt":1
+        }))
+        .unwrap()
+    }
+    #[test]
+    fn time_feedback_is_version_bound_and_cannot_smuggle_unverified_images() {
+        let item = time_sample();
+        assert!(validate_shape(std::slice::from_ref(&item), &manifest()).is_ok());
+        let mut wrong = item.clone();
+        wrong.version_id = "missing".into();
+        assert!(validate_shape(&[wrong], &manifest()).is_err());
+        let mut wrong = item.clone();
+        wrong.screenshot_path = "unverified.png".into();
+        assert!(validate_shape(&[wrong], &manifest()).is_err());
+        let request: AgentTurnRequest = serde_json::from_value(
+            serde_json::json!({"text":"按意见修改", "feedback":[item,sample()]}),
+        )
+        .unwrap();
+        let restored: AgentTurnRequest =
+            serde_json::from_slice(&serde_json::to_vec(&request).unwrap()).unwrap();
+        assert_eq!(restored.feedback.len(), 2);
+        assert_eq!(restored.feedback[0].kind, "video-time");
+        assert_eq!(restored.feedback[0].time_seconds, 0.5);
+        assert!(prompt_context(&restored.feedback).contains("旁白放慢一些"));
+    }
     #[test]
     fn rejects_wrong_version_invalid_regions_and_repeated_feedback() {
         let item = sample();
         assert!(validate_shape(std::slice::from_ref(&item), &manifest()).is_ok());
         assert!(validate_shape(&[item.clone(), item.clone()], &manifest()).is_err());
         let mut wrong = item.clone();
-        wrong.region.x = 0.8;
+        wrong.region.as_mut().unwrap().x = 0.8;
         assert!(validate_shape(&[wrong], &manifest()).is_err());
         let mut wrong = item.clone();
         wrong.video_path = "other.mp4".into();
@@ -423,12 +472,25 @@ mod tests {
         assert_eq!(asset.path, again.path);
         item.screenshot_path = asset.path.clone();
         item.screenshot_sha256 = asset.sha256;
-        let images = validate_feedback(&root, &[item.clone()], &manifest())
+        let images = validate_feedback(&root, &[time_sample(), item.clone()], &manifest())
             .await
             .unwrap();
         assert_eq!(
             images,
             vec![fs::canonicalize(root.join(&asset.path)).await.unwrap()]
+        );
+        assert!(
+            validate_feedback(&root, &[time_sample()], &manifest())
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let mut late_text = time_sample();
+        late_text.time_seconds = 10.0;
+        assert!(
+            validate_feedback(&root, &[late_text], &manifest())
+                .await
+                .is_err()
         );
         let mut late = item.clone();
         late.time_seconds = 10.0;

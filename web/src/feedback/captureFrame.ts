@@ -38,3 +38,24 @@ export async function markFrame(frame: CapturedFrame, region: FeedbackRegion, co
     return blob;
   } finally { bitmap.close(); }
 }
+
+// Always capture the card's original version/time, not the visible player's state.
+export async function captureFeedbackFrame(url: string, time: number): Promise<CapturedFrame> {
+  const video = document.createElement("video");
+  video.preload = "auto"; video.muted = true;
+  const wait = (event: string, start: () => void) => new Promise<void>((resolve, reject) => {
+    const clean = () => { clearTimeout(timer); video.removeEventListener(event, done); video.removeEventListener("error", fail); };
+    const done = () => { clean(); resolve(); };
+    const fail = () => { clean(); reject(new Error("无法读取这条意见对应的画面，请保留文字反馈或稍后重试")); };
+    const timer = window.setTimeout(fail, 12000);
+    video.addEventListener(event, done, {once:true}); video.addEventListener("error", fail, {once:true});
+    start();
+  });
+  try {
+    await wait("loadeddata", () => { video.src = url; video.load(); });
+    if (!Number.isFinite(time) || !Number.isFinite(video.duration) || time < 0 || time > video.duration) throw new Error("反馈时间超出原视频时长");
+    if (Math.abs(video.currentTime - time) > .001) await wait("seeked", () => { video.currentTime = time; });
+    if (Math.abs(video.currentTime - time) > .05) throw new Error("无法定位到这条意见的时间点，请稍后重试");
+    return await captureFrame(video);
+  } finally { video.removeAttribute("src"); video.load(); }
+}

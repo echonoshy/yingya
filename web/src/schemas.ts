@@ -15,11 +15,17 @@ export const projectRecordSchema = z.object({
 });
 export const feedbackRegionSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().positive().max(1), height: z.number().positive().max(1) }).refine(r => r.x + r.width <= 1.000001 && r.y + r.height <= 1.000001);
 export const feedbackAssetSchema = z.object({ id: z.string().uuid(), path: z.string(), sha256: z.string(), width: z.number().positive(), height: z.number().positive() });
-export const visualFeedbackSchema = z.object({
-  id: z.string().uuid(), kind: z.literal("video-frame"), versionId: z.string(), videoPath: z.string(), timeSeconds: z.number().nonnegative(),
-  frameWidth: z.number().positive(), frameHeight: z.number().positive(), region: feedbackRegionSchema, note: z.string().min(1).max(2000),
-  screenshotAssetId: z.string().uuid(), screenshotPath: z.string(), screenshotSha256: z.string(), createdAt: z.number(),
+const feedbackBaseSchema = z.object({
+  id: z.string().uuid(), versionId: z.string().min(1), videoPath: z.string().min(1), timeSeconds: z.number().nonnegative(), note: z.string().min(1).max(2000), createdAt: z.number(),
 });
+const frameFeedbackSchema = feedbackBaseSchema.extend({kind: z.literal("video-frame"), frameWidth: z.number().positive(), frameHeight: z.number().positive(), region: feedbackRegionSchema});
+const timeFeedbackSchema = feedbackBaseSchema.extend({kind: z.literal("video-time")});
+export const feedbackDraftContentSchema = z.discriminatedUnion("kind", [
+  frameFeedbackSchema.extend({note:z.string().max(2000)}), timeFeedbackSchema.extend({note:z.string().max(2000)}),
+]);
+export const visualFeedbackSchema = z.discriminatedUnion("kind", [
+  frameFeedbackSchema.extend({screenshotAssetId:z.string().uuid(), screenshotPath:z.string(), screenshotSha256:z.string()}), timeFeedbackSchema,
+]);
 export type VisualFeedback = z.infer<typeof visualFeedbackSchema>;
 export type FeedbackRegion = z.infer<typeof feedbackRegionSchema>;
 export type FeedbackAsset = z.infer<typeof feedbackAssetSchema>;

@@ -358,16 +358,17 @@ async function assertDraftCheckpoint(browser) {
   await renderPanel.getByText("导出历史", { exact: false }).click();
   await renderPanel.getByText("已中断", { exact: true }).waitFor();
   await renderPanel.getByRole("button", { name: "重试" }).waitFor();
-  await page.getByRole("button", { name: "添加时间点" }).click();
-  await page.locator(".time-feedback-row input").first().fill("放大标题并提高对比度");
-  await page.getByRole("button", { name: "添加时间点" }).click();
-  await page.locator(".time-feedback-row input").last().fill("让产品停留时间更长");
-  if (await page.locator(".time-feedback-row").count() !== 2) throw new Error("Time feedback should support multiple entries");
+  await page.getByRole("button", { name: "时间点反馈" }).click();
+  await page.locator(".feedback-drafts .visual-feedback-card textarea").first().fill("放大标题并提高对比度");
+  await assertCompactTextarea(page.locator(".feedback-drafts .visual-feedback-card textarea").first());
+  await page.getByRole("button", { name: "时间点反馈" }).click();
+  await page.locator(".feedback-drafts .visual-feedback-card textarea").last().fill("让产品停留时间更长");
+  if (await page.locator(".feedback-drafts .visual-feedback-card").count() !== 2) throw new Error("Time feedback should support multiple entries");
   await page.screenshot({ path: "/tmp/yingya-ui-time-feedback.png", fullPage: true });
-  await page.getByRole("button", { name: "添加到修改描述" }).click();
-  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+  const composer = page.getByPlaceholder("描述想修改的内容…");
   const feedbackText = await composer.inputValue();
-  if (!feedbackText.includes("Draft 3 时间点修改：") || !feedbackText.includes("放大标题并提高对比度") || !feedbackText.includes("让产品停留时间更长")) throw new Error(`Timed feedback was not added to the composer: ${feedbackText}`);
+  if (feedbackText.includes("放大标题并提高对比度")) throw new Error("Structured feedback should not be copied into the message text");
+  if (!(await page.locator(".feedback-drafts").innerText()).includes("Draft 3")) throw new Error("Feedback cards lost their version label");
   const renderRequest = page.waitForRequest(request => request.url().endsWith("/render") && request.method() === "POST");
   await renderPanel.getByRole("button", { name: "开始导出" }).click();
   const payload = (await renderRequest).postDataJSON();
@@ -392,7 +393,7 @@ async function assertWorkflowRecovery(browser) {
   await page.getByText("制作需要恢复").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
   await page.getByRole("button", { name: /重新生成制作方案/ }).click();
-  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+  const composer = page.getByPlaceholder("描述想修改的内容…");
   if (await composer.inputValue() !== "重新生成制作方案") throw new Error("Recovery action did not populate the composer");
   await page.close();
 }
@@ -412,7 +413,7 @@ async function assertIncompleteWorkflowRecovery(browser) {
   if (await page.getByText("制作需要恢复", { exact: true }).count()) throw new Error("Recoverable incomplete work should not be presented as a failed workflow");
   await page.screenshot({ path: "/tmp/yingya-ui-incomplete.png", fullPage: true });
   await recovery.getByRole("button", { name: "检查并恢复项目流程" }).click();
-  if (await page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
+  if (await page.getByPlaceholder("描述想修改的内容…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
   await page.close();
 }
 
@@ -535,7 +536,7 @@ async function assertDesktop(browser) {
   await page.locator(".activity-item").getByText("修改文件", { exact: true }).waitFor();
   if (await page.getByText("检查 HyperFrames", { exact: true }).count()) throw new Error("Older tool operations should be hidden");
   await page.getByRole("button", { name: /直接渲染/ }).click();
-  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+  const composer = page.getByPlaceholder("描述想修改的内容…");
   if (await composer.inputValue() !== "直接渲染") throw new Error("Quick reply did not populate the composer");
   if (!await composer.evaluate(element => element === document.activeElement)) throw new Error("Quick reply did not focus the composer");
   await composer.fill("");
@@ -571,7 +572,7 @@ async function assertCheckpointHiddenAfterRevision(browser) {
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   const checkpoint = page.locator(".checkpoint-card");
   await checkpoint.waitFor();
-  await page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…").fill("调整画面构图后重新生成草稿");
+  await page.getByPlaceholder("描述想修改的内容…").fill("调整画面构图后重新生成草稿");
   await page.getByRole("button", { name: "发送消息" }).click();
   await checkpoint.waitFor({ state: "hidden" });
   await page.close();
@@ -608,7 +609,7 @@ async function assertCreateAndMobile(browser) {
   const turnPayload = (await turnRequest).postDataJSON();
   if (!/^[0-9a-f-]{36}$/i.test(turnPayload.clientRequestId ?? "")) throw new Error("Turn request is missing a stable clientRequestId");
   await page.getByRole("heading", { name: "网站产品宣传片" }).waitFor();
-  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+  const composer = page.getByPlaceholder("描述想修改的内容…");
   await composer.fill("加入品牌结尾");
   await page.getByRole("button", { name: "发送消息" }).click();
   await page.locator(".workspace").waitFor();
@@ -659,7 +660,7 @@ async function assertFunctionalEnhancements(browser) {
   await page.unroute(projectListUrl);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.waitForURL(url => url.hash === `#/projects/${seed.id}`);
-  const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+  const composer = page.getByPlaceholder("描述想修改的内容…");
   await composer.fill("这个项目独有的修改草稿");
   await page.reload();
   await composer.waitFor();
@@ -682,12 +683,12 @@ async function assertFunctionalEnhancements(browser) {
   await page.getByText("比较版本", { exact: true }).click();
   await page.locator(".version-comparison video").nth(1).waitFor();
   if (await page.locator(".version-comparison video").count() !== 2) throw new Error("Version comparison did not show two versions");
-  await page.getByRole("button", { name: "添加时间点" }).click();
-  await page.locator(".time-feedback-row input").first().fill("新版保留的意见");
+  await page.getByRole("button", { name: "时间点反馈" }).click();
+  await page.locator(".feedback-drafts .visual-feedback-card textarea").first().fill("新版保留的意见");
   await page.locator(".artifact-canvas > header select").selectOption("draft-1");
-  if (await page.locator(".time-feedback-row").count()) throw new Error("Feedback leaked into a different version");
+  if (!(await page.locator(".feedback-drafts").innerText()).includes("草稿 2")) throw new Error("Feedback card lost its original version when changing the player");
   await page.locator(".artifact-canvas > header select").selectOption("draft-2");
-  if (await page.locator(".time-feedback-row input").first().inputValue() !== "新版保留的意见") throw new Error("Version feedback was lost when switching versions");
+  if (await page.locator(".feedback-drafts .visual-feedback-card textarea").first().inputValue() !== "新版保留的意见") throw new Error("Version feedback was lost when switching versions");
   await page.setViewportSize({ width: 320, height: 800 });
   if (await page.locator(".workspace-tabs").getByRole("button", { name: "分镜", exact: true }).count()) throw new Error("Mobile navigation should not show storyboard");
   await page.locator(".workspace-tabs").getByRole("button", { name: "预览", exact: true }).click();
@@ -834,7 +835,9 @@ async function assertDesignRepairs(browser) {
   if (!stage || stage.width < 240) throw new Error(`Portrait preview was squeezed: ${JSON.stringify(stage)}`);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "预览", exact: true }).click();
-  await page.getByRole("button", { name: "描述修改", exact: true }).click();
+  if (await page.getByRole("button", { name: "描述修改", exact: true }).count()) throw new Error("Redundant describe button remains");
+  await page.getByRole("button", { name: "时间点反馈", exact: true }).click();
+  await page.locator(".feedback-drafts textarea").last().fill("从预览添加意见");
   await page.getByRole("textbox", { name: "修改描述" }).fill("从预览继续修改");
   await page.getByRole("button", { name: "所有项目", exact: true }).click();
   await page.getByRole("button", { name: "素材工坊", exact: true }).click();
@@ -919,7 +922,7 @@ async function assertLostExecutionState(browser) {
     const recover = page.getByRole("button", {name: "检查并恢复项目流程", exact: true});
     await recover.focus();
     await page.keyboard.press("Enter");
-    const composer = page.getByPlaceholder("例如：把开场标题放大，第 8 秒的图表多停留 2 秒…");
+    const composer = page.getByPlaceholder("描述想修改的内容…");
     if (await composer.inputValue() !== "检查并恢复项目流程") throw new Error("Recovery did not populate composer");
     if (await page.locator(".activity-item--running").count()) throw new Error("Orphaned command is still spinning");
     if (await page.getByText("制作流程已安全暂停", {exact: true}).count()) throw new Error("Unverified stop claim is visible");
@@ -1174,6 +1177,24 @@ async function assertFrontendRecovery(browser) {
   console.log('Frontend recovery QA passed: late project response, snapshot retry, repeated preview revisions with paused playhead, creation reload dedupe, expired login and draft recovery');
 }
 
+async function assertCompactTextarea(field) {
+  const original = await field.inputValue();
+  const measure = () => field.evaluate(async element => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const style = getComputedStyle(element);
+    return { height: element.getBoundingClientRect().height, line: parseFloat(style.lineHeight), scroll: element.scrollHeight, client: element.clientHeight, overflow: style.overflowY };
+  });
+  await field.fill(""); const empty = await measure();
+  if (empty.height > 42) throw new Error("Empty composer should occupy one compact line");
+  await field.fill("第一行\n第二行\n第三行"); const three = await measure();
+  if (three.height < empty.height + 20) throw new Error("Multiline input did not expand");
+  await field.fill(Array(20).fill("多行修改要求").join("\n")); const long = await measure();
+  if (long.height > empty.height + long.line * 3 + 2 || long.scroll <= long.client || long.overflow !== "auto") throw new Error("Long input must scroll within four lines");
+  await field.fill("简短要求"); const short = await measure();
+  if (short.height > empty.height + 1) throw new Error("Deleting text must shrink the input, including with reduced motion");
+  await field.fill(original);
+}
+
 async function assertFeedbackLifecycle(browser) {
   for (const width of [1280, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
@@ -1197,6 +1218,7 @@ async function assertFeedbackLifecycle(browser) {
     await page.locator('.home-project-open').first().click();
     const composer = page.getByRole('textbox', { name: '修改描述', exact: true });
     await composer.waitFor();
+    await assertCompactTextarea(composer);
     await page.getByRole('button', { name: '添加素材与设置' }).click();
     await page.getByRole('menuitem', { name: /^选择素材/ }).click();
     await page.getByLabel('选择创作素材').getByText('秋日背景音乐.mp3', { exact: true }).click();

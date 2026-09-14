@@ -69,7 +69,7 @@
 .annotation-dialog > header { border-bottom: 1px solid var(--line); }
 .annotation-dialog h2 { margin: 0; font-size: 20px; }
 .annotation-dialog p { font-size: 13px; line-height: 1.65; color: var(--muted); margin: 8px 0; }
-.annotation-dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
+.annotation-dialog button { font-size: var(--text-control); display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
 .annotation-dialog .primary-button { background: var(--primary); color: var(--canvas); }
 .annotation-dialog > footer { border-top: 1px solid var(--line); justify-content: flex-end; }
 .annotation-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
@@ -79,12 +79,12 @@
 .annotation-frame img { display: block; width: auto; max-width: 100%; height: auto; max-height: 52dvh; object-fit: contain; pointer-events: none; }
 .annotation-frame:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .annotation-region { position: absolute; border: 2px solid var(--accent); pointer-events: none; }
-.annotation-region b { position: absolute; top: 0; left: 0; color: var(--canvas); background: var(--accent); min-width: 20px; text-align: center; font: 12px/20px var(--font-mono); }
 .annotation-fields { padding: 20px; min-width: 0; }
 .annotation-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
 .annotation-fields label { display: block; margin: 16px 0 8px; font-size: 14px; font-weight: 600; }
-.annotation-fields textarea { display: block; width: 100%; resize: vertical; min-height: 112px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); }
-.feedback-drafts { display: grid; gap: 8px; max-height: 210px; overflow-y: auto; }
+.annotation-fields textarea { transition-property: none; display: block; width: 100%; resize: none; min-height: 36px; padding: 6px 8px; line-height: 1.6; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); }
+.feedback-drafts { display: grid; gap: 8px; max-height: min(34dvh, 320px); overflow-y: auto; }
+.feedback-drafts .visual-feedback-card { margin: 0; }
 .visual-feedback-card { display: flex; align-items: flex-start; gap: 10px; padding: 10px; margin: 6px 0; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
 .visual-feedback-card > a { flex: 0 0 64px; width: 64px; }
 .visual-feedback-card img { display: block; width: 64px; height: 72px; object-fit: contain; background: var(--background); }
@@ -362,7 +362,7 @@ button:not(:disabled) { cursor: pointer; }
 .queue-card > div button { border: 0; background: transparent; color: var(--dim); }
 .thread-footer { padding: 14px 24px 18px; border-top: 1px solid var(--prey-700); background: rgba(0, 0, 0, .96); }
 .thread-footer .composer { max-width: 760px; margin: auto; padding: 12px 13px; animation: none; }
-.thread-footer textarea { min-height: 52px; max-height: 130px; font-size: 14px; }
+.thread-footer .composer > textarea { min-height: 52px; max-height: 130px; font-size: 14px; }
 .context-chips { max-width: 760px; margin: 0 auto 7px; }
 .interrupt-toggle { height: 38px; padding: 0 12px; display: flex; align-items: center; gap: 7px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-750); color: var(--muted); font-size: 12px; }
 .interrupt-toggle input { accent-color: var(--purple-500); }
@@ -960,7 +960,7 @@ button:not(:disabled) { cursor: pointer; }
 .workspace.workspace--canvas .agent-update { margin: 12px 0 20px; padding: 0; border: 0; }
 .workspace.workspace--canvas .thread-footer { position: relative; padding: 10px 14px 14px; background: linear-gradient(to top, #fff 84%, rgba(255,255,255,0)); }
 .workspace.workspace--canvas .thread-footer .composer { max-width: none; padding: 10px; border-radius: 16px; }
-.workspace.workspace--canvas .thread-footer textarea { min-height: 44px; max-height: 108px; font-size: 13px; }
+.workspace.workspace--canvas .thread-footer .composer > textarea { min-height: 44px; max-height: 108px; font-size: 13px; }
 .workspace.workspace--canvas .composer-tools > div:first-child { min-width: 0; gap: 6px; }
 .workspace.workspace--canvas .voice-trigger { max-width: 104px; }
 .workspace.workspace--canvas .model-trigger { max-width: 116px; }
@@ -1958,7 +1958,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .message-markdown h1 { font-size: var(--text-title); }
 .message-markdown h2 { font-size: var(--text-section); }
 .message-markdown h3 { font-size: var(--text-input); }
-.composer textarea, .home-create textarea, .workspace.workspace--canvas .thread-footer textarea { font-size: var(--text-input); line-height: var(--leading-body); }
+.composer textarea, .home-create textarea, .workspace.workspace--canvas .thread-footer .composer > textarea { font-size: var(--text-input); line-height: var(--leading-body); }
 .thread-footer .composer { border-color: var(--line-strong); box-shadow: none; }
 .thread-footer .composer:focus-within { border-color: var(--accent); }
 .model-trigger, .voice-trigger, .composer select, .artifact-canvas select {
@@ -2021,7 +2021,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .workspace.workspace--canvas .thread-footer { min-width: 0; }
 .workspace.workspace--canvas .thread-footer .composer { padding: 10px; border-radius: var(--radius-panel); border-color: var(--line); background: var(--canvas); }
 .workspace.workspace--canvas .thread-footer .composer:focus-within { border-color: var(--accent); }
-.workspace.workspace--canvas .thread-footer textarea { min-height: 54px; padding: 4px 4px 8px; font-size: var(--text-control); line-height: var(--leading-body); }
+.workspace.workspace--canvas .thread-footer .composer > textarea { transition-property: none; min-height: 32px; max-height: none; padding: 4px; font-size: var(--text-control); line-height: var(--leading-body); }
 .workspace.workspace--canvas .message, .workspace.workspace--canvas .message .markdown-body { font-size: var(--text-control); }
 .workspace.workspace--canvas .artifact-search input { font-size: var(--text-search); }
 .workspace.workspace--canvas .composer-feedback:empty { min-height: 0; }
@@ -2055,7 +2055,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .composer-resources .icon-button:hover, .composer-resources .asset-picker-trigger:hover { background: var(--surface-hover); }
 .composer-resources .asset-picker-trigger.active { background: var(--selection); border-color: var(--selection-line); }
 @media (max-width: 799px) {
-  .workspace.workspace--canvas .thread-footer textarea, .workspace.workspace--canvas .artifact-search input { font-size: var(--text-input); }
+  .workspace.workspace--canvas .thread-footer .composer > textarea, .workspace.workspace--canvas .artifact-search input { font-size: var(--text-input); }
 }
 @media (max-width: 380px) {
   .composer-settings .voice-trigger > svg:first-child { display: none; }
@@ -2264,6 +2264,15 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 @media (max-width: 799px) {
   :root { --text-search: var(--text-input); }
 }
+
+/* Text and frame feedback share the same editable card. */
+.feedback-time-icon { flex: 0 0 24px; width: 24px; height: 24px; color: var(--muted); }
+.visual-feedback-card textarea { transition-property: none; display: block; width: 100%; min-height: 36px; resize: none; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font: inherit; font-size: var(--text-field); line-height: 1.6; }
+.visual-feedback-card textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.feedback-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.feedback-card-actions button { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 6px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--accent-text); font-size: var(--text-caption); }
+.feedback-card-actions button:focus-visible { outline: 2px solid var(--accent); }
+@media (max-width: 800px) { .visual-feedback-card textarea { font-size: var(--text-input); } }
 
 /* Keep the creation toolbar on one row; secondary controls live under Add. */
 .composer-more { position: relative; }

@@ -1,10 +1,10 @@
 import { userStorageKey } from "../session";
 import { useEffect, useRef, useState } from "react";
-import type { FeedbackAsset, VisualFeedback } from "../types";
+import type { FeedbackAsset } from "../types";
 import { openDraftDatabase } from "../storage/draftDatabase";
-import { visualFeedbackSchema } from "../schemas";
+import { feedbackDraftContentSchema } from "../schemas";
 
-export type FeedbackDraft = Omit<VisualFeedback, "screenshotAssetId" | "screenshotPath" | "screenshotSha256"> & { blob: Blob; asset?: FeedbackAsset };
+export type FeedbackDraft = import("zod").z.infer<typeof feedbackDraftContentSchema> & { blob?: Blob; asset?: FeedbackAsset; uploadId?: string };
 const writes = new Map<string, Promise<void>>();
 
 export function useFeedbackDraft(projectId: string) {
@@ -23,7 +23,7 @@ export function useFeedbackDraft(projectId: string) {
         const request = db.transaction("feedback").objectStore("feedback").get(projectId);
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
-      const restored = Array.isArray(stored) ? stored.filter((v: FeedbackDraft) => v?.blob instanceof Blob && visualFeedbackSchema.omit({ screenshotAssetId: true, screenshotPath: true, screenshotSha256: true }).safeParse(v).success) : [];
+      const restored = Array.isArray(stored) ? stored.filter((v: FeedbackDraft) => (v?.kind === "video-time" || v?.blob instanceof Blob) && feedbackDraftContentSchema.safeParse(v).success) : [];
       if (!cancelled && initial === revision.current) { latest.current = restored; setItems(restored); setStatus("saved"); }
     })().catch(() => { if (!cancelled) setStatus("error"); });
     return () => { cancelled = true; };
@@ -41,6 +41,7 @@ export function useFeedbackDraft(projectId: string) {
     });
     writes.set(projectId, pending);
     void pending.then(() => { if (revision.current === current) setStatus("saved"); }).catch(() => { if (revision.current === current) setStatus("error"); }).finally(() => { if (writes.get(projectId) === pending) writes.delete(projectId); });
+    return pending;
   }
   return { items, status, update };
 }

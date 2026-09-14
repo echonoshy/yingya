@@ -1,3 +1,5 @@
+import { useAutosizeTextarea } from "../hooks/useAutosizeTextarea";
+import { createClientRequestId } from "../requestId";
 import { ComposerForm } from "./ComposerForm";
 import { SelectionIndicator } from "./SelectionIndicator";
 import { ArtifactList } from "./ArtifactList";
@@ -5,12 +7,12 @@ import { AssetPicker } from "./AssetPicker";
 import { PlanDocument } from "./PlanDocument";
 import { filePreviewKind } from "../projectFiles";
 import { useFeedbackDraft, type FeedbackDraft } from "../hooks/useFeedbackDraft";
-import { captureFrame, type CapturedFrame } from "../feedback/captureFrame";
+import { captureFeedbackFrame, captureFrame, type CapturedFrame } from "../feedback/captureFrame";
 import { VideoAnnotationEditor } from "./VideoAnnotationEditor";
 import { FeedbackCard } from "./FeedbackCard";
 import { submissionAttempt, saveSubmission, type SubmissionAttempt } from "../feedback/submission";
 import { useMotionPresence } from "../hooks/useMotionPresence";
-import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretLeft, Check, CheckCircle, CircleNotch, Code, DownloadSimple, Eye, File, FileAudio, FileText,  FolderSimple, PencilSimple, Plus, Queue, Stop, Terminal, VideoCamera, Warning, X } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretLeft, BoundingBox, Clock, Check, CheckCircle, CircleNotch, Code, DownloadSimple, Eye, File, FileAudio, FileText,  FolderSimple, PencilSimple, Plus, Queue, Stop, Terminal, VideoCamera, Warning, X } from "@phosphor-icons/react";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useDraftFiles } from "../hooks/useDraftFiles";
 import { z } from "zod";
@@ -37,7 +39,28 @@ type CanvasTab = "preview" | "assets" | "artifacts";
 
 export function AgentWorkspace({ project, models, selection, onSelection, onVoice, onProject, onRename, onBack }: { project: ProjectDetail; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; onVoice: (voiceId: string) => void | Promise<void>; onProject: (value: ProjectDetail) => void; onRename: (id: string, title: string) => Promise<void>; onBack: () => void }) {
   const [text, setText, textSaved] = useSavedState(`yingya-draft-text:${project.id}`, z.string(), ""); const [files, setFiles, fileDraftStatus] = useDraftFiles(project.id); const [contexts, setContexts] = useSavedState(`yingya-draft-context:${project.id}`, z.array(z.string()), []); const [busy, setBusy] = useState(false); const [stopping, setStopping] = useState(false); const [error, setError] = useState(""); const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread"); const [canvasTab, setCanvasTab] = useState<CanvasTab>(() => savedCanvasTab(project.id)); const fileRef = useRef<HTMLInputElement>(null); const composerRef = useRef<HTMLTextAreaElement>(null);
+  useAutosizeTextarea(composerRef, text);
   const feedbackDraft = useFeedbackDraft(project.id);
+  const [feedbackCaptureBusy, setFeedbackCaptureBusy] = useState(false);
+  const [feedbackAnnotation, setFeedbackAnnotation] = useState<{frame:CapturedFrame; initial:FeedbackDraft} | null>(null);
+  const feedbackNotesIncomplete = feedbackDraft.items.some(item => !item.note.trim());
+  function focusFeedback(id: string) {
+    setMobilePanel("thread");
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(`[data-feedback-id="${id}"] textarea`)?.focus());
+  }
+  function addFeedback(item: FeedbackDraft) {
+    if (!feedbackDraft.items.some(value => value.id === item.id) && feedbackDraft.items.length >= 8) throw new Error("每条消息最多包含 8 条修改意见");
+    clearSubmissionFeedback();
+    feedbackDraft.update(items => items.some(value => value.id === item.id) ? items.map(value => value.id === item.id ? item : value) : [...items, item]);
+    focusFeedback(item.id);
+  }
+  async function annotateFeedback(item: FeedbackDraft) {
+    if (feedbackCaptureBusy || busy) return;
+    setFeedbackCaptureBusy(true); setError("");
+    try { const frame = await captureFeedbackFrame(api.fileUrl(project.id, item.videoPath), item.timeSeconds); setFeedbackAnnotation({frame,initial:item}); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "无法截取画面，文字意见已保留"); }
+    finally { setFeedbackCaptureBusy(false); }
+  }
   const attemptRef = useRef<SubmissionAttempt | null>(null);
   const [sendStage, setSendStage] = useState<"idle" | "uploading" | "sending" | "sent" | "failed">("idle");
   const [sendResult, setSendResult] = useState<{ label: string; turnId: string; queued: boolean } | null>(null);
@@ -125,10 +148,10 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   }
 
   async function send(event: FormEvent) {
-    event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || sendingRef.current || fileDraftStatus === "loading" || feedbackDraft.status === "loading") return;
+    event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || feedbackNotesIncomplete || feedbackCaptureBusy || sendingRef.current || fileDraftStatus === "loading" || feedbackDraft.status === "loading") return;
     sendingRef.current = true;
     setBusy(true); setError(""); setAssetFeedback(""); setSubmissionSyncFailed(false);
-    setSendStage(files.length || selectedAssets.length || feedbackDraft.items.length ? "uploading" : "sending");
+    setSendStage(files.length || selectedAssets.length || feedbackDraft.items.some(item => item.kind === "video-frame" && !item.asset) ? "uploading" : "sending");
     try {
       const submittedFeedback = feedbackDraft.items;
       const signature = JSON.stringify({ text, contexts, interrupt: false, selection, files: files.map(f => [f.name, f.size, f.lastModified]), assets: selectedAssets.map(a => a.id), feedback: submittedFeedback.map(({ blob: _blob, asset: _asset, ...item }) => item) });
@@ -138,14 +161,16 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
         const [uploaded, visualFeedback] = await Promise.all([
           Promise.all([...files.map(file => api.uploadAsset(project.id, file)), ...selectedAssets.map(asset => uploadLibraryAsset(project.id, asset))]),
           Promise.all(submittedFeedback.map(async draft => {
-            const asset = draft.asset ?? await api.uploadFeedbackAsset(project.id, draft.id, draft.blob);
+            const { blob: _blob, asset: _asset, uploadId: _uploadId, ...item } = draft;
+            if (item.kind === "video-time") return item;
+            if (!draft.blob) throw new Error("标注截图已丢失，请重新框选");
+            const asset = draft.asset ?? await api.uploadFeedbackAsset(project.id, draft.uploadId ?? draft.id, draft.blob);
             feedbackDraft.update(items => items.map(item => item.id === draft.id ? { ...item, asset } : item));
-            const { blob: _blob, asset: _asset, ...item } = draft;
             return { ...item, screenshotAssetId: asset.id, screenshotPath: asset.path, screenshotSha256: asset.sha256 };
           })),
         ]);
         const assetContexts = selectedAssets.map(asset => `创作参考 · ${assetName(asset)}`);
-        attempt.input = { clientRequestId: attempt.id, text: text.trim() || (submittedFeedback.length ? "请根据画面标注修改视频，保留其他内容。" : "请结合所选素材继续创作。"), attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], feedback: visualFeedback, interrupt: false, ...selection };
+        attempt.input = { clientRequestId: attempt.id, text: text.trim() || (submittedFeedback.length ? "请根据修改意见调整视频，保留其他内容。" : "请结合所选素材继续创作。"), attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], feedback: visualFeedback, interrupt: false, ...selection };
         saveSubmission(project.id, attempt);
       }
       setSendStage("sending");
@@ -193,14 +218,11 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   function focusWaitingComposer() {
     requestAnimationFrame(() => composerRef.current?.focus());
   }
-  function addTimedFeedback(versionLabel: string, feedback: Array<{ time: number; description: string }>) {
-    clearSubmissionFeedback();
-    const feedbackText = [`${versionLabel} 时间点修改：`, ...feedback.map(item => `- ${formatTimestamp(item.time)} ${item.description.trim()}`)].join("\n");
-    setText(current => [current.trim(), feedbackText].filter(Boolean).join("\n\n"));
-    const context = `${versionLabel} · ${feedback.length} 条时间点反馈`;
-    setContexts(items => items.includes(context) ? items : [...items, context]);
-    setMobilePanel("thread");
-    requestAnimationFrame(() => composerRef.current?.focus());
+  async function addTimedFeedback(versionId: string, videoPath: string, feedback: Array<{ time: number; description: string }>) {
+    if (feedbackDraft.items.length + feedback.length > 8) throw new Error("每条消息最多包含 8 条修改意见，请先发送已有意见");
+    const converted: FeedbackDraft[] = feedback.map(item => ({id:createClientRequestId(),kind:"video-time",versionId,videoPath,timeSeconds:item.time,note:item.description.trim(),createdAt:Date.now()}));
+    await feedbackDraft.update(items => [...items, ...converted]);
+    if (converted[0]) focusFeedback(converted[0].id);
   }
   async function previewArtifact(artifact: Artifact) {
     setMobilePanel("canvas");
@@ -269,8 +291,9 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
         {project.queue.length ? <section className="queue-card"><header><Queue/><b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b><span>{project.queue.length}</span>{project.queuePaused ? <button className="queue-resume" disabled={busy} onClick={() => void resumeQueue()}>继续处理</button> : null}</header>{project.queue.map((turn, index) => <div key={turn.id}><i>{String(index + 1).padStart(2, "0")}</i><span className="queued-message-copy"><small>排队中</small>{turn.text}</span><div className="queued-message-actions"><button className="queue-execute" title="中断当前任务，立即执行这条消息" disabled={Boolean(executingQueued || removingQueued) || stopping} onClick={() => void executeQueued(turn.id)}>{executingQueued === turn.id ? <CircleNotch className="spin"/> : <ArrowUp/>}{executingQueued === turn.id ? "正在切换…" : "立即执行"}</button><button aria-label="撤回排队消息" disabled={Boolean(removingQueued || executingQueued)} onClick={() => void removeQueued(turn.id)}><X/></button></div></div>)}</section> : null}
       </div></section>
       <footer className="thread-footer">
-        {feedbackDraft.status === "error" ? <p className="form-error" role="status">标注草稿无法保存，请勿刷新页面。</p> : feedbackDraft.items.length ? <p className="draft-save-status" role="status">{feedbackDraft.status === "saving" ? "正在保存标注草稿…" : "标注草稿已保存"}</p> : null}
-        <div className="feedback-drafts">{feedbackDraft.items.map(item => <FeedbackCard key={item.id} projectId={project.id} feedback={item} onRemove={() => feedbackDraft.update(items => items.filter(value => value.id !== item.id))}/>)}</div>
+        {feedbackDraft.status === "error" ? <p className="form-error" role="status">反馈草稿无法保存，请勿刷新页面。</p> : feedbackDraft.items.length ? <p className="draft-save-status" role="status">{feedbackDraft.items.length}/8 条修改意见 · {feedbackDraft.status === "saving" ? "正在保存反馈草稿…" : "反馈草稿已保存"}</p> : null}
+        {feedbackCaptureBusy ? <p className="draft-save-status" role="status">正在截取这条意见对应的画面…</p> : null}
+        <div className="feedback-drafts">{feedbackDraft.items.map(item => <FeedbackCard key={item.id} projectId={project.id} feedback={item} versionLabel={project.manifest.versions.find(version => version.id === item.versionId)?.label} disabled={busy || feedbackCaptureBusy} onNote={note => { clearSubmissionFeedback(); feedbackDraft.update(items => items.map(value => value.id === item.id ? {...value,note} : value)); }} onAnnotate={() => void annotateFeedback(item)} onRemove={() => { clearSubmissionFeedback(); feedbackDraft.update(items => items.filter(value => value.id !== item.id)); }}/>)}</div>
         {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存，刷新后需重新添加。</p> : null}
         {text ? <p className="draft-save-status" role="status">{textSaved ? "修改描述已自动保存" : "草稿保存失败，请勿关闭页面"}</p> : null}
         {hasNewContent ? <button className="timeline-latest" type="button" onClick={() => { scrollToLatest(); timelineRef.current?.focus({ preventScroll: true }); }}><ArrowDown/>有新消息，回到最新</button> : null}
@@ -279,14 +302,15 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
         {contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}
         <div className="composer-feedback" role="status" aria-live="polite" aria-atomic="true">{sendStage === "uploading" || sendStage === "sending" ? <span key={sendStage}><CircleNotch className="spin"/>{sendStage === "uploading" ? "正在上传素材…" : "正在发送…"}</span> : sendStage === "failed" ? <span className="composer-feedback-error"><Warning/>发送未完成，可重试</span> : assetFeedback ? <span key={assetFeedback}><Check/>{assetFeedback}</span> : sendStage === "sent" && sendResult && (sendResult.queued ? project.queue.some(turn => turn.id === sendResult.turnId) : project.activeTurnId !== sendResult.turnId && !project.messages.some(message => message.turnId === sendResult.turnId)) ? <span><Check/>{sendResult.label}</span> : null}</div>
         <ComposerForm className="composer" onSubmit={send} onChange={clearSubmissionFeedback} filesDisabled={busy || fileDraftStatus === "loading"} onFiles={added => { clearSubmissionFeedback(); setFiles(current => [...current, ...added]); }}>
-          <textarea aria-label="修改描述" ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "例如：把开场标题放大，第 8 秒的图表多停留 2 秒…"}/>
+          <textarea rows={1} aria-label="修改描述" ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述想修改的内容…"}/>
           <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
 
           <div className="composer-tools composer-toolbar"><div className="composer-resources"><ComposerMoreMenu onUpload={() => fileRef.current?.click()} onSelectAssets={() => setAssetPickerOpen(true)} selectedCount={selectedAssets.length} voiceId={project.voiceId} onVoice={onVoice} running={running}/><input ref={fileRef} hidden multiple type="file" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); event.target.value = ""; }}/></div>
-          <div className="composer-delivery"><div className="composer-settings"><ModelSelector models={models} value={selection} onChange={onSelection}/></div><div className="composer-actions">{running ? <button className="stop-button" type="button" aria-label={stopping ? "正在停止" : "停止当前任务"} title="停止当前任务" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "停止中" : "停止"}</button> : null}<button className="send-button" aria-label={sendStage === "failed" ? "重试发送消息" : "发送消息"} title={sendStage === "failed" ? "重试发送" : "发送消息"} aria-busy={sendStage === "uploading" || sendStage === "sending"} disabled={(!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || fileDraftStatus === "loading" || feedbackDraft.status === "loading"}>{sendStage === "uploading" || sendStage === "sending" ? <CircleNotch className="spin"/> : sendStage === "failed" ? <ArrowClockwise/> : <ArrowUp weight="bold"/>}</button></div></div></div></ComposerForm>{error ? <p className="form-error" role="alert">{error}</p> : null}
+          <div className="composer-delivery"><div className="composer-settings"><ModelSelector models={models} value={selection} onChange={onSelection}/></div><div className="composer-actions">{running ? <button className="stop-button" type="button" aria-label={stopping ? "正在停止" : "停止当前任务"} title="停止当前任务" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "停止中" : "停止"}</button> : null}<button className="send-button" aria-label={sendStage === "failed" ? "重试发送消息" : "发送消息"} title={sendStage === "failed" ? "重试发送" : "发送消息"} aria-busy={sendStage === "uploading" || sendStage === "sending"} disabled={(!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || feedbackNotesIncomplete || feedbackCaptureBusy || fileDraftStatus === "loading" || feedbackDraft.status === "loading"}>{sendStage === "uploading" || sendStage === "sending" ? <CircleNotch className="spin"/> : sendStage === "failed" ? <ArrowClockwise/> : <ArrowUp weight="bold"/>}</button></div></div></div></ComposerForm>{error ? <p className="form-error" role="alert">{error}</p> : null}
       </footer>
     </main>
-    <ArtifactCanvas exportRequest={exportRequest} onDescribe={() => { setMobilePanel("thread"); requestAnimationFrame(() => composerRef.current?.focus()); }} project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onFeedback={item => { if (feedbackDraft.items.length >= 8) throw new Error("每条消息最多包含 8 个画面标注"); feedbackDraft.update(items => [...items, item]); setMobilePanel("thread"); composerRef.current?.focus(); }} feedbackDisabled={feedbackDraft.status === "loading" || feedbackDraft.items.length >= 8} onTimedFeedback={addTimedFeedback} onCompose={selectQuickReply} onRefresh={refresh}/>
+    {feedbackAnnotation ? <VideoAnnotationEditor frame={feedbackAnnotation.frame} initial={feedbackAnnotation.initial} versionId={feedbackAnnotation.initial.versionId} videoPath={feedbackAnnotation.initial.videoPath} versionLabel={project.manifest.versions.find(version => version.id === feedbackAnnotation.initial.versionId)?.label ?? feedbackAnnotation.initial.versionId} onAdd={addFeedback} onClose={() => setFeedbackAnnotation(null)}/> : null}
+    <ArtifactCanvas exportRequest={exportRequest} onDescribe={() => { setMobilePanel("thread"); requestAnimationFrame(() => composerRef.current?.focus()); }} project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onFeedback={addFeedback} feedbackDisabled={busy || feedbackCaptureBusy || feedbackDraft.status === "loading" || feedbackDraft.items.length >= 8} onTimedFeedback={addTimedFeedback} onCompose={selectQuickReply} onRefresh={refresh}/>
   </div>;
 }
 
@@ -417,7 +441,7 @@ function WorkflowRecoveryCard({ briefing, incomplete, statusLabel, onRecover }: 
   return <section className={`workflow-recovery ${incomplete ? "workflow-recovery--incomplete" : ""}`} role={incomplete ? "status" : "alert"}><Warning/><div><b>{incomplete ? statusLabel : "制作需要恢复"}</b><p>{detail}</p></div><button type="button" onClick={() => onRecover(prompt)}>{prompt}<ArrowRight/></button></section>;
 }
 
-function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisabled, project, activeTab, preview, media, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onCompose, onRefresh }: { exportRequest: number; onDescribe: () => void; onFeedback: (draft: FeedbackDraft) => void; feedbackDisabled: boolean; project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onCompose: (text: string) => void; onTimedFeedback: (versionLabel: string, feedback: Array<{ time: number; description: string }>) => void; onRefresh: () => Promise<void> }) {
+function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisabled, project, activeTab, preview, media, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onCompose, onRefresh }: { exportRequest: number; onDescribe: () => void; onFeedback: (draft: FeedbackDraft) => void; feedbackDisabled: boolean; project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onCompose: (text: string) => void; onTimedFeedback: (versionId: string, videoPath: string, feedback: Array<{ time: number; description: string }>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -445,11 +469,12 @@ function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisable
   const [versionId, setVersionId] = useState(() => savedVersionId(project));
   const [timeFeedback, setTimeFeedback] = useSavedState(`yingya-feedback:${project.id}:${versionId}`, z.array(z.object({ id: z.number(), time: z.number(), description: z.string() })), []);
   const [rollbackBusy, setRollbackBusy] = useState(false);
+  const [migratingFeedback, setMigratingFeedback] = useState(false);
+  const migrationRef = useRef(false);
   const [rollbackError, setRollbackError] = useState("");
   const [annotation, setAnnotation] = useState<{ frame: CapturedFrame; versionId: string; versionLabel: string; videoPath: string } | null>(null);
   const [captureError, setCaptureError] = useState("");
   const [capturing, setCapturing] = useState(false);
-  const nextFeedbackId = useRef(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const version = project.manifest.versions.find(value => value.id === versionId) ?? project.manifest.versions.at(-1);
   const finalVideoArtifact = [...project.manifest.artifacts].reverse().find(value => value.kind === "final-video" && value.version === version?.id);
@@ -482,16 +507,19 @@ function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisable
 
   async function rollback() { if (!version || rollbackBusy) return; setRollbackBusy(true); setRollbackError(""); try { await api.rollbackVersion(project.id, version.id); await onRefresh(); } catch (reason) { setRollbackError(reason instanceof Error ? reason.message : "版本回退失败"); } finally { setRollbackBusy(false); } }
   function addTimeFeedback() {
-    const time = videoRef.current?.currentTime ?? 0;
-    setTimeFeedback(items => [...items, { id: Date.now() + nextFeedbackId.current++, time, description: "" }]);
+    if (!version || !videoPath || feedbackDisabled) return;
+    videoRef.current?.pause();
+    onFeedback({id:createClientRequestId(),kind:"video-time",versionId:version.id,videoPath,timeSeconds:videoRef.current?.currentTime ?? 0,note:"",createdAt:Date.now()});
   }
   function updateTimeFeedback(id: number, description: string) {
     setTimeFeedback(items => items.map(item => item.id === id ? { ...item, description } : item));
   }
-  function applyTimeFeedback() {
-    if (!version || !completedFeedback.length) return;
-    onTimedFeedback(version.label, completedFeedback);
-    setTimeFeedback([]);
+  async function applyTimeFeedback() {
+    if (!version || !videoPath || !completedFeedback.length || migrationRef.current) return;
+    migrationRef.current = true; setMigratingFeedback(true);
+    try { await onTimedFeedback(version.id, videoPath, completedFeedback); setTimeFeedback(items => items.filter(item => !item.description.trim())); }
+    catch (reason) { setCaptureError(reason instanceof Error ? reason.message : "草稿转换失败，请重试"); }
+    finally { migrationRef.current = false; setMigratingFeedback(false); }
   }
 
   return <section className="artifact-canvas" aria-label="作品工作区">
@@ -507,9 +535,9 @@ function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisable
         {project.activeTurnId && version ? <div className="preview-version-notice"><CircleNotch className="spin"/><span>正在生成新版，当前预览为 {version.label.replace(/草稿/g, "视频")}</span></div> : null}
         <div className={`preview-stage-shell ${videoPath ? "" : "preview-stage-shell--planning"}`}><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls onLoadedData={event => animateElement(event.currentTarget, [{ opacity: .4 }, { opacity: 1 }])} onLoadedMetadata={event => restoreVideoTime(event.currentTarget, playbackKey)} onPause={event => saveVideoTime(event.currentTarget, playbackKey)} onSeeked={event => saveVideoTime(event.currentTarget, playbackKey)}/> : <div className="planning-empty"><FileText/><h3>{project.manifest.phase === "plan_review" ? "制作方案待确认" : "先梳理内容与素材"}</h3><p>{project.manifest.checkpoint?.summary || "提供要讲的内容、目标受众和素材，映芽会整理画面、动画与旁白安排，确认后开始制作。"}</p><PlanDocument project={project}/>{project.manifest.checkpoint?.artifactIds.map(id => project.manifest.artifacts.find(item => item.id === id)).filter((item): item is Artifact => Boolean(item)).map(item => <button key={item.id} onClick={() => onPreview(item)}><Eye/>查看{item.label}</button>)}<button onClick={onDescribe}><PencilSimple/>补充创作要求</button></div>}</div></div>
         {videoPath ? <>
-          <div className="canvas-actions"><button className="describe-video" type="button" onClick={onDescribe}><PencilSimple/>描述修改</button><button type="button" disabled={!canAnnotate || feedbackDisabled || capturing} onClick={() => void annotate()}><PencilSimple/>{capturing ? "正在截取…" : "标注这一帧"}</button><button onClick={addTimeFeedback}><Plus/>添加时间点</button>{version && version.id !== project.manifest.currentDraft ? <button disabled={rollbackBusy || Boolean(project.activeTurnId)} onClick={() => void rollback()}><ArrowClockwise/>{rollbackBusy ? "正在回退…" : "回退版本"}</button> : null}</div>
-          {captureError ? <p className="form-error" role="alert">{captureError}。可点击“添加时间点”仅发送文字反馈。</p> : null}
-          {timeFeedback.length ? <section className="time-feedback" aria-label="时间点修改"><header><b>时间点修改</b><span>{timeFeedback.length} 条</span></header><div className="time-feedback-list">{timeFeedback.map((item, index) => <div className="time-feedback-row" key={item.id}><time>{formatTimestamp(item.time)}</time><input autoFocus={index === timeFeedback.length - 1} aria-label={`${formatTimestamp(item.time)} 的修改描述`} value={item.description} onChange={event => updateTimeFeedback(item.id, event.target.value)} placeholder="描述这个时间点需要如何修改"/><button aria-label={`删除 ${formatTimestamp(item.time)} 的反馈`} title="删除反馈" onClick={() => setTimeFeedback(items => items.filter(value => value.id !== item.id))}><X/></button></div>)}</div><button className="time-feedback-apply" disabled={!completedFeedback.length} onClick={applyTimeFeedback}><ArrowLeft/>添加到修改描述</button></section> : null}
+          <div className="canvas-actions"><button type="button" disabled={!canAnnotate || feedbackDisabled} onClick={addTimeFeedback}><Clock/>时间点反馈</button><button type="button" disabled={!canAnnotate || feedbackDisabled || capturing} onClick={() => void annotate()}><BoundingBox/>{capturing ? "正在截取…" : "框选画面"}</button>{version && version.id !== project.manifest.currentDraft ? <button disabled={rollbackBusy || Boolean(project.activeTurnId)} onClick={() => void rollback()}><ArrowClockwise/>{rollbackBusy ? "正在回退…" : "回退版本"}</button> : null}</div>
+          {captureError ? <p className="form-error" role="alert">{captureError}。可使用“时间点反馈”填写文字意见。</p> : null}
+          {timeFeedback.length ? <section className="time-feedback" aria-label="时间点修改"><header><b>旧版时间点草稿</b><span>{timeFeedback.length} 条</span></header><div className="time-feedback-list">{timeFeedback.map((item, index) => <div className="time-feedback-row" key={item.id}><time>{formatTimestamp(item.time)}</time><input autoFocus={index === timeFeedback.length - 1} aria-label={`${formatTimestamp(item.time)} 的修改描述`} value={item.description} onChange={event => updateTimeFeedback(item.id, event.target.value)} placeholder="描述这个时间点需要如何修改"/><button aria-label={`删除 ${formatTimestamp(item.time)} 的反馈`} title="删除反馈" onClick={() => setTimeFeedback(items => items.filter(value => value.id !== item.id))}><X/></button></div>)}</div><button className="time-feedback-apply" disabled={!completedFeedback.length || migratingFeedback || feedbackDisabled} onClick={() => void applyTimeFeedback()}><ArrowLeft/>转为反馈卡片</button></section> : null}
         </> : null}
         {version ? <VersionComparison project={project} current={version}/> : null}
         <div ref={exportRef} className="export-destination" role="group" tabIndex={-1} aria-label="导出设置">{version ? <PersistentRenderPanel project={project} version={version} videoPath={videoPath} exportRequest={exportRequest} onRefresh={onRefresh}/> : exportRequest ? <p role="status">请先确认制作方案并完成动画编排，预览满意后在这里导出成片。</p> : null}</div>
