@@ -1,0 +1,9 @@
+__pycache__/
+assets/
+results/**/video/assets/
+results/**/video/.hyperframes/
+results/**/video/node_modules/
+*.mp4
+*.png
+*.gif
+*.jpg

@@ -1,0 +1,70 @@
+{
+  "duration": 24,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#title",
+      "bySec": 1
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#initial-state",
+      "bySec": 1
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#buy",
+      "bySec": 6.4
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#holding",
+      "bySec": 6.4
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#sell",
+      "bySec": 12
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#equation",
+      "bySec": 15.8
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#final-state",
+      "bySec": 15.8
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#recap",
+      "bySec": 20.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#boundary",
+      "bySec": 20.5
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#title"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#shared-chart"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#final-state"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#boundary"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#footer"
+    }
+  ]
+}

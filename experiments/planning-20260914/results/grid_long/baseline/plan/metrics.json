@@ -1,0 +1,64 @@
+{
+  "model": "gpt-6-astra",
+  "effort": "medium",
+  "elapsedSeconds": 136.15,
+  "usage": {
+    "attribution": {
+      "items": {
+        "msg_06fbd8c549a6b16d016aa8002d89d087d08d41379b230b6643": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "content": [
+            {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "input_tokens": 380,
+              "output_tokens": 0
+            }
+          ],
+          "input_tokens": 380,
+          "output_tokens": 0
+        },
+        "rs_06fbd8c549a6b16d016aa8002ef60487d0888a1c4a785f9eed": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "input_tokens": 2,
+          "output_tokens": 101
+        },
+        "msg_06fbd8c549a6b16d016aa800333fa887d089d436d1a74fccc5": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "content": [
+            {
+              "cache_write_tokens": 0,
+              "cached_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 4284
+            }
+          ],
+          "input_tokens": 0,
+          "output_tokens": 4284
+        }
+      },
+      "request_fields": {
+        "instructions": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "input_tokens": 3330,
+          "output_tokens": 0
+        }
+      }
+    },
+    "input_tokens": 3712,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 0
+    },
+    "output_tokens": 4385,
+    "output_tokens_details": {
+      "reasoning_tokens": 101
+    },
+    "total_tokens": 8097
+  },
+  "instructionsSha256": "ee1aee97a69a14db918ed2b3d9799942e25943b3f78d3f3c86c201f8ad77651e"
+}

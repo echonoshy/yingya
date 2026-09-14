@@ -1,0 +1,76 @@
+{
+  "duration": 24,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#opening-title",
+      "bySec": 1.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#initial",
+      "bySec": 1.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#price-100",
+      "bySec": 1.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#price-90",
+      "bySec": 1.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#buy-label",
+      "bySec": 7.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#holding",
+      "bySec": 8
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#sell-label",
+      "bySec": 13.5
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#formula",
+      "bySec": 18
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#final-state",
+      "bySec": 18
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#risk",
+      "bySec": 18
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#footer",
+      "bySec": 0
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#holding"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#formula"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#risk"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#footer"
+    }
+  ]
+}

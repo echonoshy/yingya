@@ -1,0 +1,238 @@
+[
+  {
+    "id": "scene-1",
+    "order": 1,
+    "narrativeRole": "开场：用价格阶梯建立直觉",
+    "narration": "",
+    "onScreenText": "网格交易是什么？\n把价格区间分成格子，按规则分批买卖",
+    "visualDirection": "浅米白画布中，一条近黑蓝价格路径在固定区间内起伏；五条水平层级从淡到实出现，构成价格阶梯。没有订单或收益标记，不暗示所有波动都必然成交。",
+    "assetIds": [],
+    "assetStrategy": "程序化可编辑文字、折线与水平线",
+    "startSeconds": 0,
+    "durationSeconds": 7,
+    "timingBasis": "estimate",
+    "motion": "价格路径逐段显现，水平层级随后建立；末段停止运动供阅读。",
+    "captionMode": "none",
+    "transition": "保留坐标区与水平层级进入下一场",
+    "status": "draft",
+    "viewerTakeaway": "网格交易的核心是预设价格层级并按规则分批交易。",
+    "settledFrame": "标题位于上方，价格阶梯位于中央，简短定义在下方；底部为常驻教学声明。",
+    "continuity": "阶梯的几何位置交给下一场，开场路径淡出后重新从100元开始正式示例。"
+  },
+  {
+    "id": "scene-2",
+    "order": 2,
+    "narrativeRole": "建立示例：五条线，四个间隔",
+    "narration": "",
+    "onScreenText": "教学区间：80–120元\n五条价格线，四个间隔\n间距＝(120−80)/4＝10元",
+    "visualDirection": "主图左侧依次标明80、90、100、110、120元，右侧以四段括号明确表示相邻线之间的间隔。公式放在独立文字区，不覆盖图表。",
+    "assetIds": [],
+    "assetStrategy": "程序化坐标轴、价格线、括号和公式",
+    "startSeconds": 7,
+    "durationSeconds": 11,
+    "timingBasis": "estimate",
+    "motion": "先标上下界，再补中间三条线；四个间隔依次强调，最后展开公式并保持。",
+    "captionMode": "none",
+    "transition": "原位保留完整网格，收起间隔括号",
+    "status": "draft",
+    "viewerTakeaway": "五条价格线划分出四个间隔，本例间距为10元。",
+    "visualMechanism": "用空间括号数间隔，而不是只陈列计算结果。",
+    "settledFrame": "五条等距价格线与四段括号同时可见，完整公式位于右侧。",
+    "beats": [
+      {
+        "cue": "建立区间",
+        "action": "强调80和120元边界，再标出90、100、110元。",
+        "result": "形成五条价格线。",
+        "startSeconds": 0,
+        "durationSeconds": 3
+      },
+      {
+        "cue": "数的是空隙",
+        "action": "四个相邻线间括号依次亮起，并标记共四格。",
+        "result": "避免把五条线误认为五个间隔。",
+        "startSeconds": 3,
+        "durationSeconds": 3
+      },
+      {
+        "cue": "计算间距",
+        "action": "出现间距公式，图表与公式一起保持。",
+        "result": "把10元对应到每个真实可见的间隔。",
+        "startSeconds": 6,
+        "durationSeconds": 5
+      }
+    ],
+    "continuity": "下一场继续使用相同价格线与比例，不换图表尺度。"
+  },
+  {
+    "id": "scene-3",
+    "order": 3,
+    "narrativeRole": "核心演示：两轮买入与卖出",
+    "narration": "",
+    "onScreenText": "只看90↔100这一格\n90元买1份 → 100元卖同一份\n每轮未扣成本价差：100−90＝10元\n仅局部交易，非完整账户模拟",
+    "visualDirection": "价格点严格按100→90→100→90→100推进。图下设置“本轮持有”槽：第一轮用标记A的1份筹码，第二轮用标记B的1份筹码；各轮买入后进入槽内，卖出时同一筹码移到该轮成交摘要。不得在初始100元标记卖出，不演示其他价格线上的订单。",
+    "assetIds": [],
+    "assetStrategy": "程序化价格路径、成交标签、筹码状态和局部交易摘要",
+    "startSeconds": 18,
+    "durationSeconds": 16,
+    "timingBasis": "estimate",
+    "motion": "价格到达90后才触发蓝色买入与筹码入槽；返回100后才触发橙色卖出与同一筹码离槽，随后重复第二轮。",
+    "captionMode": "none",
+    "transition": "价格路径停止，保留一轮买卖摘要供下一场解释",
+    "status": "draft",
+    "viewerTakeaway": "两轮均是先90元买入1份，再100元卖出该份；每轮只说明未扣成本的10元局部价差。",
+    "visualMechanism": "筹码身份和持有槽让“卖的是先前买入的同一份”可见。",
+    "settledFrame": "完整五节点路径清晰可见，两轮摘要各标未扣成本价差10元；本轮持有槽为空，但不显示任何账户总持仓或账户净值。",
+    "beats": [
+      {
+        "cue": "起点100元",
+        "action": "价格点在100元出现，展示本场局部交易边界。",
+        "result": "没有起始卖单。",
+        "startSeconds": 0,
+        "durationSeconds": 2
+      },
+      {
+        "cue": "第一轮跌至90元",
+        "action": "蓝色“买1份”标签出现，筹码A进入本轮持有槽。",
+        "result": "第一轮买入完成。",
+        "startSeconds": 2,
+        "durationSeconds": 3
+      },
+      {
+        "cue": "第一轮回到100元",
+        "action": "橙色“卖同一份”标签出现，筹码A移入第一轮摘要，显示未扣成本价差10元。",
+        "result": "第一轮买卖配对完成。",
+        "startSeconds": 5,
+        "durationSeconds": 3
+      },
+      {
+        "cue": "第二轮跌至90元",
+        "action": "新的筹码B在买入后进入本轮持有槽。",
+        "result": "第二轮独立开始，不复用已经卖出的筹码A。",
+        "startSeconds": 8,
+        "durationSeconds": 3
+      },
+      {
+        "cue": "第二轮回到100元",
+        "action": "卖出筹码B，第二轮摘要显示未扣成本价差10元。",
+        "result": "第二轮买卖配对完成。",
+        "startSeconds": 11,
+        "durationSeconds": 3
+      },
+      {
+        "cue": "总结局部演示",
+        "action": "保持完整路径与两轮摘要，不相加为账户收益。",
+        "result": "观众有时间核对两轮相同动作。",
+        "startSeconds": 14,
+        "durationSeconds": 2
+      }
+    ],
+    "continuity": "将一轮90买、100卖摘要带入下一场，解释其前提与成本。"
+  },
+  {
+    "id": "scene-4",
+    "order": 4,
+    "narrativeRole": "补足边界：成交有条件，价差要扣成本",
+    "narration": "",
+    "onScreenText": "买单需要现金\n卖单需要已有持仓\n本例每轮：10元−交易成本＝扣成本后的局部差额",
+    "visualDirection": "在保留的买卖摘要上，蓝色买入端连接现金图标，橙色卖出端连接已持有的1份筹码。下方先显示10元价差，再引入“−交易成本”；不设置成本金额，也不画账户利润曲线。",
+    "assetIds": [],
+    "assetStrategy": "程序化条件连线、现金与持仓符号、可编辑公式",
+    "startSeconds": 34,
+    "durationSeconds": 9,
+    "timingBasis": "estimate",
+    "motion": "依次强调买入所需现金与卖出所需持仓；最后给原价差公式补上成本项并静止。",
+    "captionMode": "none",
+    "transition": "摘要缩小退出，网格轮廓保留并复制为两张风险情景图",
+    "status": "draft",
+    "viewerTakeaway": "不能凭空买卖，未扣成本价差也不是实际到账收益。",
+    "settledFrame": "上方两项成交前提，下方单行局部差额公式，底部继续标注非完整账户模拟。",
+    "beats": [
+      {
+        "cue": "买入条件",
+        "action": "现金图标与蓝色买单建立连接。",
+        "result": "买单需要可用现金。",
+        "startSeconds": 0,
+        "durationSeconds": 2
+      },
+      {
+        "cue": "卖出条件",
+        "action": "已有筹码与橙色卖单建立连接。",
+        "result": "卖单需要已有持仓。",
+        "startSeconds": 2,
+        "durationSeconds": 2
+      },
+      {
+        "cue": "扣除成本",
+        "action": "在10元之后展开减去交易成本的公式，保持阅读。",
+        "result": "交易成本会减少局部价差，不虚构净额。",
+        "startSeconds": 4,
+        "durationSeconds": 5
+      }
+    ],
+    "continuity": "下一场从局部成交切换到未被局部摘要覆盖的价格情景。"
+  },
+  {
+    "id": "scene-5",
+    "order": 5,
+    "narrativeRole": "风险：不再来回波动时会怎样",
+    "narration": "",
+    "onScreenText": "情景示意，不接续前面的交易\n跌破区间：已有持仓可能承压\n持续上涨：可能提前卖出\n局部成交有价差 ≠ 整个账户盈利",
+    "visualDirection": "并排两张同尺度小图，保留80至120元区间。左图价格跌破80，仍在持有槽内的筹码与下行路径关联，标明已有持仓承压；右图价格继续涨过120，已卖出筹码留在较早成交点，后续上涨路径继续延伸。越界部分不添加虚构价格或收益数字。",
+    "assetIds": [],
+    "assetStrategy": "程序化双情景图、区间边界、状态筹码和结论文字",
+    "startSeconds": 43,
+    "durationSeconds": 12,
+    "timingBasis": "estimate",
+    "motion": "先演示左图跌破区间，再演示右图卖出后继续上涨；两图停止后显示账户层面的限制结论。",
+    "captionMode": "none",
+    "transition": "两图淡出，保留不等式结论进入收尾",
+    "status": "draft",
+    "viewerTakeaway": "区间震荡不是保证；下跌可能拖累持仓，上涨可能错过后续涨幅，局部价差不能证明账户盈利。",
+    "visualMechanism": "以持有筹码和已卖出筹码的不同状态，分别解释下跌风险与提前卖出的机会损失。",
+    "settledFrame": "左图持仓面对区间外下跌，右图卖出后价格继续上涨；底部突出局部价差与账户盈利不等价。",
+    "beats": [
+      {
+        "cue": "切换到风险情景",
+        "action": "明确两图为独立示意，左图路径穿过80元边界，已有筹码保持在持有状态。",
+        "result": "跌破区间可能让已有持仓承压。",
+        "startSeconds": 0,
+        "durationSeconds": 4
+      },
+      {
+        "cue": "持续上涨",
+        "action": "右图先显示已卖出状态，再让价格路径继续越过120元边界。",
+        "result": "先前卖出的部分可能错过后续上涨，不将其画成实际亏损。",
+        "startSeconds": 4,
+        "durationSeconds": 4
+      },
+      {
+        "cue": "回到账户层面",
+        "action": "两图停止，突出“局部成交有价差 ≠ 整个账户盈利”。",
+        "result": "纠正从两轮局部交易推断总体盈利的误解。",
+        "startSeconds": 8,
+        "durationSeconds": 4
+      }
+    ],
+    "continuity": "保留核心限制结论，收尾不再引入新概念。"
+  },
+  {
+    "id": "scene-6",
+    "order": 6,
+    "narrativeRole": "收束：记住机制，不误认保证",
+    "narration": "",
+    "onScreenText": "网格交易：分层交易，不是稳赚\n局部价差 ≠ 账户盈利\n所有数字均为虚构教学示例\n非行情或收益预测，不提供投资建议",
+    "visualDirection": "以简化网格轮廓为背景辅助，中央放置两级总结；下方独立放置完整免责声明，不加入操作建议、平台入口或收益号召。",
+    "assetIds": [],
+    "assetStrategy": "程序化可编辑总结文字与简化网格",
+    "startSeconds": 55,
+    "durationSeconds": 5,
+    "timingBasis": "estimate",
+    "motion": "前0.5秒完成文字落位，其余时间全画面稳定，直接结束不提前淡黑。",
+    "captionMode": "none",
+    "transition": "结束",
+    "status": "draft",
+    "viewerTakeaway": "网格是分层交易规则，不是盈利保证；本片仅用于理解概念。",
+    "settledFrame": "总结、风险限制与完整免责声明同时清晰可读。",
+    "continuity": "继承上一场不等式结论，以静止阅读完成60秒时间线。"
+  }
+]
