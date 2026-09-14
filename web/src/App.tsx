@@ -205,7 +205,7 @@ function StartScreen({ accountPanel, openingProjectId, projects, loading, openEr
         </header>
         {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
         <section className="home-create">
-          <h2 id="create-prompt-label">想把什么内容做成视频？</h2>{prompt ? <p className="draft-save-status" role="status">{promptSaved ? "描述已自动保存到此浏览器" : "草稿保存失败，请勿关闭页面"}</p> : null}
+          <h2 id="create-prompt-label">想把什么内容做成视频？</h2>{prompt && !promptSaved ? <p className="form-error" role="status">草稿保存失败，请勿关闭页面</p> : null}
           <ComposerForm className="composer composer--hero" onSubmit={submit} filesDisabled={busy || fileDraftStatus === "loading" || acceptedCreation} onFiles={added => setFiles(current => [...current, ...added])}>
           <textarea aria-labelledby="create-prompt-label" aria-describedby="creation-workflow" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…"/>
           <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>

@@ -176,7 +176,7 @@ button:not(:disabled) { cursor: pointer; }
 /* Start */
 .thread-header { height: 72px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--prey-700); }
 .composer { position: relative; padding: 14px; border: 1px solid var(--prey-600); border-radius: var(--radius-button); background: var(--prey-900); transition: border-color var(--motion-standard) ease, background var(--motion-standard) ease, box-shadow var(--motion-standard) ease, transform var(--motion-standard) var(--ease-sprout); }
-.composer:focus-within { border-color: var(--purple-400); background: var(--prey-800); box-shadow: 0 0 0 1px rgba(169,111,255,.12), 0 14px 38px rgba(145,71,255,.08); transform: translateY(-2px); }
+.composer:focus-within { border-color: var(--line-strong); background: var(--canvas); outline: none; box-shadow: none; transform: none; }
 .composer--hero { max-width: 850px; padding: 16px; animation: composer-in 680ms .26s var(--ease-sprout) backwards; }
 .composer textarea { width: 100%; min-height: 88px; padding: 4px 5px 15px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1.7; }
 .composer textarea::placeholder { color: var(--dim); opacity: 1; }
@@ -715,7 +715,7 @@ button:not(:disabled) { cursor: pointer; }
 .workspace { background: var(--background); }
 .thread-header { border-color: var(--line); }
 .composer { border-color: var(--line-strong); background: var(--canvas); }
-.composer:focus-within { border-color: var(--text); background: var(--canvas); box-shadow: 0 0 0 3px rgba(0, 113, 227, .16), 0 16px 44px rgba(0, 0, 0, .08); transform: none; }
+.composer:focus-within { border-color: var(--line-strong); background: var(--canvas); outline: none; box-shadow: none; transform: none; }
 .composer textarea::placeholder { color: var(--dim); }
 .icon-button, .stop-button, .canvas-actions button, .composer select, .artifact-canvas select {
   border-color: var(--line);
@@ -1204,8 +1204,8 @@ button:not(:disabled) { cursor: pointer; }
   background: var(--canvas);
 }
 .home-create h2 { margin: 0 0 12px; color: var(--muted); font-size: 14px; line-height: 1.5; font-weight: 550; }
-.home-create .composer { max-width: none; padding: 18px; border-color: var(--line-strong); border-radius: var(--radius-panel); background: var(--surface); box-shadow: none; animation: none; }
-.home-create .composer:focus-within { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -1px; background: var(--canvas); box-shadow: none; }
+.home-create .composer { max-width: none; padding: 18px; border-color: var(--line); border-radius: var(--radius-panel); background: var(--canvas); box-shadow: none; animation: none; }
+.home-create .composer:focus-within { border-color: var(--line-strong); background: var(--canvas); outline: none; box-shadow: none; transform: none; }
 .home-create textarea { min-height: 76px; max-height: 180px; font-size: 16px; }
 .home-projects { max-width: 1160px; margin: 0 auto; }
 .home-projects > header { min-height: 45px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -1960,7 +1960,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .message-markdown h3 { font-size: var(--text-input); }
 .composer textarea, .home-create textarea, .workspace.workspace--canvas .thread-footer .composer > textarea { font-size: var(--text-input); line-height: var(--leading-body); }
 .thread-footer .composer { border-color: var(--line-strong); box-shadow: none; }
-.thread-footer .composer:focus-within { border-color: var(--accent); }
+.thread-footer .composer:focus-within { border-color: var(--line-strong); background: var(--canvas); outline: none; box-shadow: none; transform: none; }
 .model-trigger, .voice-trigger, .composer select, .artifact-canvas select {
   font-family: var(--font-ui); font-size: var(--text-control); font-weight: var(--weight-medium);
   background: var(--surface); border-color: var(--line); font-variant-numeric: tabular-nums;
@@ -2020,7 +2020,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Group settings with send so a narrow conversation never strands the primary action. */
 .workspace.workspace--canvas .thread-footer { min-width: 0; }
 .workspace.workspace--canvas .thread-footer .composer { padding: 10px; border-radius: var(--radius-panel); border-color: var(--line); background: var(--canvas); }
-.workspace.workspace--canvas .thread-footer .composer:focus-within { border-color: var(--accent); }
+.workspace.workspace--canvas .thread-footer .composer:focus-within { border-color: var(--line-strong); background: var(--canvas); outline: none; box-shadow: none; transform: none; }
 .workspace.workspace--canvas .thread-footer .composer > textarea { transition-property: none; min-height: 32px; max-height: none; padding: 4px; font-size: var(--text-control); line-height: var(--leading-body); }
 .workspace.workspace--canvas .message, .workspace.workspace--canvas .message .markdown-body { font-size: var(--text-control); }
 .workspace.workspace--canvas .artifact-search input { font-size: var(--text-search); }
