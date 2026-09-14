@@ -113,7 +113,13 @@ events {{ worker_connections 4096; }}
 http {{
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
-    access_log "{root}/nginx-access.log";
+    map $uri $share_log_path {{
+        ~^/s/ /s/[redacted];
+        ~^/api/public/shares/ /api/public/shares/[redacted];
+        default $uri;
+    }}
+    log_format share_safe '$remote_addr - $remote_user [$time_local] "$request_method $share_log_path $server_protocol" $status $body_bytes_sent';
+    access_log "{root}/nginx-access.log" share_safe;
     client_body_temp_path "{root}/body";
     proxy_temp_path "{root}/proxy";
     fastcgi_temp_path "{root}/fastcgi";
@@ -125,6 +131,18 @@ http {{
         location /static/ {{
             alias "{root}/static/";
             add_header Cache-Control "public, max-age=31536000, immutable";
+        }}
+        # Error logs can include the original request URI; keep only sanitized
+        # access/status logs for bearer-link routes.
+        location ~ ^/(s/|api/public/shares/) {{
+            error_log /dev/null;
+            proxy_pass http://127.0.0.1:{api_port};
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header Connection "";
+            proxy_buffering off;
+            proxy_read_timeout 3600s;
+            proxy_next_upstream off;
         }}
         location / {{
             proxy_pass http://127.0.0.1:{api_port};

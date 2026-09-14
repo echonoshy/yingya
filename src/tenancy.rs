@@ -1,4 +1,6 @@
 use super::*;
+#[path = "shares.rs"]
+mod shares;
 use axum::{
     body::{Body, to_bytes},
     extract::Request,
@@ -47,6 +49,7 @@ struct PreviewGrant {
 
 #[derive(Clone)]
 struct Gateway {
+    shares: shares::Store,
     previews: Arc<Mutex<HashMap<String, PreviewGrant>>>,
     paths: AppPaths,
     accounts: Accounts,
@@ -196,6 +199,7 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let mut state = Gateway {
+        shares: shares::Store::open(&paths.app_data)?,
         previews: Default::default(),
         paths,
         accounts,
@@ -221,8 +225,25 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pool) = &state.pool {
         pool.supervise();
     }
+    if state.worker.is_none() {
+        let housekeeping = state.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = housekeeping
+                    .shares
+                    .cleanup(&housekeeping.paths.app_data, &housekeeping.accounts)
+                    .await
+                {
+                    warn!(%error, "share cleanup failed");
+                }
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+        });
+    }
     let lifecycle = state.clone();
     let app = Router::new()
+        .merge(shares::routes())
+        .route("/s/{token}", get(shares::page))
         .route("/ready", get(readiness))
         .route("/internal/runtime", get(runtime_status))
         .route("/internal/drain", post(drain_runtime))
@@ -684,7 +705,12 @@ async fn edit_profile(
     account_result(
         g.accounts
             .edit_profile(&actor.id, &id, input)
-            .map(|_| json!({"ok":true})),
+            .and_then(|_| {
+                if g.accounts.runtime_user(&id).is_err() {
+                    g.shares.revoke_owner(&id).map_err(|e| e.to_string())?;
+                }
+                Ok(json!({"ok":true}))
+            }),
     )
 }
 async fn edit_invite(
@@ -805,7 +831,12 @@ async fn update_account(
                 input.disabled,
                 &input.request_id,
             )
-            .map(|_| json!({"ok":true})),
+            .and_then(|_| {
+                if g.accounts.runtime_user(&id).is_err() {
+                    g.shares.revoke_owner(&id).map_err(|e| e.to_string())?;
+                }
+                Ok(json!({"ok":true}))
+            }),
     )
 }
 #[derive(Deserialize)]
@@ -1044,6 +1075,18 @@ impl Gateway {
         Ok(router)
     }
 }
+fn deleted_project(method: &axum::http::Method, path: &str) -> Option<String> {
+    if method != "DELETE" {
+        return None;
+    }
+    let path = if let Some(rest) = path.strip_prefix("/api/u/") {
+        format!("/api/{}", rest.split_once('/')?.1)
+    } else {
+        path.to_owned()
+    };
+    let id = path.strip_prefix("/api/agent-projects/")?;
+    Uuid::parse_str(id).ok().map(|_| id.to_owned())
+}
 async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
     if !request.uri().path().starts_with("/api/") && !request.uri().path().starts_with("/assets/") {
         let dir = g.paths.resources.join("web-dist");
@@ -1068,7 +1111,16 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
         let Some(owner) = owner else {
             return failure(StatusCode::UNAUTHORIZED, "请先登录");
         };
-        return pool.forward(&owner, request).await;
+        let deletion = deleted_project(request.method(), request.uri().path());
+        let response = pool.forward(&owner, request).await;
+        if response.status().is_success()
+            && let Some(project) = deletion
+        {
+            if let Err(error) = g.shares.revoke_project(&owner, &project) {
+                warn!(%error,"project share revocation failed");
+            }
+        }
+        return response;
     }
 
     let preview_request = if let Some(rest) = request.uri().path().strip_prefix("/api/preview/") {
@@ -1298,7 +1350,15 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
             );
         }
     };
+    let deletion = deleted_project(request.method(), &path);
     let mut response = router.oneshot(request).await.unwrap();
+    if response.status().is_success()
+        && let Some(project) = deletion
+    {
+        if let Err(error) = g.shares.revoke_project(&user.id, &project) {
+            warn!(%error,"project share revocation failed");
+        }
+    }
     if preview_request.is_some()
         && response.status() == StatusCode::OK
         && response
@@ -1511,6 +1571,7 @@ mod tests {
         let mut paths = AppPaths::from_env().unwrap();
         paths.app_data = root.clone();
         let g = Gateway {
+            shares: shares::Store::open(&paths.app_data).unwrap(),
             paths,
             accounts,
             model_relay: crate::model_relay::ModelRelay::new(&root).unwrap(),
@@ -1623,6 +1684,7 @@ mod tests {
             hyperframes_home: root.clone(),
         };
         let g = Gateway {
+            shares: shares::Store::open(&paths.app_data).unwrap(),
             paths,
             accounts,
             model_relay: crate::model_relay::ModelRelay::new(&root).unwrap(),

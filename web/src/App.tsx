@@ -183,7 +183,7 @@ function StartScreen({ accountPanel, openingProjectId, projects, loading, openEr
   }
   async function removeProject(project: ProjectRecord) {
     setOpenMenu("");
-    if (!window.confirm(`确定删除“${project.title}”吗？\n项目文件和生成内容将被永久删除。`)) return;
+    if (!window.confirm(`确定删除“${project.title}”吗？\n项目文件和生成内容将被永久删除，已创建的分享链接也会失效。`)) return;
     try { await onDelete(project); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "项目删除失败，请重试"); }
   }

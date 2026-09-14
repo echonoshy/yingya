@@ -416,7 +416,26 @@ button:not(:disabled) { cursor: pointer; }
 .render-options { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .render-options label { min-width: 0; display: grid; gap: 6px; color: var(--dim); font-size: var(--text-caption); }
 .render-options select { width: 100%; height: 40px; padding: 0 10px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-900); color: var(--text); font-size: 12px; }
-.render-actions { margin-top: 12px; display: flex; gap: 8px; }
+.render-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.current-video-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.current-video-actions .render-existing-spec { margin: 0; flex: 1 1 160px; font-size: var(--text-caption); }
+.current-video-buttons { display: flex; align-items: center; gap: 8px; }
+.current-video-buttons .render-download { min-height: 40px; font-size: var(--text-control); }
+.video-download-menu { position: relative; }
+.video-download-menu summary { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); color: var(--text); cursor: pointer; list-style: none; }
+.video-download-menu summary::-webkit-details-marker, .export-settings > summary::-webkit-details-marker { display: none; }
+.video-download-menu summary svg { width: 20px; height: 20px; }
+.video-download-menu summary:hover { background: var(--surface-hover); }
+.video-download-menu > a { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 44px; width: max-content; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); box-shadow: var(--shadow-popover); color: var(--text); font-size: var(--text-control); text-decoration: none; }
+.video-download-menu > a:hover { background: var(--surface-hover); }
+.video-download-menu > a svg { width: 16px; height: 16px; }
+.export-settings { margin-top: 12px; border-top: 1px solid var(--line); }
+.export-settings > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: var(--text-control); cursor: pointer; list-style: none; }
+.export-settings > summary > span { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); font-size: var(--text-caption); }
+.export-settings > summary svg { width: 16px; height: 16px; }
+.export-settings .export-chevron { margin-left: auto; transition: transform var(--motion-fast); }
+.export-settings[open] .export-chevron { transform: rotate(180deg); }
+.export-settings > .render-hint:first-of-type { margin-top: 0; }
 .render-primary, .render-download { min-height: 42px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: var(--radius-control); font-size: 12px; text-decoration: none; }
 .render-primary { flex: 1; border: 1px solid var(--purple-500); background: var(--purple-500); color: white; font-weight: 650; }
 .render-primary:not(:disabled):hover { background: var(--purple-400); }

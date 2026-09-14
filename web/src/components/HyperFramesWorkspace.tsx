@@ -1,4 +1,6 @@
-import { ArrowClockwise, ArrowsOut, Pause, Play, Check, CircleNotch, Code, DownloadSimple, FilmSlate, LinkBreak, Warning } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowsOut, Pause, Play, Check, CircleNotch, Code, DownloadSimple, FilmSlate, LinkBreak, Warning, DotsThree, CaretDown } from "@phosphor-icons/react";
+import { ShareDialog, type ShareSource } from "../sharing/ShareDialog";
+import { ShareNetwork } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { DraftVersion, ProjectDetail, RenderJob } from "../types";
@@ -118,20 +120,27 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
   </section>;
 }
 
-export function RenderPanel({ project, version, onRefresh }: { project: ProjectDetail; version?: DraftVersion; onRefresh: () => Promise<void> }) {
+export function RenderPanel({ project, version, videoPath, exportRequest = 0, onRefresh }: { project: ProjectDetail; version?: DraftVersion; videoPath?: string; exportRequest?: number; onRefresh: () => Promise<void> }) {
+  const [sharing, setSharing] = useState<ShareSource | null>(null);
   const [resolution, setResolution] = useState<RenderResolution>(() => defaultResolution(project.aspectRatio));
   const [fps, setFps] = useState<30 | 60>(60);
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState("");
   const activeJob = project.renderJobs.find(job => job.status === "queued" || job.status === "running");
   const rendering = requested || Boolean(activeJob);
+  const [exportOpen, setExportOpen] = useState(Boolean(activeJob));
+  useEffect(() => { if (exportRequest) setExportOpen(true); }, [exportRequest]);
+  useEffect(() => { if (activeJob) setExportOpen(true); }, [activeJob?.id]);
   const options = useMemo(() => resolutionOptions(project.aspectRatio), [project.aspectRatio]);
-  const finalVideo = [...project.manifest.artifacts].reverse().find(artifact => artifact.kind === "final-video" && artifact.version === version?.id);
-
-  const finalJob = finalVideo ? [...project.renderJobs].reverse().find(job => job.status === "completed" && job.outputPath === finalVideo.path) : undefined;
-  const recordedResolution = finalJob ? resolutionLabels[finalJob.resolution as RenderResolution] ?? finalJob.resolution : finalVideo?.metadata.resolution;
-  const recordedFps = finalJob?.fps ?? finalVideo?.metadata.frameRate ?? finalVideo?.metadata.fps;
-  const downloadSpec = [typeof recordedResolution === "string" ? recordedResolution : "分辨率未记录", typeof recordedFps === "number" ? `${recordedFps} FPS` : "帧率未记录"].join(" · ");
+  const videoArtifact = project.manifest.artifacts.find(artifact => artifact.path === videoPath && artifact.version === version?.id && ["final-video", "video", "draft-video"].includes(artifact.kind));
+  const source: ShareSource | null = !version || !videoPath ? null
+    : videoArtifact?.kind === "final-video" ? { artifactId: videoArtifact.id, path: videoPath, label: version.label }
+    : videoPath === version.videoPath ? { versionId: version.id, path: videoPath, label: version.label }
+    : videoArtifact ? { artifactId: videoArtifact.id, path: videoPath, label: version.label } : null;
+  const finalJob = project.renderJobs.find(job => job.status === "completed" && job.outputPath === videoPath);
+  const recordedResolution = finalJob ? resolutionLabels[finalJob.resolution as RenderResolution] ?? finalJob.resolution : videoArtifact?.metadata.resolution;
+  const recordedFps = finalJob?.fps ?? videoArtifact?.metadata.frameRate ?? videoArtifact?.metadata.fps;
+  const downloadSpec = ["MP4", typeof recordedResolution === "string" ? recordedResolution : null, typeof recordedFps === "number" ? `${recordedFps} FPS` : null].filter(Boolean).join(" · ");
   useEffect(() => setResolution(defaultResolution(project.aspectRatio)), [project.aspectRatio]);
 
   async function render(input: { versionId: string; resolution: RenderResolution; fps: 30 | 60 }) {
@@ -142,7 +151,7 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
       await api.renderVideo(project.id, input);
       await onRefresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "视频渲染失败");
+      setError(reason instanceof Error ? reason.message : "视频导出失败");
     } finally {
       setRequested(false);
     }
@@ -153,29 +162,56 @@ export function RenderPanel({ project, version, onRefresh }: { project: ProjectD
     void render({ versionId: job.versionId, resolution: job.resolution, fps: job.fps });
   }
 
-  return <section className="render-panel" aria-label="导出视频">
-    <header><b>导出视频</b>{finalVideo ? <span className="render-ready"><Check/>已有成片</span> : null}</header>
-    {finalVideo ? <p className="render-existing-spec">可下载文件：{version?.label.replace(/草稿/g, "视频")} · {downloadSpec}<br/><span>{finalVideo.path.split("/").at(-1)}</span></p> : null}
-    <p className="render-hint">以下设置用于下一次渲染，不会改变已有下载文件。</p>
-    {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.message}</p></div> : null}
+  return <section className="render-panel" aria-label="视频分享与导出">
+    {source ? <div className="current-video-actions">
+      <p className="render-existing-spec">{downloadSpec}</p>
+      <div className="current-video-buttons">
+        <button className="render-download" aria-label="分享当前视频" onClick={() => setSharing(source)}><ShareNetwork/>分享</button>
+        <VideoDownloadMenu projectId={project.id} path={source.path}/>
+      </div>
+    </div> : null}
+    <details className="export-settings" open={exportOpen} onToggle={event => setExportOpen(event.currentTarget.open)}>
+      <summary>导出其他规格{rendering ? <span><CircleNotch className="spin"/>导出中</span> : null}<CaretDown className="export-chevron"/></summary>
+      <p className="render-hint">按所选分辨率和帧率生成新的 MP4。</p>
+      {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.status === "queued" ? "等待导出" : `已完成 ${Math.round(activeJob.progress)}%`}</p></div> : null}
     <div className="render-options">
       <label><span>分辨率</span><select value={resolution} disabled={rendering} onChange={event => setResolution(event.target.value as RenderResolution)}>{options.map(value => <option value={value} key={value}>{resolutionLabels[value]}</option>)}</select></label>
       <label><span>帧率</span><select value={fps} disabled={rendering} onChange={event => setFps(Number(event.target.value) as 30 | 60)}><option value={60}>60 FPS</option><option value={30}>30 FPS</option></select></label>
     </div>
     <div className="render-actions">
-      <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution, fps })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在后台渲染…" : `渲染 ${resolutionLabels[resolution]} 成片`}</button>
-      {finalVideo ? <a className="render-download" href={api.fileUrl(project.id, finalVideo.path)} download><DownloadSimple/>下载成片</a> : null}
+      <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution, fps })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在导出 MP4…" : "开始导出"}</button>
     </div>
-    {project.activeTurnId ? <p className="render-hint">当前修改完成后即可渲染。</p> : null}
+    {project.activeTurnId ? <p className="render-hint">当前修改完成后可导出。</p> : null}
     {error ? <p className="render-error" role="alert"><Warning/>{error}</p> : null}
-    {project.renderJobs.length ? <details className="render-history"><summary>渲染历史 <span>{project.renderJobs.length}</span></summary><div>
+    {project.renderJobs.length ? <details className="render-history"><summary>导出历史 <span>{project.renderJobs.length}</span></summary><div>
       {project.renderJobs.map(job => <article key={job.id}>
         <div className={`render-history-status render-history-status--${job.status}`}>{job.status === "completed" ? <Check/> : job.status === "running" || job.status === "queued" ? <CircleNotch className="spin"/> : <Warning/>}<span>{renderStatusLabel(job.status)}</span></div>
         <div className="render-history-copy"><b>{resolutionLabels[job.resolution as RenderResolution] ?? job.resolution} · {job.fps} FPS</b><small>{formatJobTime(job.startedAt)} · {versionLabel(project, job.versionId)}</small>{job.error ? <p>{job.error}</p> : null}</div>
-        <div className="render-history-actions">{job.status === "completed" && job.outputPath ? <a href={api.fileUrl(project.id, job.outputPath)} download aria-label="下载这次成片"><DownloadSimple/></a> : null}{(job.status === "failed" || job.status === "interrupted") && isRenderResolution(job.resolution) ? <button type="button" disabled={rendering} onClick={() => retry(job)}>重试</button> : null}</div>
+        <div className="render-history-actions">{job.status === "completed" && job.outputPath ? <a href={api.fileUrl(project.id, job.outputPath)} download aria-label="下载这次导出的视频"><DownloadSimple/></a> : null}{(job.status === "failed" || job.status === "interrupted") && isRenderResolution(job.resolution) ? <button type="button" disabled={rendering} onClick={() => retry(job)}>重试</button> : null}</div>
       </article>)}
     </div></details> : null}
+    </details>
+    {sharing ? <ShareDialog projectId={project.id} title={project.title} source={sharing} onClose={() => setSharing(null)}/> : null}
   </section>;
+}
+
+function VideoDownloadMenu({ projectId, path }: { projectId: string; path: string }) {
+  const root = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const close = (event: PointerEvent) => { if (root.current && !root.current.contains(event.target as Node)) root.current.open = false; };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  useEffect(() => { if (root.current) root.current.open = false; }, [path]);
+  return <details className="video-download-menu" ref={root} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onKeyDown={event => {
+    if (event.key === "Escape" && event.currentTarget.open) {
+      event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false;
+      event.currentTarget.querySelector("summary")?.focus();
+    }
+  }}>
+    <summary aria-label="更多视频操作" title="更多视频操作"><DotsThree/></summary>
+    <a href={api.fileUrl(projectId, path)} download aria-label="下载当前视频" onClick={() => { if (root.current) root.current.open = false; }}><DownloadSimple/>下载 MP4</a>
+  </details>;
 }
 
 function withReloadKey(value: string, reloadKey: number, sourceRevision?: string) {
@@ -196,7 +232,7 @@ function isRenderResolution(value: string): value is RenderResolution {
 }
 
 function renderStatusLabel(status: RenderJob["status"]) {
-  return status === "queued" ? "等待中" : status === "running" ? "渲染中" : status === "completed" ? "已完成" : status === "interrupted" ? "已中断" : "失败";
+  return status === "queued" ? "等待中" : status === "running" ? "导出中" : status === "completed" ? "已完成" : status === "interrupted" ? "已中断" : "失败";
 }
 
 function formatJobTime(value: number) {
