@@ -39,8 +39,14 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   const feedbackDraft = useFeedbackDraft(project.id);
   const attemptRef = useRef<SubmissionAttempt | null>(null);
   const [sendStage, setSendStage] = useState<"idle" | "uploading" | "sending" | "sent" | "failed">("idle");
-  const [sendResult, setSendResult] = useState("");
+  const [sendResult, setSendResult] = useState<{ label: string; turnId: string; queued: boolean } | null>(null);
   const [assetFeedback, setAssetFeedback] = useState("");
+  const [submissionSyncFailed, setSubmissionSyncFailed] = useState(false);
+  useEffect(() => {
+    if (!assetFeedback) return;
+    const timer = window.setTimeout(() => setAssetFeedback(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [assetFeedback]);
   const [confirming, setConfirming] = useState(false);
   const sendingRef = useRef(false);
   const [exportRequest, setExportRequest] = useState(0);
@@ -83,6 +89,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       const [detail, latestMedia] = await Promise.all([api.getProject(project.id), api.getProjectMedia(project.id).catch(() => undefined)]);
       if (generation !== refreshGeneration.current) return;
       if (latestMedia) setMedia(latestMedia);
+      setSubmissionSyncFailed(false);
       onProject(detail);
     } catch (reason) { if (generation === refreshGeneration.current) throw reason; }
   }, [onProject, project.id]);
@@ -111,14 +118,15 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   function selectCanvasTab(tab: CanvasTab) { setArtifactPreview(null); setCanvasTab(tab); writeStringSetting(`yingya-canvas-tab:${project.id}`, tab); }
 
   function clearSubmissionFeedback() {
+    setAssetFeedback("");
     if (sendingRef.current || (sendStage !== "sent" && sendStage !== "failed")) return;
-    setSendStage("idle"); setSendResult(""); setError("");
+    setSendStage("idle"); setSendResult(null); setError("");
   }
 
   async function send(event: FormEvent) {
     event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || sendingRef.current || fileDraftStatus === "loading" || feedbackDraft.status === "loading") return;
     sendingRef.current = true;
-    setBusy(true); setError(""); setAssetFeedback("");
+    setBusy(true); setError(""); setAssetFeedback(""); setSubmissionSyncFailed(false);
     setSendStage(files.length || selectedAssets.length || feedbackDraft.items.length ? "uploading" : "sending");
     try {
       const submittedFeedback = feedbackDraft.items;
@@ -149,9 +157,9 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       setFiles(current => current.filter(file => !files.includes(file)));
       setSelectedAssets(current => current.filter(asset => !selectedAssets.some(sent => sent.id === asset.id)));
       setContexts(current => current.filter(context => !contexts.includes(context)));
-      setSendResult(accepted.status === "queued" ? "已加入队列" : "已提交");
+      setSendResult({ label: accepted.status === "queued" ? "已加入队列" : "已提交", turnId: accepted.turnId, queued: accepted.status === "queued" });
       setSendStage("sent");
-      try { await refresh(); } catch { setError("已提交，但状态暂未同步，请重新同步项目。"); }
+      try { await refresh(); } catch { setSubmissionSyncFailed(true); }
     }
     catch (reason) { setSendStage("failed"); setError(reason instanceof Error ? reason.message : "消息发送失败"); }
     finally { sendingRef.current = false; setBusy(false); }
@@ -252,7 +260,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "用对话调整内容、画面与节奏"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
       <section className="timeline" aria-label="创作消息" tabIndex={0} ref={timelineRef} onScroll={onScroll}><div className="timeline-inner" ref={contentRef}>
-        {syncFailed || stalled || connectionState === "disconnected" ? <ConnectionNotice syncFailed={syncFailed} stalled={stalled} onRetry={() => void resync()}/> : null}
+        {syncFailed || submissionSyncFailed || stalled || connectionState === "disconnected" ? <ConnectionNotice syncFailed={syncFailed || submissionSyncFailed} stalled={stalled} onRetry={() => void resync()}/> : null}
         <ConversationFeed projectId={project.id} entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
         {(project.status === "failed" || project.status === "incomplete") && project.manifest.dirty ? <WorkflowRecoveryCard briefing={project.manifest.phase === "briefing"} incomplete={project.status === "incomplete"} statusLabel={project.statusLabel} onRecover={selectQuickReply}/> : null}
@@ -268,7 +276,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
         {assetPickerOpen ? <ComposerAssetPicker folders={libraryFolders} assets={libraryAssets} selected={selectedAssets} onClose={() => setAssetPickerOpen(false)} onToggle={asset => { clearSubmissionFeedback(); if (selectedAssets.some(item => item.id === asset.id)) { setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); } else selectReferenceAssets([asset]); }}/> : null}
         <SelectedAssetChips assets={selectedAssets} onRemove={asset => { clearSubmissionFeedback(); setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); composerRef.current?.focus({ preventScroll: true }); }}/>
         {contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}
-        <div className="composer-feedback" role="status" aria-live="polite" aria-atomic="true">{sendStage === "uploading" || sendStage === "sending" ? <span key={sendStage}><CircleNotch className="spin"/>{sendStage === "uploading" ? "正在上传素材…" : "正在发送…"}</span> : sendStage === "failed" ? <span className="composer-feedback-error"><Warning/>发送未完成，可重试</span> : assetFeedback ? <span key={assetFeedback}><Check/>{assetFeedback}</span> : sendStage === "sent" ? <span><Check/>{sendResult}</span> : null}</div>
+        <div className="composer-feedback" role="status" aria-live="polite" aria-atomic="true">{sendStage === "uploading" || sendStage === "sending" ? <span key={sendStage}><CircleNotch className="spin"/>{sendStage === "uploading" ? "正在上传素材…" : "正在发送…"}</span> : sendStage === "failed" ? <span className="composer-feedback-error"><Warning/>发送未完成，可重试</span> : assetFeedback ? <span key={assetFeedback}><Check/>{assetFeedback}</span> : sendStage === "sent" && sendResult && (sendResult.queued ? project.queue.some(turn => turn.id === sendResult.turnId) : project.activeTurnId !== sendResult.turnId && !project.messages.some(message => message.turnId === sendResult.turnId)) ? <span><Check/>{sendResult.label}</span> : null}</div>
         <form className="composer" onSubmit={send} onChange={clearSubmissionFeedback}>
           <textarea aria-label="修改描述" ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "例如：把开场标题放大，第 8 秒的图表多停留 2 秒…"}/>
           <div className="attachment-row">{files.map(file => <span key={file.name}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
@@ -390,7 +398,7 @@ function ActivityRow({ activity }: { activity: TimelineActivity }) {
 function RequestControls({ event }: { event: AgentEvent }) {
   const payload = event.payload as Record<string, unknown>; const params = (payload.params ?? {}) as Record<string, unknown>; const questions = (params.questions ?? []) as Array<{ id: string; header: string; question: string; options?: Array<{ label: string; description: string }> }>; const [answers, setAnswers] = useState<Record<string, string>>({}); const [resolved, setResolved] = useState(false); const [error, setError] = useState("");
   async function respond(result: unknown) { try { await api.respondToRequest(event.projectId, payload.id, result); setResolved(true); } catch (reason) { setError(reason instanceof Error ? reason.message : "无法响应请求"); } }
-  if (resolved) return <div className="request-resolved"><Check/>已提交，等待 Codex 继续</div>;
+  if (resolved) return <div className="request-resolved"><Check/>处理结果已提交</div>;
   if (event.method.includes("requestUserInput")) return <div className="request-controls">{questions.map(question => <label key={question.id}><b>{question.header || "需要你的输入"}</b><span>{question.question}</span>{question.options?.length ? <select value={answers[question.id] ?? ""} onChange={change => setAnswers(value => ({ ...value, [question.id]: change.target.value }))}><option value="">请选择</option>{question.options.map(option => <option value={option.label} key={option.label}>{option.label}</option>)}</select> : <input value={answers[question.id] ?? ""} onChange={change => setAnswers(value => ({ ...value, [question.id]: change.target.value }))}/>}</label>)}<div><button onClick={() => void respond({ answers: Object.fromEntries(questions.map(question => [question.id, { answers: [answers[question.id] ?? ""] }])) })}>提交回答</button><button onClick={() => void respond({ answers: {} })}>取消</button></div>{error ? <small>{error}</small> : null}</div>;
   if (event.method.includes("permissions/requestApproval")) return <div className="request-controls"><p>{String(params.reason ?? "Codex 请求临时扩展项目权限。")}</p><div><button onClick={() => void respond({ scope: "turn", permissions: params.permissions ?? {} })}>仅本次允许</button><button onClick={() => void respond({ permissions: {} })}>拒绝</button></div>{error ? <small>{error}</small> : null}</div>;
   if (event.method.includes("elicitation/request")) return <div className="request-controls"><p>{String(params.message ?? "外部工具请求输入；请先检查原始事件中的表单结构。")}</p><div><button onClick={() => void respond({ action: "decline", content: null })}>拒绝请求</button><button onClick={() => void respond({ action: "cancel", content: null })}>取消工具</button></div>{error ? <small>{error}</small> : null}</div>;

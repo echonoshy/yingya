@@ -45,6 +45,7 @@ function json(route, body, status = 200) {
 async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {}) {
   let projects = [seed];
   let current = structuredClone(seed);
+  let nextTurnId = 0;
   let libraryImages = [{ id: "image-1", url: "/brand/yingya-ghost.png", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
   let assetFolders = [{ id: "folder-brand", name: "品牌素材", createdAt: now }];
   let libraryAssets = [
@@ -134,7 +135,13 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (pathname.endsWith("/heygen/audio") && method === "POST") { const asset = { id: "music-test", name: "轻快钢琴", url: "/assets/uploads/music.mp3", hyperframesPath: "assets/audio/music-test.mp3", kind: "music", source: "heygen", mediaType: "audio/mpeg", createdAt: now }; media.assets.push(asset); return json(route, asset); }
     if (pathname.endsWith("/assets") && method === "POST") return json(route, { path: "assets/inbox/reference.pdf", name: "参考文件.pdf" });
     if (pathname.endsWith("/media") && method === "GET") return json(route, media);
-    if (pathname.endsWith("/turns") && method === "POST") return json(route, { turnId: "turn-new", status: "queued", queueDepth: 1 });
+    if (pathname.endsWith("/turns") && method === "POST") {
+      const input = request.postDataJSON();
+      const turnId = `turn-new-${++nextTurnId}`;
+      current.queue.push({ id: turnId, text: input.text, attachments: input.attachments ?? [], context: input.context ?? [], createdAt: now + 10 });
+      current.queueDepth = current.queue.length;
+      return json(route, { turnId, status: "queued", queueDepth: current.queueDepth });
+    }
     if (pathname.endsWith("/resume") && method === "POST") {
       current = { ...current, queuePaused: false, status: "queued", statusLabel: "已排队" };
       return route.fulfill({ status: 204, body: "" });
@@ -961,6 +968,7 @@ async function assertCompactWorkspaceAndQueue(browser) {
     await page.keyboard.press('Enter');
     await page.locator('.queue-card .queue-execute').waitFor();
     if (await composer.inputValue()) throw new Error('Submitted draft was not cleared');
+    await page.getByText('已加入队列', { exact: true }).waitFor();
     if (sends !== 1 || !await page.locator('.queue-card').getByText('排队中', { exact: true }).isVisible()) throw new Error('Missing queued state');
     const geometry = await page.locator('.composer').evaluate(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, bottom: r.bottom, width: innerWidth, height: innerHeight }; });
     if (geometry.left < 0 || geometry.right > geometry.width || geometry.bottom > geometry.height) throw new Error(`Composer clipped: ${JSON.stringify(geometry)}`);
@@ -968,8 +976,11 @@ async function assertCompactWorkspaceAndQueue(browser) {
     await page.locator('.queue-execute').click();
     await page.getByRole('alert').filter({ hasText: '测试切换失败，请重试' }).waitFor();
     if (!await page.locator('.queue-execute').isVisible()) throw new Error('Failed promotion lost the queued message');
+    if (!await page.getByText('已加入队列', { exact: true }).isVisible()) throw new Error('Failed promotion cleared queued feedback');
     await page.locator('.queue-execute').click();
     await page.locator('.queue-card').waitFor({ state: 'detached' });
+    await page.getByText('已加入队列', { exact: true }).waitFor({ state: 'detached' });
+    await page.screenshot({ path: `/tmp/yingya-queue-executing-${width}.png` });
     if (sends !== 1 || promotions !== 2 || current.messages.filter(m => m.turnId === 'queued-new').length !== 1) throw new Error('Promotion duplicated the message');
     if (width === 1259) {
       await page.reload(); await composer.waitFor();
@@ -1145,10 +1156,63 @@ async function assertFrontendRecovery(browser) {
   console.log('Frontend recovery QA passed: late project response, snapshot retry, repeated preview revisions with paused playhead, creation reload dedupe, expired login and draft recovery');
 }
 
+async function assertFeedbackLifecycle(browser) {
+  for (const width of [1280, 390, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.addInitScript(() => { window.EventSource = class extends EventTarget { close() {} }; });
+    const seed = { ...structuredClone(detail), queue: [], queueDepth: 0, activeTurnId: null };
+    await installApiMock(page, seed);
+    let current = structuredClone(seed), failSnapshot = false;
+    await page.route('**/api/**', route => {
+      const path = new URL(route.request().url()).pathname.replace(/^\/api\/u\/qa-user\//, '/api/');
+      if (path.endsWith('/event-log')) return json(route, { items: [{ seq: 99, projectId: seed.id, method: 'project/updated', payload: {}, createdAt: Date.now() }], latestSeq: 99, hasMore: false, nextBefore: null });
+      if (path === `/api/agent-projects/${seed.id}/turns`) {
+        current.activeTurnId = 'direct-turn'; current.status = 'running';
+        return json(route, { turnId: 'direct-turn', status: 'running', queueDepth: 0 });
+      }
+      if (path === `/api/agent-projects/${seed.id}`) return json(route, failSnapshot ? { message: 'snapshot unavailable' } : current, failSnapshot ? 503 : 200);
+      return route.fallback();
+    });
+    await page.goto(workspaceUrl);
+    await page.locator('.home-project-open').first().click();
+    const composer = page.getByRole('textbox', { name: '修改描述', exact: true });
+    await composer.waitFor();
+    await page.getByRole('button', { name: '选择素材', exact: true }).click();
+    await page.getByLabel('选择创作素材').getByText('秋日背景音乐.mp3', { exact: true }).click();
+    await page.locator('.composer-feedback').getByText(/已加入 1 个参考文件/).waitFor();
+    await page.getByRole('button', { name: '关闭素材选择' }).click();
+    // Typing must dismiss material feedback even when no message has been sent yet.
+    await composer.fill('添加配乐');
+    if (await page.locator('.composer-feedback').innerText()) throw new Error('Material feedback survived typing');
+    await page.getByRole('button', { name: '移除素材 秋日背景音乐.mp3' }).click();
+    await page.locator('.composer-feedback').getByText(/已移除/).waitFor();
+    await page.waitForFunction(() => document.querySelector('.composer-feedback')?.textContent === '', null, { timeout: 6000 });
+    await page.getByRole('button', { name: '发送消息', exact: true }).click();
+    await page.getByRole('button', { name: '停止当前任务', exact: true }).waitFor();
+    if (await page.locator('.composer-feedback').innerText()) throw new Error('Direct submission feedback survived execution');
+    // A successful send followed by a failed snapshot is recoverable without resending.
+    await composer.fill('继续修改'); failSnapshot = true;
+    await page.getByRole('button', { name: '发送消息', exact: true }).click();
+    await page.getByText('任务状态暂未同步', { exact: true }).waitFor();
+    failSnapshot = false;
+    await page.getByRole('button', { name: '重新同步', exact: true }).click();
+    await page.getByRole('button', { name: '重新同步', exact: true }).waitFor({ state: 'detached' });
+    if (await page.locator('.thread-footer .form-error').count()) throw new Error('Recovered snapshot retained stale warning');
+    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Feedback causes horizontal overflow');
+    await page.screenshot({ path: `/tmp/yingya-feedback-lifecycle-${width}.png` });
+    if (errors.length) throw new Error(errors.join('\n'));
+    await page.close();
+  }
+  console.log('Feedback lifecycle QA passed: direct execution, asset feedback typing/expiry, snapshot recovery at 1280/390/320px');
+}
+
 let browser;
 try {
   await waitForFrontend();
   browser = await chromium.launch({ headless: true });
+  await assertFeedbackLifecycle(browser);
   await assertFrontendRecovery(browser);
   await assertCompactWorkspaceAndQueue(browser);
   await assertLostExecutionState(browser);
