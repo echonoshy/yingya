@@ -1513,6 +1513,18 @@ pub(super) async fn voice_proxy(
     Path(path): Path<String>,
     request: Request,
 ) -> Response {
+    if path == "health" && request.method() == "GET" {
+        return match state.voices.health().await {
+            Ok(()) => Json(json!({"ok": true})).into_response(),
+            Err(e) => failure(StatusCode::BAD_GATEWAY, &e.to_string()),
+        };
+    }
+    if path == "v1/models" && request.method() == "GET" {
+        return match state.voices.models().await {
+            Ok(models) => Json(models).into_response(),
+            Err(e) => failure(StatusCode::BAD_GATEWAY, &e.to_string()),
+        };
+    }
     if path == "v1/audio/voices" && request.method() == "GET" {
         return match state.voices.list_visible().await {
             Ok(v) => Json(v).into_response(),

@@ -357,7 +357,12 @@ impl CodexClient {
                 "path": path
             }));
         }
-        input.extend(turn_user_input(prompt, reference_images));
+        let prompt = if let Some(sandbox) = &self.config.sandbox {
+            format!("{prompt}{}", sandbox.tool_instructions())
+        } else {
+            prompt.to_owned()
+        };
+        input.extend(turn_user_input(&prompt, reference_images));
 
         let mut params = json!({
             "threadId": thread_id,
@@ -400,7 +405,7 @@ impl CodexClient {
                 // A missing acknowledgement does not mean the request was rejected.
                 // Read back this submission; never retry turn/start blindly.
                 let snapshot = self.read_thread(thread_id).await?;
-                let Some(turn) = submitted_turn(&snapshot, submitted_at, prompt) else {
+                let Some(turn) = submitted_turn(&snapshot, submitted_at, &prompt) else {
                     return Err(error);
                 };
                 recovered = snapshot_events(thread_id, turn);
@@ -804,7 +809,10 @@ fn spawn_app_server(
             "model_providers.yingya.wire_api=\"responses\"",
             "model_providers.yingya.requires_openai_auth=true",
             "model_providers.yingya.supports_websockets=false",
-            "model_providers.yingya.supports_standalone_web_search=true",
+            // The relay does not implement standalone search or Apps MCP.
+            "model_providers.yingya.supports_standalone_web_search=false",
+            "web_search=\"disabled\"",
+            "features.apps=false",
             "chatgpt_base_url=\"http://127.0.0.1:8797/api/internal/model/backend-api\"",
         ] {
             command.arg("-c").arg(setting);

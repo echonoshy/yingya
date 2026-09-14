@@ -36,6 +36,9 @@ pub struct HeyGenAudioSearchResponse {
 pub struct HeyGenError(pub String);
 
 impl HeyGenClient {
+    pub fn is_configured(&self) -> bool {
+        self.api_key.is_some()
+    }
     pub fn new() -> Result<Self, reqwest::Error> {
         Ok(Self {
             http: reqwest::Client::builder()

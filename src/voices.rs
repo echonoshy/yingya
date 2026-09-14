@@ -60,6 +60,31 @@ pub enum VoiceError {
 }
 
 impl VoiceClient {
+    pub async fn health(&self) -> Result<(), VoiceError> {
+        let response = self
+            .client
+            .get(format!("{}/health", self.base_url))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await?;
+        checked(response).await?;
+        Ok(())
+    }
+
+    pub async fn models(&self) -> Result<Value, VoiceError> {
+        let response = self
+            .client
+            .get(format!("{}/v1/models", self.base_url))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await?;
+        checked(response)
+            .await?
+            .json()
+            .await
+            .map_err(|error| VoiceError::InvalidResponse(error.to_string()))
+    }
+
     pub fn from_env() -> Result<Self, VoiceError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(300))
@@ -315,6 +340,7 @@ mod tests {
     struct MockTts {
         voices: Arc<Mutex<Vec<UploadedVoice>>>,
         requests: Arc<Mutex<Vec<Value>>>,
+        unhealthy: Arc<std::sync::atomic::AtomicBool>,
     }
 
     async fn catalog(State(state): State<MockTts>) -> Json<VoiceList> {
@@ -346,6 +372,20 @@ mod tests {
     async fn mock_client() -> (VoiceClient, MockTts, tokio::task::JoinHandle<()>) {
         let state = MockTts::default();
         let app = Router::new()
+            .route(
+                "/health",
+                get(|State(state): State<MockTts>| async move {
+                    if state.unhealthy.load(std::sync::atomic::Ordering::Relaxed) {
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        axum::http::StatusCode::NO_CONTENT
+                    }
+                }),
+            )
+            .route(
+                "/v1/models",
+                get(|| async { Json(json!({"data":[{"id":"voxcpm2"}]})) }),
+            )
             .route("/v1/audio/voices", get(catalog).post(upload))
             .route("/v1/audio/speech", post(speech))
             .with_state(state.clone());
@@ -361,6 +401,26 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
         (client, state, task)
+    }
+
+    #[tokio::test]
+    async fn health_and_models_preserve_upstream_state_without_synthesis() {
+        let (client, state, task) = mock_client().await;
+        client.health().await.unwrap(); // The provider can return an empty body.
+        assert_eq!(client.models().await.unwrap()["data"][0]["id"], "voxcpm2");
+        state
+            .unhealthy
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            client
+                .health()
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("503")
+        );
+        assert!(state.requests.lock().await.is_empty());
+        task.abort();
     }
 
     #[tokio::test]

@@ -23,3 +23,7 @@ design-qa.md
 **/snapshots/
 **/.thumbnails/
 **/.waveform-cache/
+
+# Python bytecode caches are local build artifacts.
+__pycache__/
+*.py[cod]

@@ -1,0 +1,14 @@
+# Shared tools for video agents. Resolve with uv for Python 3.12 on Linux.
+requests
+httpx
+beautifulsoup4
+lxml
+Pillow
+numpy
+pandas
+scipy
+matplotlib
+pypdf
+python-docx
+python-pptx
+openpyxl

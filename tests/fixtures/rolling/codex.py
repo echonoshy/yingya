@@ -7,6 +7,8 @@ import sys
 import threading
 import time
 import uuid
+import urllib.request
+import urllib.error
 
 lock = threading.Lock()
 home = Path(os.environ['CODEX_HOME'])
@@ -31,6 +33,15 @@ def finish(thread, turn, prompt):
     meta = threads[thread]
     if not meta.get('ephemeral'):
         log(meta['cwd'], {'event': 'start', 'turn': turn, 'release': release, 'prompt': prompt})
+        if 'VOICE_METADATA_PROBE' in prompt:
+            probes = {}
+            for path in ('health', 'v1/models', 'v1/audio/voices'):
+                try:
+                    with urllib.request.urlopen('http://127.0.0.1:8791/' + path, timeout=10) as response:
+                        probes[path] = {'status': response.status, 'body': json.loads(response.read())}
+                except urllib.error.HTTPError as error:
+                    probes[path] = {'status': error.code, 'body': error.read().decode()}
+            log(meta['cwd'], {'event': 'voice-probes', 'probes': probes})
         time.sleep(8 if 'WAIT' in prompt else .1)
         log(meta['cwd'], {'event': 'done', 'turn': turn, 'release': release})
     send({'method': 'item/completed', 'params': {'threadId': thread, 'turnId': turn,

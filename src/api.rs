@@ -3302,6 +3302,13 @@ async fn run_agent_turn(
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
     let prompt = format!("{prompt}{}", feedback::prompt_context(&queued.feedback));
+    let prompt = if state.heygen.is_configured() {
+        prompt
+    } else {
+        format!(
+            "{prompt}\n当前未配置 HeyGen 音乐/音效资源接口，请勿尝试调用或重试该接口。可使用用户上传或已有授权音频；旁白使用独立的 VoxCPM2 工具，不受此限制。"
+        )
+    };
     let prompt = if queued.recovery {
         format!(
             "这是一次经用户确认的中断恢复。先读取已有对话、项目 manifest、检查点、文件及外部任务记录，核对已完成工作，只继续缺失步骤。已完成的生成、付费调用和导出不得重复执行；外部请求结果不明确且无法查询时停止并说明需要核对的信息。以下是原始任务：\n{prompt}"
@@ -4960,12 +4967,15 @@ fn env_u64(name: &str, fallback: u64) -> u64 {
         .unwrap_or(fallback)
 }
 
-async fn discover_hyperframes_browser(
+pub(crate) async fn discover_hyperframes_browser(
     root: &FilePath,
     hyperframes_home: &FilePath,
 ) -> Option<PathBuf> {
     if let Some(path) = env::var_os("YINGYA_HYPERFRAMES_BROWSER_PATH") {
-        return Some(PathBuf::from(path));
+        return PathBuf::from(path)
+            .canonicalize()
+            .ok()
+            .filter(|path| path.is_file());
     }
 
     let output = tokio::process::Command::new(root.join("node_modules/.bin/hyperframes"))
@@ -4980,7 +4990,7 @@ async fn discover_hyperframes_browser(
     }
 
     let path = PathBuf::from(String::from_utf8(output.stdout).ok()?.trim());
-    path.is_file().then_some(path)
+    path.canonicalize().ok().filter(|path| path.is_file())
 }
 
 #[derive(Debug)]

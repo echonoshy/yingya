@@ -86,17 +86,19 @@ def build(args):
     root.mkdir(parents=True, exist_ok=False)
     # Snapshot the current worktree (including authorized, uncommitted changes),
     # then build there. Running workers never read changing source/dependencies.
-    for name in ['src', 'web', 'skills', 'scripts']:
+    for name in ['src', 'web', 'skills', 'scripts', 'runtime']:
         shutil.copytree(REPO / name, root / name, ignore=shutil.ignore_patterns('node_modules', '__pycache__'))
     for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'tsconfig.json']:
         shutil.copy2(REPO / name, root / name)
+    run(['python3', root / 'scripts/setup-python.py', '--resources', root,
+         '--store', args.runtime / 'python'])
     run(['npm', 'ci'], cwd=root)
     run(['npm', 'run', 'typecheck'], cwd=root)
     run(['npm', 'run', 'web:build'], cwd=root)
     run(['cargo', 'build', '--locked', '--release'], cwd=root)
     shutil.copy2(root / 'target/release/yingya-server', root / 'yingya-server')
     # Browser binaries are machine-local tooling, not mutable release source.
-    (root / '.runtime').mkdir()
+    (root / '.runtime').mkdir(exist_ok=True)
     (root / '.runtime/hyperframes-home').symlink_to(args.runtime / 'hyperframes-home', target_is_directory=True)
     manifest = {'id': args.release, 'binary': str(root / 'yingya-server'), 'resources': str(root)}
     atomic_json(root / 'release.json', manifest)

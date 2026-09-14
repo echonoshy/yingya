@@ -40,6 +40,8 @@
     "backend:service:stop": "bash scripts/dev-service.sh backend stop",
     "backend:service:restart": "bash scripts/dev-service.sh backend restart",
     "backend:service:status": "bash scripts/dev-service.sh backend status",
+    "test:runtime": "cargo test runtime_tools_share -- --ignored --nocapture",
+    "python:setup": "python3 scripts/setup-python.py",
     "test:services": "node --test tests/dev-service.test.mjs tests/sandbox-stdio.test.mjs",
     "codex": "bash scripts/codex.sh",
     "codex:login": "bash scripts/codex.sh login",

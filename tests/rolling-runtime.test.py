@@ -14,6 +14,7 @@ import time
 import unittest
 import urllib.request
 import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 REPO = Path(__file__).resolve().parents[1]
 BINARY = REPO / 'target/debug/yingya-server'
@@ -137,6 +138,46 @@ class RollingRuntime(unittest.TestCase):
         preview = self.request(f'/api/agent-projects/{project}/studio', {})['previewUrl']
         return project, job, output, hashlib.sha256(output.read_bytes()).hexdigest(), preview
 
+    def test_voice_metadata_through_real_sandbox_and_proxy(self):
+        unhealthy = threading.Event()
+        requests = []
+        class Tts(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+            def do_GET(self):
+                requests.append(self.path)
+                if self.path == '/health':
+                    self.send_response(503 if unhealthy.is_set() else 200)
+                    self.end_headers()  # Real VoxCPM2 returns an empty health body.
+                    return
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'data': [{'id': 'voxcpm2'}]} if self.path == '/v1/models'
+                                           else {'voices': ['default'], 'uploaded_voices': []}).encode())
+        tts = ThreadingHTTPServer(('127.0.0.1', 0), Tts)
+        threading.Thread(target=tts.serve_forever, daemon=True).start()
+        self.env['VOXCPM2_API_BASE'] = f'http://127.0.0.1:{tts.server_port}'
+        try:
+            self.release('v1')
+            self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
+            project = self.request('/api/agent-projects', {'prompt': 'voice test', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high'})['id']
+            for index, expected in enumerate((200, 502), 1):
+                if index == 2:
+                    unhealthy.set()
+                self.request('/api/agent-projects/' + project + '/turns', {'text': 'VOICE_METADATA_PROBE', 'clientRequestId': str(uuid.uuid4())})
+                self.wait(lambda: len([x for x in self.log(project) if x['event'] == 'done']) == index)
+                probe = [x for x in self.log(project) if x['event'] == 'voice-probes'][-1]['probes']
+                self.assertEqual(probe['health']['status'], expected)
+                self.assertEqual(probe['v1/models']['body']['data'][0]['id'], 'voxcpm2')
+                self.assertEqual(probe['v1/audio/voices']['status'], 200)
+            with sqlite3.connect(self.data / 'yingya.sqlite') as db:
+                self.assertEqual(db.execute('SELECT used_media FROM account_access WHERE user_id=?', [self.user['id']]).fetchone()[0], 0)
+            self.assertNotIn('/v1/audio/speech', requests)
+        finally:
+            tts.shutdown()
+            tts.server_close()
+
     def test_rolling_handoff_crash_recovery_rollback_and_failed_candidate(self):
         self.release('v1')
         self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
@@ -157,7 +198,8 @@ class RollingRuntime(unittest.TestCase):
         monitoring.start()
         try:
             self.release('v2')
-            self.assertEqual(self.request('/health')['release'], 'v2')
+            # nginx reload drains old connections asynchronously.
+            self.wait(lambda: self.request('/health')['release'] == 'v2')
             self.assertEqual(self.worker()['instance'], original['instance'], 'active task must keep its original worker')
             second = self.request(prefix + '/turns', {'text': 'second task', 'clientRequestId': str(uuid.uuid4())})
             self.assertEqual(second['status'], 'queued')

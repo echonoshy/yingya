@@ -211,3 +211,42 @@ home explicitly when logging in. Keep credential files out of version control.
 
 Upgrade the project CLI with `npm run codex:upgrade`; it updates the dependency
 and lockfile. Check the installed version with `npm run codex:version`.
+
+## Shared Agent Python and runtime tools
+
+Run `npm run python:setup` once on the host (requires `uv`). It installs the
+pinned Python version and hash-locked dependencies from `runtime/python/` into
+`.runtime/python/<fingerprint>`. All accounts share that version read-only;
+`python` and `python3` in their sandboxes resolve to its virtual environment.
+No Python installation is created per user. Existing immutable environments are
+reused, and changing the lock creates a new version so running workers retain
+their old environment until normal handoff.
+
+The release builder automatically provisions/reuses shared Python and adds an
+immutable release link. Do not run setup against an active release or modify a
+published environment. To update libraries, edit `requirements.in`, regenerate
+`requirements.lock` with `uv pip compile runtime/python/requirements.in
+--python-version 3.12 --generate-hashes --output-file runtime/python/requirements.lock`,
+then run setup and `npm run test:runtime` before building a new release.
+
+Installed capabilities include web parsing, Pillow image operations,
+NumPy/pandas/SciPy/matplotlib, PDF reading and Office document handling. The
+runtime integration test uses the real Bubblewrap mounts and browser wrapper;
+it checks imports, Python aliases, read-only shared files, image/chart output,
+and browser/WebGL availability. It is explicitly invoked because it requires
+the host Python/browser tooling to have been provisioned.
+
+Every Agent turn receives the actual sandbox Python/browser configuration.
+`node "$YINGYA_RUNTIME_TOOLS" --probe-browser` performs a bounded, read-only
+check. Playwright must use `HYPERFRAMES_BROWSER_PATH` and `YINGYA_NODE_MODULES`;
+it must not guess host cache paths or install another browser. Browser absence
+and WebGL absence have different fallbacks, documented in
+`skills/yingya-video-agent/references/runtime-tools.md`.
+
+VoxCPM2 health and models are forwarded through the authenticated voice proxy;
+a failing upstream health check returns an error, not a synthetic success.
+These metadata operations do not synthesize audio or consume media quota.
+Unconfigured HeyGen is disclosed in the turn. The current model relay does not
+implement standalone web search or Apps MCP: their Codex capabilities are
+explicitly disabled. Known public webpages remain readable through the sandbox
+HTTP gateway; that is not a replacement for search-based source discovery.

@@ -71,6 +71,9 @@ After draft confirmation, render the high-quality MP4 from the approved source. 
 
 ## Capability boundaries
 
+- Use the current turn's runtime tool description and [runtime-tools.md](references/runtime-tools.md)
+  for shared Python libraries, browser availability, exact Playwright setup, and
+  alternatives. Do not rediscover unavailable tools or assume host desktop paths.
 - Never install, update, or repair skills, plugins, CLIs, or global dependencies inside a video project turn. Use installed capabilities and local assets. A missing optional workflow should not prevent core HyperFrames production.
 - A fallback must preserve the requested result. Explain material limitations; do not silently replace required narration with silence, live action with static slides, or a saved voice with `default`.
 - Keep writes inside the project. Publishing, external uploads, or writes outside it require explicit authorization unless already given. Never claim a capability, check, file, or render succeeded without evidence.
