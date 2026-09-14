@@ -231,6 +231,28 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
+    async fn purge_files(&self, id: &str) -> Result<()> {
+        // Keep the reservation until deletion succeeds; cleanup retries `purging`
+        // entries after I/O errors or a process restart.
+        match fs::remove_dir_all(self.root.join(id)).await {
+            Ok(()) => (),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+            Err(e) => return Err(e.into()),
+        }
+        self.db.lock().unwrap().execute(
+            "UPDATE shares SET state='purged',revoked=COALESCE(revoked,?2) WHERE id=?1",
+            params![id, crate::accounts::now()],
+        )?;
+        Ok(())
+    }
+    async fn discard_failed(&self, id: &str) -> Result<()> {
+        self.revoke(id, "system")?;
+        self.db.lock().unwrap().execute(
+            "UPDATE shares SET state='purging' WHERE id=?1 AND state!='purged'",
+            [id],
+        )?;
+        self.purge_files(id).await
+    }
     pub(super) fn revoke_project(&self, owner: &str, project: &str) -> Result<()> {
         self.db.lock().unwrap().execute("UPDATE shares SET revoked=COALESCE(revoked,?3),state='revoked' WHERE owner=?1 AND project=?2 AND state IN ('active','preparing')",params![owner,project,crate::accounts::now()])?;
         Ok(())
@@ -318,6 +340,11 @@ impl Store {
                 self.revoke(&s.id, "system")?;
             }
             let s = self.get(&s.id)?;
+            // Older releases removed failed copies but left their quota reserved.
+            if s.revoked_at.is_some() && !fs::try_exists(self.root.join(&s.id)).await? {
+                self.discard_failed(&s.id).await?;
+                continue;
+            }
             let ended = s.revoked_at.or(s.expires_at);
             if s.state == "purging" || ended.is_some_and(|t| t < now - 86400) {
                 // Claim cleanup before removing files; an expiry extension cannot race deletion.
@@ -325,15 +352,7 @@ impl Store {
                 if claimed == 0 {
                     continue;
                 }
-                match fs::remove_dir_all(self.root.join(&s.id)).await {
-                    Ok(()) => (),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-                    Err(e) => return Err(e.into()),
-                }
-                self.db.lock().unwrap().execute(
-                    "UPDATE shares SET state='purged',revoked=COALESCE(revoked,?2) WHERE id=?1",
-                    params![s.id, now],
-                )?;
+                self.purge_files(&s.id).await?;
             }
         }
         self.db.lock().unwrap().execute("DELETE FROM share_counters WHERE (scope LIKE 'req:%' AND bucket<?1) OR (scope LIKE 'bytes:%' AND bucket<?2)",params![now/60-1440,now/86400-30])?;
@@ -557,8 +576,12 @@ async fn create_snapshot(
                 })
                 .ok_or_else(|| bad("请选择已生成的视频再分享"))?;
             if artifact.kind == "final-video" {
-                let jobs: Vec<RenderJob> =
+                let mut jobs: Vec<RenderJob> =
                     read_json(&root.join(".yingya/render-jobs.json")).await?;
+                let archive = root.join(".yingya/render-completions.json");
+                if fs::try_exists(&archive).await? {
+                    jobs.extend(read_json::<Vec<RenderJob>>(&archive).await?);
+                }
                 if !jobs.iter().any(|j| {
                     j.status == RenderJobStatus::Completed
                         && j.output_path.as_deref() == Some(&artifact.path)
@@ -653,8 +676,7 @@ async fn create_snapshot(
     }
     .await;
     if result.is_err() {
-        g.shares.revoke(&s.id, "system")?;
-        let _ = fs::remove_dir_all(&dir).await;
+        g.shares.discard_failed(&s.id).await?;
     }
     result
 }
@@ -668,20 +690,59 @@ async fn process(mut command: Command) -> Result<Vec<u8>> {
     }
     Ok(output.stdout)
 }
+fn media_command(dir: &FilePath, program: &str) -> Command {
+    // Media is untrusted even after checking its filename and opened inode.
+    // Mount only this copy and system tooling, with no host network or user data.
+    let mut command = Command::new("/usr/bin/bwrap");
+    command.args([
+        "--die-with-parent",
+        "--unshare-all",
+        "--new-session",
+        "--cap-drop",
+        "ALL",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+    ]);
+    for path in ["/usr", "/bin", "/lib", "/lib64"] {
+        if FilePath::new(path).exists() {
+            command.args(["--ro-bind", path, path]);
+        }
+    }
+    command
+        .args(["--bind"])
+        .arg(dir)
+        .args(["/media", "--chdir", "/media", "--"]);
+    command
+        .arg(program)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("LANG", "C.UTF-8");
+    command
+}
 async fn prepare_video(dir: &FilePath, s: &mut Share) -> Result<()> {
-    let mut probe = Command::new("ffprobe");
+    let mut probe = media_command(dir, "/usr/bin/ffprobe");
     probe
         .args([
             "-v",
             "error",
             "-protocol_whitelist",
             "file,pipe",
+            "-f",
+            "mov",
+            "-enable_drefs",
+            "0",
+            "-use_absolute_path",
+            "0",
             "-show_entries",
             "stream=codec_type,codec_name,pix_fmt,width,height:format=duration",
             "-of",
             "json",
         ])
-        .arg(dir.join("source.mp4"));
+        .arg("source.mp4");
     let info: Value =
         serde_json::from_slice(&process(probe).await?).map_err(|_| bad("无法读取视频信息"))?;
     let streams = info["streams"]
@@ -714,7 +775,7 @@ async fn prepare_video(dir: &FilePath, s: &mut Share) -> Result<()> {
     {
         return Err(bad("视频时长或画面尺寸无效"));
     }
-    let mut remux = Command::new("ffmpeg");
+    let mut remux = media_command(dir, "/usr/bin/ffmpeg");
     remux
         .args([
             "-nostdin",
@@ -722,9 +783,15 @@ async fn prepare_video(dir: &FilePath, s: &mut Share) -> Result<()> {
             "error",
             "-protocol_whitelist",
             "file,pipe",
+            "-f",
+            "mov",
+            "-enable_drefs",
+            "0",
+            "-use_absolute_path",
+            "0",
             "-i",
         ])
-        .arg(dir.join("source.mp4"))
+        .arg("source.mp4")
         .args([
             "-map",
             "0:v:0",
@@ -738,9 +805,9 @@ async fn prepare_video(dir: &FilePath, s: &mut Share) -> Result<()> {
             "+faststart",
             "-y",
         ])
-        .arg(dir.join("video.mp4"));
+        .arg("video.mp4");
     process(remux).await?;
-    let mut poster = Command::new("ffmpeg");
+    let mut poster = media_command(dir, "/usr/bin/ffmpeg");
     poster
         .args([
             "-nostdin",
@@ -748,9 +815,15 @@ async fn prepare_video(dir: &FilePath, s: &mut Share) -> Result<()> {
             "error",
             "-protocol_whitelist",
             "file,pipe",
+            "-f",
+            "mov",
+            "-enable_drefs",
+            "0",
+            "-use_absolute_path",
+            "0",
             "-i",
         ])
-        .arg(dir.join("video.mp4"))
+        .arg("video.mp4")
         .args([
             "-frames:v",
             "1",
@@ -760,7 +833,7 @@ async fn prepare_video(dir: &FilePath, s: &mut Share) -> Result<()> {
             "1",
             "-y",
         ])
-        .arg(dir.join("poster.jpg"));
+        .arg("poster.jpg");
     process(poster).await?;
     s.bytes = fs::metadata(dir.join("video.mp4")).await?.len();
     if s.bytes > MAX_FILE {

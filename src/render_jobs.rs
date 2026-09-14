@@ -120,6 +120,23 @@ impl RenderJobStore {
         jobs.retain(|existing| existing.id != job.id);
         jobs.push(job);
         jobs.sort_by_key(|item| std::cmp::Reverse(item.started_at));
+        let completed: Vec<_> = jobs
+            .iter()
+            .skip(MAX_RENDER_JOBS)
+            .filter(|job| job.status == RenderJobStatus::Completed)
+            .cloned()
+            .collect();
+        if !completed.is_empty() {
+            // Persist completion evidence before pruning display history. A crash
+            // can leave duplicates across files, but can never lose the receipt.
+            let archive_path = path.with_file_name("render-completions.json");
+            let mut archive = read_jobs(&archive_path).await?;
+            for job in completed {
+                archive.retain(|old| old.id != job.id);
+                archive.push(job);
+            }
+            write_jobs(&archive_path, &archive).await?;
+        }
         jobs.truncate(MAX_RENDER_JOBS);
         write_jobs(&path, &jobs).await
     }
@@ -252,6 +269,53 @@ async fn write_jobs(path: &Path, jobs: &[RenderJob]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn archive_failure_does_not_prune_completion_evidence() {
+        let root = std::env::temp_dir().join(format!("yingya-render-archive-{}", Uuid::new_v4()));
+        let id = Uuid::new_v4().to_string();
+        let store = RenderJobStore::new(root.clone());
+        let mut completed =
+            RenderJob::queued("completed".into(), "v1".into(), "landscape".into(), 30, 1);
+        completed.status = RenderJobStatus::Completed;
+        completed.output_path = Some("final.mp4".into());
+        store.create(&id, completed).await.unwrap();
+        for index in 2..=50 {
+            store
+                .create(
+                    &id,
+                    RenderJob::queued(
+                        format!("job-{index}"),
+                        "v2".into(),
+                        "landscape".into(),
+                        30,
+                        index,
+                    ),
+                )
+                .await
+                .unwrap();
+        }
+        let archive = root.join(&id).join(".yingya/render-completions.json");
+        fs::create_dir(&archive).await.unwrap();
+        assert!(
+            store
+                .create(
+                    &id,
+                    RenderJob::queued("latest".into(), "v2".into(), "landscape".into(), 30, 51)
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            store
+                .list(&id, 100)
+                .await
+                .unwrap()
+                .iter()
+                .any(|job| job.id == "completed")
+        );
+        fs::remove_dir_all(root).await.unwrap();
+    }
 
     #[tokio::test]
     async fn persists_updates_and_keeps_latest_fifty_jobs() {

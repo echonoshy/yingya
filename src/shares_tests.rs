@@ -1,5 +1,72 @@
 use super::*;
 
+#[tokio::test]
+async fn sharing_failed_deletion_retries_and_repairs_legacy_reservations() {
+    let (g, owner, _, _, _, project) = fixture().await;
+    let failed = sample(&owner.id, &project);
+    g.shares.reserve(&failed).unwrap();
+    let path = g.shares.root.join(&failed.id);
+    // A storage error must not release capacity for files that still exist.
+    fs::write(&path, b"cannot remove as a directory")
+        .await
+        .unwrap();
+    assert!(g.shares.discard_failed(&failed.id).await.is_err());
+    assert_eq!(g.shares.get(&failed.id).unwrap().state, "purging");
+    fs::remove_file(&path).await.unwrap();
+    fs::create_dir(&path).await.unwrap();
+    let legacy = sample(&owner.id, &project);
+    g.shares.reserve(&legacy).unwrap();
+    g.shares.revoke(&legacy.id, "system").unwrap();
+    let reopened = Store::open(&g.paths.app_data).unwrap();
+    reopened
+        .cleanup(&g.paths.app_data, &g.accounts)
+        .await
+        .unwrap();
+    assert_eq!(reopened.get(&failed.id).unwrap().state, "purged");
+    assert_eq!(reopened.get(&legacy.id).unwrap().state, "purged");
+    assert!(!path.exists());
+    fs::remove_dir_all(&g.paths.app_data).await.unwrap();
+}
+
+#[tokio::test]
+async fn sharing_rejects_playlists_even_with_accessible_segments() {
+    let root = env::temp_dir().join(format!("yingya-format-test-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).await.unwrap();
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=s=64x64:d=1",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-threads",
+                "1",
+                "-y"
+            ])
+            .arg(root.join("segment.mp4"))
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    fs::write(
+        root.join("source.mp4"),
+        b"#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1.0,\nsegment.mp4\n#EXT-X-ENDLIST\n",
+    )
+    .await
+    .unwrap();
+    let mut s = sample("owner", "project");
+    assert!(prepare_video(&root, &mut s).await.is_err());
+    assert!(!root.join("video.mp4").exists());
+    fs::remove_dir_all(root).await.unwrap();
+}
+
 async fn fixture() -> (Gateway, User, String, User, String, String) {
     let root = env::temp_dir().join(format!("yingya-share-test-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).await.unwrap();
@@ -657,5 +724,218 @@ async fn sharing_preview_rejects_ambiguous_missing_and_escaping_sources() {
             400
         );
     }
+    fs::remove_dir_all(&g.paths.app_data).await.unwrap();
+}
+
+#[tokio::test]
+async fn sharing_rejects_playlists_that_reference_other_users() {
+    let (g, owner, session, other, _, id) = fixture().await;
+    let outside = g
+        .paths
+        .app_data
+        .join("users")
+        .join(&other.id)
+        .join("private.mp4");
+    fs::create_dir_all(outside.parent().unwrap()).await.unwrap();
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=64x64:d=1",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-threads",
+                "1",
+                "-y"
+            ])
+            .arg(&outside)
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    let source = g
+        .paths
+        .app_data
+        .join("users")
+        .join(&owner.id)
+        .join("projects")
+        .join(&id)
+        .join("final.mp4");
+    fs::write(
+        &source,
+        format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1.0,\n{}\n#EXT-X-ENDLIST\n",
+            outside.display()
+        ),
+    )
+    .await
+    .unwrap();
+    let response = request(
+        &g,
+        "POST",
+        "/api/shares",
+        Some(&session),
+        json!({"projectId":id,"versionId":"v1","days":7}),
+        &[],
+    )
+    .await;
+    let status = response.status();
+    let body = json_body(response).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        g.shares
+            .list(Some(&owner.id), Some(&id), 0)
+            .unwrap()
+            .is_empty()
+    );
+    let isolated = media_command(source.parent().unwrap(), "/bin/sh")
+        .args([
+            "-c",
+            "test -r /media/final.mp4 && ! test -e \"$1\"",
+            "check",
+        ])
+        .arg(&outside)
+        .output()
+        .await
+        .unwrap();
+    assert!(isolated.status.success());
+    fs::remove_dir_all(&g.paths.app_data).await.unwrap();
+}
+
+#[tokio::test]
+async fn sharing_failed_copies_release_capacity_immediately() {
+    let (g, owner, session, _, _, id) = fixture().await;
+    let source = g
+        .paths
+        .app_data
+        .join("users")
+        .join(&owner.id)
+        .join("projects")
+        .join(&id)
+        .join("final.mp4");
+    for _ in 0..99 {
+        let s = sample(&owner.id, &id);
+        g.shares.reserve(&s).unwrap();
+        g.shares.activate(&s).unwrap();
+    }
+    fs::write(&source, b"not an mp4").await.unwrap();
+    let response = request(
+        &g,
+        "POST",
+        "/api/shares",
+        Some(&session),
+        json!({"projectId":id,"versionId":"v1","days":7}),
+        &[],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let shares = g.shares.list(Some(&owner.id), Some(&id), 0).unwrap();
+    assert_eq!(shares.len(), 99);
+    let failed: (String, String) = g
+        .shares
+        .db
+        .lock()
+        .unwrap()
+        .query_row(
+            "SELECT id,state FROM shares WHERE revoked IS NOT NULL",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(failed.1, "purged");
+    assert!(!g.shares.root.join(&failed.0).exists());
+    g.shares.reserve(&sample(&owner.id, &id)).unwrap();
+    fs::remove_dir_all(&g.paths.app_data).await.unwrap();
+}
+
+#[tokio::test]
+async fn sharing_completed_exports_survive_history_pruning_and_restart() {
+    let (g, owner, session, _, _, id) = fixture().await;
+    let projects = g
+        .paths
+        .app_data
+        .join("users")
+        .join(&owner.id)
+        .join("projects");
+    let source = projects.join(&id).join("final.mp4");
+    assert!(
+        Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=64x64:d=1",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-threads",
+                "1",
+                "-y"
+            ])
+            .arg(&source)
+            .status()
+            .await
+            .unwrap()
+            .success()
+    );
+    let before = request(
+        &g,
+        "POST",
+        "/api/shares",
+        Some(&session),
+        json!({"projectId":id,"artifactId":"final-job","days":7}),
+        &[],
+    )
+    .await;
+    assert_eq!(before.status(), StatusCode::CREATED);
+    let store = crate::render_jobs::RenderJobStore::new(projects);
+    for i in 0..50 {
+        store
+            .create(
+                &id,
+                RenderJob::queued(
+                    format!("new-{i}"),
+                    "v2".into(),
+                    "landscape".into(),
+                    30,
+                    i + 2,
+                ),
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(store.list(&id, 100).await.unwrap().len(), 50);
+    assert!(
+        !store
+            .list(&id, 100)
+            .await
+            .unwrap()
+            .iter()
+            .any(|j| j.id == "job")
+    );
+    let mut g = g;
+    g.shares = Store::open(&g.paths.app_data).unwrap();
+    let response = request(
+        &g,
+        "POST",
+        "/api/shares",
+        Some(&session),
+        json!({"projectId":id,"artifactId":"final-job","days":7}),
+        &[],
+    )
+    .await;
+    let status = response.status();
+    let body = json_body(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
     fs::remove_dir_all(&g.paths.app_data).await.unwrap();
 }
