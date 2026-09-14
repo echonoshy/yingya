@@ -13,9 +13,11 @@ const voiceIdeas = [
 
 type CreateMode = "list" | "design" | "clone";
 
-export function VoiceSelector({ value, onChange, disabled = false }: { value: string; onChange: (voiceId: string) => void | Promise<void>; disabled?: boolean }) {
+export function VoiceSelector({ value, onChange, disabled = false, hideTrigger = false, open: controlledOpen, onOpenChange }: { value: string; onChange: (voiceId: string) => void | Promise<void>; disabled?: boolean; hideTrigger?: boolean; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const root = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [mode, setMode] = useState<CreateMode>("list");
   const [voices, setVoices] = useState<string[]>(["default"]);
   const [uploaded, setUploaded] = useState<UploadedVoice[]>([]);
@@ -89,9 +91,9 @@ export function VoiceSelector({ value, onChange, disabled = false }: { value: st
   }
 
   return <div className="voice-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open && !working) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); } }}>
-    <button type="button" className="voice-trigger" disabled={disabled} onClick={() => { setOpen(current => !current); setMode("list"); }} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
+    {hideTrigger ? null : <button type="button" className="voice-trigger" disabled={disabled} onClick={() => { setOpen(!open); setMode("list"); }} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
       <Waveform/><span>{currentName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
-    </button>
+    </button>}
     {open ? <ActionDialog title="旁白音色" busy={Boolean(working)} onClose={() => setOpen(false)}><section className="voice-menu">
 
       {mode === "list" ? <>

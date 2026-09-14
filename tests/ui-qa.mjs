@@ -494,7 +494,8 @@ async function assertDesktop(browser) {
   if (await page.locator(".activity-item").count() !== 1) throw new Error("Conversation should show only the latest tool operation");
   if (await page.locator(".activity-item pre, .activity-item > p").count()) throw new Error("Raw tool output should not appear in the conversation");
   await page.getByText("画面结构已经确认，接下来整理制作文件。", { exact: true }).waitFor();
-  await page.getByTitle("旁白音色：默认音色").click();
+  await page.getByRole("button", { name: "添加素材与设置" }).click();
+  await page.getByRole("menuitem", { name: /^旁白音色/ }).click();
   const voiceDialog = page.getByRole("dialog", { name: "旁白音色" });
   await voiceDialog.getByText("映芽讲解", { exact: true }).waitFor();
   await voiceDialog.getByRole("button", { name: "描述生成" }).click();
@@ -520,7 +521,8 @@ async function assertDesktop(browser) {
   await page.getByRole("button", { name: "选择参考文件 品牌创作说明.pdf" }).click();
   await page.getByLabel("已选择素材").getByText("文档 · 创作参考", { exact: true }).waitFor();
   await page.getByRole("button", { name: "移除素材 品牌创作说明.pdf" }).click();
-  await page.getByRole("button", { name: "选择素材" }).click();
+  await page.getByRole("button", { name: "添加素材与设置" }).click();
+  await page.getByRole("menuitem", { name: /^选择素材/ }).click();
   const materialPicker = page.getByLabel("选择创作素材");
   await materialPicker.getByText("深色背景中的发光新芽，电影级侧光", { exact: true }).click();
   await materialPicker.getByText("秋日背景音乐.mp3", { exact: true }).click();
@@ -1195,7 +1197,8 @@ async function assertFeedbackLifecycle(browser) {
     await page.locator('.home-project-open').first().click();
     const composer = page.getByRole('textbox', { name: '修改描述', exact: true });
     await composer.waitFor();
-    await page.getByRole('button', { name: '选择素材', exact: true }).click();
+    await page.getByRole('button', { name: '添加素材与设置' }).click();
+    await page.getByRole('menuitem', { name: /^选择素材/ }).click();
     await page.getByLabel('选择创作素材').getByText('秋日背景音乐.mp3', { exact: true }).click();
     await page.locator('.composer-feedback').getByText(/已加入 1 个参考文件/).waitFor();
     await page.getByRole('button', { name: '关闭素材选择' }).click();

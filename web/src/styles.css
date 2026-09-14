@@ -2018,23 +2018,30 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 
 /* Group settings with send so a narrow conversation never strands the primary action. */
-.workspace.workspace--canvas .thread-footer .composer { padding: 10px; border-radius: var(--radius-panel); border-color: var(--line); background: var(--surface); }
+.workspace.workspace--canvas .thread-footer { min-width: 0; }
+.workspace.workspace--canvas .thread-footer .composer { padding: 10px; border-radius: var(--radius-panel); border-color: var(--line); background: var(--canvas); }
 .workspace.workspace--canvas .thread-footer .composer:focus-within { border-color: var(--accent); }
 .workspace.workspace--canvas .thread-footer textarea { min-height: 54px; padding: 4px 4px 8px; font-size: var(--text-control); line-height: var(--leading-body); }
 .workspace.workspace--canvas .message, .workspace.workspace--canvas .message .markdown-body { font-size: var(--text-control); }
 .workspace.workspace--canvas .artifact-search input { font-size: var(--text-search); }
 .workspace.workspace--canvas .composer-feedback:empty { min-height: 0; }
-.workspace.workspace--canvas .composer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 8px; }
+.workspace.workspace--canvas .composer-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; padding-top: 8px; }
 .workspace.workspace--canvas .composer-toolbar > .composer-resources { flex: 0 0 auto; display: flex; gap: 6px; }
-.workspace.workspace--canvas .composer-toolbar > .composer-delivery { flex: 1 1 300px; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.composer-delivery .composer-settings { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(96px, .8fr) minmax(0, 1.25fr); gap: 6px; }
-.composer-settings .voice-selector, .composer-settings .model-selector { min-width: 0; }
+.workspace.workspace--canvas .composer-toolbar > .composer-delivery { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.composer-delivery .composer-settings { flex: 0 1 auto; margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.composer-settings .voice-selector { flex: 0 1 auto; min-width: 0; max-width: 140px; }
+.composer-settings .model-selector { flex: 0 1 auto; min-width: 0; max-width: 220px; }
 .workspace.workspace--canvas .composer-settings .voice-trigger,
-.workspace.workspace--canvas .composer-settings .model-trigger { width: 100%; max-width: none; padding-inline: 8px; justify-content: space-between; font-size: var(--text-caption); background: transparent; border-color: transparent; }
+.workspace.workspace--canvas .composer-settings .model-trigger { width: 100%; max-width: none; height: 40px; padding-inline: 8px; justify-content: flex-start; gap: 6px; font-size: var(--text-caption); background: var(--surface); border-color: var(--line); }
+.workspace.workspace--canvas .composer-settings .voice-trigger > svg:first-child { color: var(--muted); }
+.workspace.workspace--canvas .composer-settings [aria-expanded="true"] { background: var(--selection); border-color: var(--selection-line); color: var(--accent-text); }
 .workspace.workspace--canvas .composer-settings .voice-trigger:hover, .workspace.workspace--canvas .composer-settings .model-trigger:hover { background: var(--surface-hover); }
 .workspace.workspace--canvas .composer-resources .asset-picker-trigger { font-size: var(--text-caption); }
 .composer-delivery .composer-actions { display: flex; flex: 0 0 auto; gap: 6px; }
-.workspace.workspace--canvas .composer-actions .stop-button { min-width: 32px; width: 32px; padding: 0; font-size: 0; border-color: transparent; background: transparent; }
+.workspace.workspace--canvas .composer-toolbar button { height: 40px; }
+.workspace.workspace--canvas .composer-toolbar .icon-button,
+.workspace.workspace--canvas .composer-actions .send-button { width: 40px; }
+.workspace.workspace--canvas .composer-actions .stop-button { min-width: 40px; width: 40px; padding: 0; font-size: 0; border-color: transparent; background: transparent; }
 .workspace.workspace--canvas .composer-actions .stop-button svg { width: 14px; height: 14px; }
 .workspace.workspace--canvas .composer-actions .stop-button:hover { background: var(--surface-hover); }
 .queue-card > div { grid-template-columns: 20px minmax(0, 1fr); }
@@ -2257,3 +2264,17 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 @media (max-width: 799px) {
   :root { --text-search: var(--text-input); }
 }
+
+/* Keep the creation toolbar on one row; secondary controls live under Add. */
+.composer-more { position: relative; }
+.workspace.workspace--canvas .composer-more-trigger[aria-expanded="true"] { background: var(--selection); color: var(--accent-text); }
+.composer-more-trigger > svg { width: 16px; height: 16px; }
+.composer-more-menu { z-index: 60; padding: 6px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); box-shadow: var(--shadow-popover); }
+.workspace.workspace--canvas .composer-more-menu > button { display: flex; align-items: center; gap: 10px; width: 100%; height: auto; min-height: 44px; padding: 8px 10px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); text-align: left; font-size: var(--text-control); }
+.composer-more-menu > button:hover:not(:disabled) { background: var(--surface-hover); }
+.composer-more-menu > button > svg { flex: 0 0 18px; width: 18px; height: 18px; color: var(--muted); }
+.composer-more-menu > button > span { flex: 0 0 auto; }
+.composer-more-menu > button > small { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: var(--text-caption); }
+.composer-more-divider { margin: 4px 8px; border-top: 1px solid var(--line); }
+
+.composer-more-trigger:focus-visible, .composer-more-menu > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
