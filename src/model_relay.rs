@@ -15,11 +15,57 @@ use std::{
 };
 use tokio::{fs, sync::Mutex};
 
+mod diagnostics;
+#[cfg(test)]
+mod transport_tests;
+
+const REQUEST_HEADERS: &[&str] = &[
+    "content-type",
+    "accept",
+    "user-agent",
+    "openai-beta",
+    "originator",
+    "version",
+    "session-id",
+    "thread-id",
+    "x-client-request-id",
+    "x-openai-subagent",
+    "session_id",
+    "conversation_id",
+    "x-codex-turn-state",
+    "x-codex-turn-metadata",
+    "x-openai-client-request-id",
+];
+
+fn setting(name: &str, default: u64, min: u64, max: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+        .clamp(min, max)
+}
+
+fn retry_after(value: Option<&str>) -> Option<Duration> {
+    let value = value?;
+    value
+        .parse::<u64>()
+        .ok()
+        .map(Duration::from_secs)
+        .or_else(|| {
+            httpdate::parse_http_date(value)
+                .ok()
+                .map(|date| date.duration_since(SystemTime::now()).unwrap_or_default())
+        })
+}
+
 #[derive(Clone)]
 pub struct ModelRelay {
     auth_path: PathBuf,
     client: reqwest::Client,
     refresh: Arc<Mutex<()>>,
+    diagnostics: PathBuf,
+    #[cfg(test)]
+    upstream_url: Option<String>,
 }
 
 impl ModelRelay {
@@ -29,9 +75,18 @@ impl ModelRelay {
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(15))
-                .read_timeout(Duration::from_secs(120))
+                // Codex's own SSE idle timeout is 300s. Do not preempt it.
+                .read_timeout(Duration::from_secs(setting(
+                    "YINGYA_MODEL_READ_TIMEOUT_SECS",
+                    330,
+                    330,
+                    3600,
+                )))
                 .build()?,
             refresh: Default::default(),
+            diagnostics: home.join("model-relay"),
+            #[cfg(test)]
+            upstream_url: None,
         })
     }
 
@@ -166,7 +221,10 @@ impl ModelRelay {
         if !allowed_endpoint(request.method(), path) {
             return Ok(StatusCode::NOT_FOUND.into_response());
         }
-        let auth = self.credentials().await?;
+        let mut diagnostic = diagnostics::Diagnostic::new(self.diagnostics.clone());
+        let auth = self.credentials().await.inspect_err(|_| {
+            diagnostic.record.outcome = "auth_error";
+        })?;
         let api_key = auth["OPENAI_API_KEY"].as_str().filter(|s| !s.is_empty());
         let (base, tail, bearer) = if let Some(key) = api_key {
             (
@@ -191,24 +249,14 @@ impl ModelRelay {
                 .map(|q| format!("?{q}"))
                 .unwrap_or_default()
         );
+        #[cfg(test)]
+        let url = self.upstream_url.clone().unwrap_or(url);
         let mut outgoing = self
             .client
             .request(request.method().clone(), url)
             .bearer_auth(bearer);
         // Never forward client-controlled auth/account/host headers or cookies.
-        for name in [
-            "content-type",
-            "accept",
-            "user-agent",
-            "openai-beta",
-            "originator",
-            "version",
-            "session_id",
-            "conversation_id",
-            "x-codex-turn-state",
-            "x-codex-turn-metadata",
-            "x-openai-client-request-id",
-        ] {
+        for &name in REQUEST_HEADERS {
             if let Some(value) = request.headers().get(name) {
                 outgoing = outgoing.header(name, value);
             }
@@ -231,6 +279,7 @@ impl ModelRelay {
             match model_body(&body, &encoding, charge) {
                 Ok(body) => body,
                 Err(error) => {
+                    diagnostic.record.outcome = "invalid_request";
                     charge.settle(Some(0), 0)?;
                     return Err(error);
                 }
@@ -238,12 +287,33 @@ impl ModelRelay {
         } else {
             body.to_vec()
         };
+        let key = if charge.is_some() {
+            let value: Value = serde_json::from_slice(&body).map_err(|_| "模型请求格式无效")?;
+            let model = value["model"].as_str().ok_or("模型请求缺少模型")?;
+            diagnostic.record.model = diagnostics::code(Some(model));
+            diagnostic.record.requested_tier = diagnostics::tier(value["service_tier"].as_str());
+            diagnostic.record.request_fingerprint =
+                Some(diagnostics::fingerprint(&String::from_utf8_lossy(&body)));
+            let account = api_key
+                .or_else(|| auth["tokens"]["account_id"].as_str())
+                .unwrap_or(bearer);
+            Some(diagnostics::fingerprint(&format!("{account}\0{model}")))
+        } else {
+            None
+        };
+        diagnostic.record.account_model = key;
         if let Some(charge) = charge.as_mut() {
             charge.mark_sent();
         }
         let mut upstream = match outgoing.body(body).send().await {
             Ok(response) => response,
             Err(error) => {
+                diagnostic.record.outcome = match (error.is_connect(), error.is_timeout()) {
+                    (true, true) => "connect_timeout",
+                    (true, false) => "connect_error",
+                    (false, true) => "headers_timeout",
+                    _ => "request_error",
+                };
                 if error.is_connect()
                     && let Some(charge) = charge.as_mut()
                 {
@@ -252,6 +322,22 @@ impl ModelRelay {
                 return Err("模型服务连接失败".into());
             }
         };
+        diagnostic.record.headers_ms = Some(diagnostic.elapsed_ms());
+        diagnostic.record.status = Some(upstream.status().as_u16());
+        diagnostic.record.upstream_request_id = diagnostics::code(
+            upstream
+                .headers()
+                .get("x-request-id")
+                .and_then(|h| h.to_str().ok()),
+        );
+        let retry_after = retry_after(
+            upstream
+                .headers()
+                .get("retry-after")
+                .and_then(|h| h.to_str().ok()),
+        );
+        diagnostic.record.retry_after_secs = retry_after.map(|d| d.as_secs());
+        let status = upstream.status();
         if !upstream.status().is_success()
             && let Some(charge) = charge.as_mut()
         {
@@ -260,9 +346,11 @@ impl ModelRelay {
         // The worker has an external-auth placeholder, so a provider 401 must
         // not ask it to refresh (or receive) the host's actual OAuth credentials.
         if upstream.status() == StatusCode::UNAUTHORIZED {
+            diagnostic.record.outcome = "auth_error";
             return Err("宿主模型登录已失效，请重新登录 Codex 后重试".into());
         }
         if upstream.status().is_redirection() {
+            diagnostic.record.outcome = "unexpected_redirect";
             return Err("模型接口发生非预期重定向".into());
         }
         let mut response = Response::builder().status(upstream.status());
@@ -287,19 +375,46 @@ impl ModelRelay {
                 };
                 match chunk {
                     Ok(Some(bytes)) => {
+                        if diagnostic.record.first_byte_ms.is_none() {
+                            diagnostic.record.first_byte_ms = Some(diagnostic.elapsed_ms());
+                        }
                         usage.push(&bytes);
                         if tx.send(Ok::<_, reqwest::Error>(bytes)).await.is_err() {
                             break;
                         }
                     }
-                    Ok(None) => break,
+                    Ok(None) => {
+                        diagnostic.record.outcome = if status.is_success() {
+                            "completed"
+                        } else {
+                            "upstream_http_error"
+                        };
+                        break;
+                    }
                     Err(error) => {
+                        diagnostic.record.outcome = if error.is_timeout() {
+                            "stream_timeout"
+                        } else {
+                            "stream_error"
+                        };
                         let _ = tx.send(Err(error)).await;
                         break;
                     }
                 }
             }
             usage.finish();
+            if diagnostic.record.outcome == "completed" {
+                diagnostic.record.outcome = if usage.error_code.is_some() || usage.failed {
+                    "provider_error"
+                } else if usage.json_body != Some(true) && !usage.completed {
+                    "incomplete_stream"
+                } else {
+                    "completed"
+                };
+            }
+            diagnostic.record.actual_tier = usage.tier;
+            diagnostic.record.error_code = usage.error_code;
+            diagnostic.record.tokens = usage.tokens;
             if let Some(mut charge) = charge {
                 charge.record_usage(usage.detail);
                 if let Err(error) = charge.settle(usage.tokens, usage.images) {
@@ -363,6 +478,10 @@ struct RelayUsage {
     detail: Option<crate::accounts::TokenUsage>,
     images: i64,
     json_body: Option<bool>,
+    tier: Option<String>,
+    error_code: Option<String>,
+    completed: bool,
+    failed: bool,
 }
 impl RelayUsage {
     fn push(&mut self, bytes: &[u8]) {
@@ -375,6 +494,9 @@ impl RelayUsage {
                 .map(|b| *b == b'{');
         }
         if self.json_body == Some(true) {
+            if self.buffer.len() > 32 * 1024 * 1024 {
+                self.buffer.clear();
+            }
             return;
         }
         while let Some(end) = self.buffer.iter().position(|&b| b == b'\n') {
@@ -390,6 +512,19 @@ impl RelayUsage {
         }
     }
     fn read(&mut self, value: &Value) {
+        let response = value.get("response").unwrap_or(value);
+        if let Some(tier) = diagnostics::tier(response["service_tier"].as_str()) {
+            self.tier = Some(tier);
+        }
+        let error = response.get("error").unwrap_or(value);
+        if let Some(code) = diagnostics::code(error["code"].as_str()) {
+            self.error_code = Some(code);
+        }
+        self.failed |= matches!(
+            value["type"].as_str(),
+            Some("error" | "response.failed" | "response.incomplete")
+        );
+        self.completed |= value["type"] == "response.completed";
         if value["type"].as_str().is_some_and(|kind| {
             !matches!(
                 kind,
@@ -398,7 +533,6 @@ impl RelayUsage {
         }) {
             return;
         }
-        let response = value.get("response").unwrap_or(value);
         if let Some(detail) = crate::accounts::TokenUsage::from_response(response) {
             self.detail = Some(detail);
         }

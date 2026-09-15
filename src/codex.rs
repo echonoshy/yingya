@@ -350,6 +350,7 @@ impl CodexClient {
             reference_images,
             options,
             model_retry_delay,
+            Duration::from_secs(300),
         )
         .await
     }
@@ -361,6 +362,7 @@ impl CodexClient {
         reference_images: &[PathBuf],
         options: TurnOptions<'_>,
         delay_for: fn(usize) -> Duration,
+        recovery_budget: Duration,
     ) -> Result<TurnCompleted, CodexError> {
         let mut result = self
             .run_turn_once(thread_id, prompt, reference_images, options.clone())
@@ -371,6 +373,9 @@ impl CodexClient {
             return result;
         }
         let retry_id = uuid::Uuid::new_v4().to_string();
+        // Bound starting additional recovery turns, including native retries
+        // spent in previous continuations. Never kill a productive turn on a timer.
+        let recovery_started = tokio::time::Instant::now();
         let mut attempt = 0;
         loop {
             let cancelled = options
@@ -380,7 +385,15 @@ impl CodexClient {
                 Err(CodexError::TurnOverloaded { turn_id, .. }) => Some(turn_id.clone()),
                 _ => None,
             };
-            let retry = overloaded_turn.is_some() && !cancelled && attempt < MODEL_OVERLOAD_RETRIES;
+            let next_delay = if attempt < MODEL_OVERLOAD_RETRIES {
+                delay_for(attempt + 1)
+            } else {
+                Duration::ZERO
+            };
+            let retry = overloaded_turn.is_some()
+                && !cancelled
+                && attempt < MODEL_OVERLOAD_RETRIES
+                && recovery_started.elapsed().saturating_add(next_delay) < recovery_budget;
             let status = if retry {
                 "waiting"
             } else if cancelled {
@@ -393,11 +406,7 @@ impl CodexClient {
             if retry {
                 attempt += 1;
             }
-            let delay = if retry {
-                delay_for(attempt)
-            } else {
-                Duration::ZERO
-            };
+            let delay = if retry { next_delay } else { Duration::ZERO };
             let emit = |status: &str| {
                 if let Some(sender) = &options.event_tx {
                     let _ = sender.send(json!({"method":"project/modelRetry","params":{
@@ -1045,6 +1054,7 @@ mod tests {
             ("native", 1),
             ("image", 1),
             ("other_error", 2),
+            ("budget", 1),
         ] {
             let root =
                 std::env::temp_dir().join(format!("yingya-overload-{}", uuid::Uuid::new_v4()));
@@ -1124,6 +1134,11 @@ for line in sys.stdin:
                         ..Default::default()
                     },
                     |_| Duration::from_millis(20),
+                    if mode == "budget" {
+                        Duration::ZERO
+                    } else {
+                        Duration::from_secs(300)
+                    },
                 )
                 .await;
             let events = collector.await.unwrap();
@@ -1167,7 +1182,7 @@ for line in sys.stdin:
                     assert!(matches!(result, Err(CodexError::TurnFailed(_))));
                     assert!(retries.is_empty());
                 }
-                "image" => {
+                "image" | "budget" => {
                     assert!(matches!(result, Err(CodexError::TurnOverloaded { .. })));
                     assert!(retries.is_empty());
                 }

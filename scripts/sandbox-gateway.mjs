@@ -39,21 +39,45 @@ const server=http.createServer(async(req,res)=>{
     // Preserve provider authorization only for public destinations.
     if(req.headers.authorization)options.headers.authorization=req.headers.authorization;
   }
-  const out=http.request(options, incoming=>{res.writeHead(incoming.statusCode,incoming.headers);incoming.pipe(res);});
-  out.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end('Gateway unavailable');});
+  if (req.aborted || res.destroyed) return;
+  let incoming;
+  const out=http.request(options, response=>{
+    incoming=response;
+    incoming.on('error',()=>res.destroy());
+    incoming.on('aborted',()=>res.destroy());
+    if(res.destroyed){incoming.destroy();return;}
+    res.writeHead(incoming.statusCode,incoming.headers);
+    incoming.pipe(res);
+  });
+  const cancel=()=>{out.destroy();incoming?.destroy();};
+  req.on('aborted',cancel);
+  req.on('error',cancel);
+  res.on('close',()=>{if(!res.writableFinished)cancel();});
+  out.on('error',()=>{
+    if(res.destroyed)return;
+    if(res.headersSent){res.destroy();return;}
+    res.writeHead(502);res.end('Gateway unavailable');
+  });
   req.pipe(out);
  }catch {res.writeHead(403);res.end('Sandbox destination denied');}
 });
 server.on('connect', async(req,client,head)=>{
+ let pending, tunnel;
+ const cancel=()=>{pending?.destroy();tunnel?.destroy();};
+ client.on('error',cancel);
+ client.on('close',cancel);
  try {
   const url=new URL(`https://${req.url}`);const address=await target(url.hostname,url.port||443);
+  if(client.destroyed)return;
   if(upstream){
     const connect=http.request({hostname:upstream.hostname,port:upstream.port||80,method:'CONNECT',path:providerHost(url.hostname)?req.url:`${net.isIPv6(address)?`[${address}]`:address}:${url.port||443}`,headers:{host:req.url,...proxyAuth()}});
-    connect.on('connect',(response,remote,extra)=>{if(response.statusCode!==200){client.destroy();remote.destroy();return;}client.write('HTTP/1.1 200 Connection Established\r\n\r\n');if(head.length)remote.write(head);if(extra.length)client.write(extra);client.pipe(remote).pipe(client);remote.on('error',()=>client.destroy());client.on('error',()=>remote.destroy());});
+    pending=connect;
+    connect.on('connect',(response,remote,extra)=>{tunnel=remote;remote.on('error',()=>client.destroy());remote.on('close',()=>client.destroy());if(client.destroyed||response.statusCode!==200){client.destroy();remote.destroy();return;}client.write('HTTP/1.1 200 Connection Established\r\n\r\n');if(head.length)remote.write(head);if(extra.length)client.write(extra);client.pipe(remote).pipe(client);});
     connect.on('error',()=>client.destroy());connect.end();
   }else{
     const remote=net.connect(Number(url.port||443),address,()=>{client.write('HTTP/1.1 200 Connection Established\r\n\r\n');if(head.length)remote.write(head);client.pipe(remote).pipe(client);});
-    remote.on('error',()=>client.destroy());client.on('error',()=>remote.destroy());
+    tunnel=remote;
+    remote.on('error',()=>client.destroy());remote.on('close',()=>client.destroy());
   }
  }catch{client.end('HTTP/1.1 403 Forbidden\r\n\r\n');}
 });
