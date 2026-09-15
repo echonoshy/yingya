@@ -3336,6 +3336,30 @@ async fn run_agent_turn(
             if turn_id.is_some() {
                 observed_turn_id = turn_id.clone();
             }
+            if method == "project/modelRetry" {
+                let params = &raw["params"];
+                let label = match params["status"].as_str() {
+                    Some("waiting") => Some(format!(
+                        "模型暂时繁忙，{} 秒后重试（{}/{}）",
+                        params["delaySeconds"], params["attempt"], params["maxAttempts"]
+                    )),
+                    Some("running") => Some(format!(
+                        "正在继续原任务（重试 {}/{}）",
+                        params["attempt"], params["maxAttempts"]
+                    )),
+                    _ => None,
+                };
+                if let Some(label) = label {
+                    let _ = event_store
+                        .update_project(&event_project, |record| {
+                            // An explicit stop remains authoritative during backoff.
+                            if record.status == "running" {
+                                record.status_label = label;
+                            }
+                        })
+                        .await;
+                }
+            }
             if let Ok(event) = event_store
                 .append_event(&event_project, turn_id, method, raw)
                 .await

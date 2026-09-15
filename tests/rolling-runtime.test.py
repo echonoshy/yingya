@@ -178,6 +178,41 @@ class RollingRuntime(unittest.TestCase):
             tts.shutdown()
             tts.server_close()
 
+    def test_model_overload_recovers_and_stop_cancels_backoff(self):
+        self.release('v1')
+        self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
+        project = self.request('/api/agent-projects', {'prompt': '重试验证', 'model': 'gpt-6-astra', 'aspectRatio': '16:9'})['id']
+        prefix = '/api/agent-projects/' + project
+        event_path = self.data / 'users' / self.user['id'] / 'projects' / project / 'events.jsonl'
+        def retries():
+            return [json.loads(line)['payload']['params'] for line in event_path.read_text().splitlines()
+                    if json.loads(line)['method'] == 'project/modelRetry']
+        def submit():
+            return self.request(prefix + '/turns', {'text': 'MODEL_OVERLOAD', 'clientRequestId': str(uuid.uuid4())})
+        submit()
+        self.wait(lambda: any(e['status'] == 'waiting' for e in retries()))
+        waiting = self.request(prefix)
+        self.assertEqual(waiting['status'], 'running')
+        self.assertIn('秒后重试', waiting['statusLabel'])
+        self.assertTrue(waiting['activeTurnId'])
+        self.assertFalse(waiting['queuePaused'])
+        thread = waiting['threadId']
+        self.wait(lambda: any(e['status'] == 'completed' for e in retries()))
+        self.wait(lambda: not self.request(prefix)['activeTurnId'])
+        self.assertEqual(self.request(prefix)['threadId'], thread)
+        starts = [x for x in self.log(project) if x['event'] == 'start']
+        self.assertEqual(len(starts), 2)
+        self.assertIn('只完成剩余步骤', starts[1]['prompt'])
+        self.assertNotIn('MODEL_OVERLOAD', starts[1]['prompt'])
+        submit()
+        self.wait(lambda: len([e for e in retries() if e['status'] == 'waiting']) == 2)
+        self.request(prefix + '/interrupt', {})
+        self.wait(lambda: self.request(prefix)['status'] == 'interrupted')
+        self.assertTrue(self.request(prefix)['queuePaused'])
+        self.assertEqual(retries()[-1]['status'], 'interrupted')
+        time.sleep(6)
+        self.assertEqual(len([x for x in self.log(project) if x['event'] == 'start']), 3)
+
     def test_rolling_handoff_crash_recovery_rollback_and_failed_candidate(self):
         self.release('v1')
         self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})

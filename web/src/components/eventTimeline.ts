@@ -21,6 +21,8 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
   const activities: TimelineActivity[] = [];
   const byId = new Map<string, TimelineActivity>();
   const completedTurns = new Map<string, string>();
+  const retriedTurns = new Set(events.filter(event => event.method === "project/modelRetry")
+    .map(event => stringValue(asObject(asObject(event.payload).params).failedTurnId)).filter(Boolean));
 
   for (const event of events) {
     if (event.method === "project/executionEnded" && event.turnId) {
@@ -49,11 +51,31 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
     const item = asObject(params.item);
     const itemId = stringValue(params.itemId) || stringValue(item.id);
 
+    if (event.method === "project/modelRetry") {
+      const status = stringValue(params.status);
+      const row = activity(`model-retry-${stringValue(params.retryId)}`, "system", event, "模型暂时繁忙");
+      // This activity spans several Codex turns; a failed attempt must not
+      // settle the logical retry operation while its next attempt is waiting.
+      row.turnId = undefined;
+      const progress = `${Number(params.attempt)}/${Number(params.maxAttempts)}`;
+      row.title = status === "completed" ? "模型重试已完成" : status === "interrupted" ? "模型重试已停止" : status === "failed" ? "自动重试已结束" : "模型暂时繁忙";
+      row.status = status === "waiting" ? "waiting" : status === "running" ? "running" : status === "completed" ? "completed" : status === "interrupted" ? "interrupted" : "failed";
+      row.summary = status === "waiting" ? `${Number(params.delaySeconds)} 秒后自动重试（${progress}），可随时停止。`
+        : status === "running" ? `正在继续原任务（重试 ${progress}）。`
+        : status === "completed" ? "已恢复并完成本次执行。"
+        : status === "interrupted" ? "已停止，不会继续自动重试。"
+        : `重试 ${Number(params.attempt)} 次后仍未完成。请查看错误详情，稍后重试或切换模型。`;
+      continue;
+    }
+
     if (event.method === "error" || event.method === "warning") {
       const error = asObject(params.error);
+      const overloaded = error.codexErrorInfo === "serverOverloaded";
+      if (overloaded && event.turnId && retriedTurns.has(event.turnId)) continue;
       const retrying = params.willRetry === true;
-      const row = activity(`system-${event.turnId ?? "current"}`, "system", event, retrying ? "等待网络恢复" : "创作服务连接异常");
-      row.summary = retrying
+      const row = activity(`system-${event.turnId ?? "current"}`, "system", event, overloaded ? "模型暂时繁忙" : retrying ? "等待网络恢复" : "创作服务连接异常");
+      row.title = overloaded ? "模型暂时繁忙" : retrying ? "等待网络恢复" : "创作服务连接异常";
+      row.summary = overloaded ? (retrying ? "当前模型服务繁忙，正在自动重试。" : "当前模型服务繁忙，请稍后重试或切换模型。") : retrying
         ? "暂时无法连接创作服务，正在自动重试。"
         : stringValue(error.message) || stringValue(params.message) || "暂时无法连接创作服务。";
       row.status = retrying ? "waiting" : "failed";

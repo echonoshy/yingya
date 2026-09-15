@@ -63,3 +63,31 @@ describe("lost execution connection", () => {
     expect(buildTimeline([retry, done], new Set())[0].status).toBe("completed");
   });
 });
+
+describe("model overload recovery", () => {
+  const overloaded = event(1, "error", {params: {error: {codexErrorInfo: "serverOverloaded", message: "Selected model is at capacity."}, willRetry: false}});
+  const failed = event(2, "turn/completed", {params: {turn: {status: "failed"}}});
+  const retry = (seq: number, status: string, failedTurnId: string | null = "turn-1") => event(seq, "project/modelRetry", {params: {retryId: "retry-1", failedTurnId, status, attempt: 1, maxAttempts: 5, delaySeconds: 5}});
+  it("labels old overload errors accurately", () => {
+    expect(buildTimeline([overloaded], new Set())[0]).toMatchObject({title: "模型暂时繁忙", summary: "当前模型服务繁忙，请稍后重试或切换模型。"});
+  });
+  it("shows retry progress instead of a failed turn while waiting", () => {
+    const rows = buildTimeline([overloaded, failed, retry(3, "waiting")], new Set(), {status: "running", activeTurnId: "job"});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({status: "waiting", title: "模型暂时繁忙", summary: "5 秒后自动重试（1/5），可随时停止。"});
+  });
+  it.each(["completed", "failed", "interrupted"])("settles the same retry row as %s", status => {
+    const rows = buildTimeline([overloaded, failed, retry(3, "waiting"), retry(4, "running"), retry(5, status, null)], new Set());
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe(status);
+  });
+  it("preserves other errors encountered during recovery", () => {
+    const rows = buildTimeline([overloaded, failed, retry(3, "waiting"), event(4, "error", {params: {error: {message: "context too long"}}}, "turn-2"), retry(5, "failed", null)], new Set());
+    expect(rows).toHaveLength(2);
+    expect(rows[1].summary).toBe("context too long");
+  });
+  it("settles a retry abandoned by a lost worker", () => {
+    const rows = buildTimeline([retry(3, "waiting")], new Set(), {status: "failed", activeTurnId: undefined});
+    expect(rows[0].status).toBe("interrupted");
+  });
+});

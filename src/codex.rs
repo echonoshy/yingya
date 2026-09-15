@@ -25,6 +25,15 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(test)]
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 const STATUS_PROBE_INTERVAL: Duration = REQUEST_TIMEOUT;
+const MODEL_OVERLOAD_RETRIES: usize = 5;
+const MODEL_RETRY_PROMPT: &str = "上一次执行因模型服务暂时繁忙而结束。继续本会话中尚未完成的用户请求，先核对已有对话、项目文件、manifest、检查点和外部任务记录，只完成剩余步骤。不要重复已完成的生成、付费调用或导出；外部请求结果不明确且无法查询时停止并说明需要核对的信息。";
+
+fn model_retry_delay(attempt: usize) -> Duration {
+    // Like Codex's backoff: exponential delay with jitter to spread retries.
+    let base = [5_000, 10_000, 20_000, 40_000, 60_000][attempt - 1];
+    let jitter = 90 + (uuid::Uuid::new_v4().as_u128() % 21) as u64;
+    Duration::from_millis((base * jitter / 100).min(60_000))
+}
 
 type PendingRequests = Arc<Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
@@ -64,6 +73,8 @@ pub enum CodexError {
     EventStreamClosed,
     #[error("Codex turn failed: {0}")]
     TurnFailed(String),
+    #[error("当前模型繁忙，请稍后再试或切换模型：{message}")]
+    TurnOverloaded { turn_id: String, message: String },
     #[error("Codex image generation completed without a saved image: {0}")]
     MissingGeneratedImage(String),
 }
@@ -108,7 +119,7 @@ pub struct GeneratedImageEvent {
     pub failure: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct TurnOptions<'a> {
     pub use_imagegen: bool,
     pub model: Option<&'a str>,
@@ -327,6 +338,109 @@ impl CodexClient {
     }
 
     pub async fn run_turn(
+        &self,
+        thread_id: &str,
+        prompt: &str,
+        reference_images: &[PathBuf],
+        options: TurnOptions<'_>,
+    ) -> Result<TurnCompleted, CodexError> {
+        self.run_turn_with_retry_delays(
+            thread_id,
+            prompt,
+            reference_images,
+            options,
+            model_retry_delay,
+        )
+        .await
+    }
+
+    async fn run_turn_with_retry_delays(
+        &self,
+        thread_id: &str,
+        prompt: &str,
+        reference_images: &[PathBuf],
+        options: TurnOptions<'_>,
+        delay_for: fn(usize) -> Duration,
+    ) -> Result<TurnCompleted, CodexError> {
+        let mut result = self
+            .run_turn_once(thread_id, prompt, reference_images, options.clone())
+            .await;
+        // Only project creation runs opt in. Image generation and other callers
+        // keep their existing behavior; Codex owns HTTP/stream-level retries.
+        if !options.use_video_agent {
+            return result;
+        }
+        let retry_id = uuid::Uuid::new_v4().to_string();
+        let mut attempt = 0;
+        loop {
+            let cancelled = options
+                .cancellation
+                .is_some_and(TurnCancellation::is_cancelled);
+            let overloaded_turn = match &result {
+                Err(CodexError::TurnOverloaded { turn_id, .. }) => Some(turn_id.clone()),
+                _ => None,
+            };
+            let retry = overloaded_turn.is_some() && !cancelled && attempt < MODEL_OVERLOAD_RETRIES;
+            let status = if retry {
+                "waiting"
+            } else if cancelled {
+                "interrupted"
+            } else if result.is_ok() {
+                "completed"
+            } else {
+                "failed"
+            };
+            if retry {
+                attempt += 1;
+            }
+            let delay = if retry {
+                delay_for(attempt)
+            } else {
+                Duration::ZERO
+            };
+            let emit = |status: &str| {
+                if let Some(sender) = &options.event_tx {
+                    let _ = sender.send(json!({"method":"project/modelRetry","params":{
+                        "threadId":thread_id,"retryId":retry_id,"failedTurnId":overloaded_turn,
+                        "status":status,"attempt":attempt,"maxAttempts":MODEL_OVERLOAD_RETRIES,
+                        "delaySeconds":delay.as_secs_f64().ceil() as u64
+                    }}));
+                }
+            };
+            if attempt > 0 {
+                emit(status);
+            }
+            if !retry {
+                return if cancelled {
+                    Err(CodexError::TurnInterrupted(thread_id.to_owned()))
+                } else {
+                    result
+                };
+            }
+            // A stop during backoff must not start another turn or interrupt an
+            // already completed turn. Keep the project's active job registered.
+            if let Some(cancellation) = options.cancellation {
+                tokio::select! {
+                    biased;
+                    _ = cancellation.cancelled() => {
+                        emit("interrupted");
+                        return Err(CodexError::TurnInterrupted(thread_id.to_owned()));
+                    }
+                    _ = tokio::time::sleep(delay) => {}
+                }
+            } else {
+                tokio::time::sleep(delay).await;
+            }
+            emit("running");
+            // The failed turn is persisted in the same thread. Continue it;
+            // never replay the original prompt/attachments or an uncertain RPC.
+            result = self
+                .run_turn_once(thread_id, MODEL_RETRY_PROMPT, &[], options.clone())
+                .await;
+        }
+    }
+
+    async fn run_turn_once(
         &self,
         thread_id: &str,
         prompt: &str,
@@ -603,6 +717,16 @@ impl CodexClient {
                             .and_then(Value::as_str)
                             .unwrap_or("unknown Codex error")
                             .to_owned();
+                        if event
+                            .pointer("/params/turn/error/codexErrorInfo")
+                            .and_then(Value::as_str)
+                            == Some("serverOverloaded")
+                        {
+                            return Err(CodexError::TurnOverloaded {
+                                turn_id: turn_id.clone(),
+                                message,
+                            });
+                        }
                         return Err(CodexError::TurnFailed(message));
                     }
 
@@ -900,6 +1024,165 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn overload_backoff_is_bounded_and_increases() {
+        for (attempt, base) in [5_000, 10_000, 20_000, 40_000, 60_000]
+            .into_iter()
+            .enumerate()
+        {
+            let ms = model_retry_delay(attempt + 1).as_millis();
+            assert!(ms >= base * 90 / 100 && ms <= (base * 110 / 100).min(60_000));
+        }
+    }
+
+    #[tokio::test]
+    async fn overload_retry_preserves_thread_and_respects_limits_and_stop() {
+        use std::os::unix::fs::PermissionsExt;
+        for (mode, expected_starts) in [
+            ("success", 2),
+            ("exhausted", 6),
+            ("stop", 1),
+            ("context", 1),
+            ("native", 1),
+            ("image", 1),
+            ("other_error", 2),
+        ] {
+            let root =
+                std::env::temp_dir().join(format!("yingya-overload-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            std::fs::write(root.join("auth.json"), "{}").unwrap();
+            std::fs::write(root.join("mode"), mode).unwrap();
+            let script = root.join("mock.py");
+            std::fs::write(&script, r#"#!/usr/bin/python3
+import json,sys,pathlib
+mode=pathlib.Path('mode').read_text()
+count=0
+def send(x):print(json.dumps(x),flush=True)
+for line in sys.stdin:
+ r=json.loads(line); method=r.get('method'); p=r.get('params',{})
+ if 'id' not in r:continue
+ if method!='turn/start':
+  send({'id':r['id'],'result':{}});continue
+ count+=1
+ pathlib.Path('starts').open('a').write(json.dumps(p)+'\n')
+ turn='turn-'+str(count)
+ send({'id':r['id'],'result':{'turn':{'id':turn}}})
+ def emit(m,p):send({'method':m,'params':dict(threadId='thread',**p)})
+ emit('turn/started',{'turn':{'id':turn,'status':'inProgress'}})
+ error={'message':'Selected model is at capacity. Please try a different model.','codexErrorInfo':'serverOverloaded'}
+ if mode=='context' or (mode=='other_error' and count>1):error={'message':'context too long','codexErrorInfo':'contextWindowExceeded'}
+ if mode=='native':emit('error',{'turnId':turn,'error':error,'willRetry':True})
+ if (mode=='success' and count>1) or mode=='native':
+  emit('item/completed',{'turnId':turn,'item':{'id':'reply','type':'agentMessage','text':'draft ready'}})
+  emit('turn/completed',{'turn':{'id':turn,'status':'completed'}})
+ else:
+  emit('error',{'turnId':turn,'error':error,'willRetry':False})
+  emit('turn/completed',{'turn':{'id':turn,'status':'failed','error':error}})
+"#).unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let client = CodexClient::spawn(CodexConfig {
+                sandbox: None,
+                accounting: None,
+                binary: script,
+                home: root.clone(),
+                workspace: root.clone(),
+                model: "test".into(),
+                network_access: false,
+                hyperframes_browser: None,
+                video_agent_skill: None,
+                turn_timeout: Duration::from_secs(10),
+            })
+            .await
+            .unwrap();
+            let (tx, mut rx) = mpsc::unbounded_channel::<Value>();
+            let cancellation = TurnCancellation::default();
+            let cancel = cancellation.clone();
+            let stop = mode == "stop";
+            let collector = tokio::spawn(async move {
+                let mut events = Vec::new();
+                while let Some(event) = rx.recv().await {
+                    if stop
+                        && event["method"] == "project/modelRetry"
+                        && event["params"]["status"] == "waiting"
+                    {
+                        cancel.cancel();
+                    }
+                    events.push(event);
+                }
+                events
+            });
+            let result = client
+                .run_turn_with_retry_delays(
+                    "thread",
+                    "make video",
+                    &[root.join("reference.png")],
+                    TurnOptions {
+                        model: Some("gpt-6-astra"),
+                        effort: Some("medium"),
+                        use_video_agent: mode != "image",
+                        cancellation: Some(&cancellation),
+                        event_tx: Some(tx),
+                        ..Default::default()
+                    },
+                    |_| Duration::from_millis(20),
+                )
+                .await;
+            let events = collector.await.unwrap();
+            let starts: Vec<Value> = std::fs::read_to_string(root.join("starts"))
+                .unwrap()
+                .lines()
+                .map(|s| serde_json::from_str(s).unwrap())
+                .collect();
+            assert_eq!(starts.len(), expected_starts, "{mode}");
+            assert_eq!(starts[0]["input"][1]["type"], "localImage");
+            for start in &starts[1..] {
+                assert_eq!(start["threadId"], "thread");
+                assert_eq!(start["model"], "gpt-6-astra");
+                assert_eq!(start["effort"], "medium");
+                assert_eq!(start["input"].as_array().unwrap().len(), 1);
+                assert_eq!(start["input"][0]["text"], MODEL_RETRY_PROMPT);
+            }
+            let retries: Vec<_> = events
+                .iter()
+                .filter(|e| e["method"] == "project/modelRetry")
+                .collect();
+            match mode {
+                "success" => {
+                    assert_eq!(result.unwrap().text, "draft ready");
+                    assert_eq!(retries.last().unwrap()["params"]["status"], "completed");
+                }
+                "exhausted" => {
+                    assert!(matches!(result, Err(CodexError::TurnOverloaded { .. })));
+                    assert_eq!(retries.last().unwrap()["params"]["attempt"], 5);
+                    assert_eq!(retries.last().unwrap()["params"]["status"], "failed");
+                }
+                "stop" => {
+                    assert!(matches!(result, Err(CodexError::TurnInterrupted(_))));
+                    assert_eq!(retries.last().unwrap()["params"]["status"], "interrupted");
+                }
+                "native" => {
+                    assert!(result.is_ok());
+                    assert!(retries.is_empty());
+                }
+                "context" => {
+                    assert!(matches!(result, Err(CodexError::TurnFailed(_))));
+                    assert!(retries.is_empty());
+                }
+                "image" => {
+                    assert!(matches!(result, Err(CodexError::TurnOverloaded { .. })));
+                    assert!(retries.is_empty());
+                }
+                "other_error" => {
+                    assert!(matches!(result, Err(CodexError::TurnFailed(_))));
+                    assert_eq!(retries.last().unwrap()["params"]["status"], "failed");
+                }
+                _ => unreachable!(),
+            }
+            client._child.lock().await.kill().await.unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
     fn recovery_matches_only_the_current_submission() {
         let snapshot = json!({"thread":{"turns":[{"id":"old","startedAt":100,"items":[
             {"type":"userMessage","content":[{"type":"text","text":"make video"}]}]}]}});
@@ -957,7 +1240,7 @@ for line in sys.stdin:
                 turn_timeout: Duration::from_secs(10),
             };
             let client = CodexClient::spawn(config).await.unwrap();
-            let (tx, mut rx) = mpsc::unbounded_channel();
+            let (tx, mut rx) = mpsc::unbounded_channel::<Value>();
             let result = client
                 .run_turn(
                     "thread",

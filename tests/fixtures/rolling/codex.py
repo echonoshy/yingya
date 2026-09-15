@@ -33,6 +33,14 @@ def finish(thread, turn, prompt):
     meta = threads[thread]
     if not meta.get('ephemeral'):
         log(meta['cwd'], {'event': 'start', 'turn': turn, 'release': release, 'prompt': prompt})
+        if 'MODEL_OVERLOAD' in prompt:
+            error = {'message': 'Selected model is at capacity. Please try a different model.',
+                     'codexErrorInfo': 'serverOverloaded'}
+            send({'method': 'error', 'params': {'threadId': thread, 'turnId': turn,
+                  'error': error, 'willRetry': False}})
+            send({'method': 'turn/completed', 'params': {'threadId': thread,
+                  'turn': {'id': turn, 'status': 'failed', 'error': error}}})
+            return
         if 'VOICE_METADATA_PROBE' in prompt:
             probes = {}
             for path in ('health', 'v1/models', 'v1/audio/voices'):
