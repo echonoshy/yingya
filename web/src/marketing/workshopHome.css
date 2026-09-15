@@ -1,0 +1,47 @@
+.workshop-home .marketing-header { position: relative; border: 0; }
+.workshop-home .marketing-header-inner { max-width: 1372px; height: 92px; padding: 0 60px; gap: 36px; }
+.workshop-home .marketing-brand-toy { width: 126px; }
+.marketing-github { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; font-size: var(--text-body); }
+.marketing-github svg { width: 22px; height: 22px; }
+.workshop-home .marketing-login { min-width: 104px; background: var(--primary); color: var(--canvas); border: 1px solid var(--primary); }
+.workshop-home .marketing-hero { max-width: 1372px; min-height: 0; margin: auto; padding: 30px 0 0; display: block; }
+.workshop-home .marketing-hero-copy { position: relative; z-index: 1; width: 100%; text-align: center; padding: 0 24px; }
+.workshop-home .marketing-hero-copy h1 { font-size: clamp(40px, 5.2vw, 72px); line-height: 1.25; font-weight: var(--weight-emphasis); letter-spacing: -.025em; text-wrap: balance; }
+.workshop-home .marketing-hero-copy > p { font-size: clamp(17px, 1.9vw, 26px); line-height: 1.6; margin: 16px auto 0; text-wrap: balance; }
+.workshop-home .marketing-hero-actions { justify-content: center; gap: 18px; margin-top: 26px; }
+.workshop-home .marketing-hero-actions > * { min-width: 172px; min-height: 50px; }
+.workshop-home .workshop-watch { background: var(--canvas); border: 1px solid var(--line-strong); font-size: var(--text-body); }
+.workshop-home .workshop-watch:hover { background: var(--surface); }
+.studio-illustration { display: block; width: 100%; height: auto; margin: 8px auto 0; object-fit: contain; }
+.workshop-showcase { max-width: 1252px; margin: 0 auto; padding: 10px 40px 0; scroll-margin-top: 24px; }
+.workshop-showcase .marketing-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.workshop-showcase .marketing-example-image { aspect-ratio: 640/474; border: 1px solid var(--line); border-radius: var(--radius-panel); overflow: hidden; }
+.workshop-showcase .marketing-example-image img { width: 100%; height: 100%; object-fit: contain; }
+.workshop-showcase .marketing-play-icon { width: 38px; height: 38px; inset: auto 12px 12px auto; transform: none; background: var(--canvas); color: var(--primary); border: 1px solid var(--line); }
+.workshop-showcase .marketing-example h2 { font-size: var(--text-section); text-align: center; margin-top: 12px; letter-spacing: 0; }
+.motion-source { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 12px; color: var(--dim); font-size: var(--text-caption); }
+.motion-source button { background: transparent; color: var(--dim); border: 0; min-height: 40px; padding: 4px 8px; font: inherit; cursor: pointer; }
+.motion-source button:disabled { cursor: default; }
+.workshop-footer { max-width: 1372px; margin: auto; padding: 16px 24px 28px; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--dim); }
+.workshop-footer > div { display: flex; align-items: center; gap: 18px; }
+.workshop-footer p { font-size: var(--text-caption); }
+@media(max-width:767px) {
+  .workshop-home .marketing-header-inner { padding: 0 20px; height: 72px; gap: 18px; }
+  .workshop-home .marketing-brand-toy { width: 92px; }
+  .workshop-home .marketing-header nav { display: none; }
+  .workshop-home .marketing-header .marketing-github { margin-left: auto; font-size: var(--text-control); }
+  .workshop-home .marketing-login { min-width: 62px; }
+  .workshop-home .marketing-hero { padding-top: 24px; }
+  .workshop-home .marketing-hero-copy h1 { font-size: clamp(34px, 7.4vw, 50px); }
+  .workshop-home .marketing-hero-copy > p { font-size: var(--text-body); margin-top: 14px; }
+  .workshop-home .marketing-hero-actions { gap: 12px; margin-top: 22px; }
+  .workshop-home .marketing-hero-actions > * { min-width: 0; min-height: 46px; padding: 10px 18px; }
+  .studio-illustration { margin-top: 16px; }
+  .workshop-showcase { padding: 16px 20px 0; }
+  .workshop-showcase .marketing-gallery { gap: 12px; }
+  .workshop-showcase .marketing-play-icon { width: 26px; height: 26px; right: 4px; bottom: 4px; }
+  .workshop-showcase .marketing-example h2 { font-size: var(--text-caption); margin-top: 8px; }
+}
+.studio-illustration { animation: none; transition: none; }
+
+.workshop-home .marketing-header .marketing-github { margin-left: auto; }

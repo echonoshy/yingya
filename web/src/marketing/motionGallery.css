@@ -1,0 +1,41 @@
+.workshop-showcase.motion-showcase { padding-top: 34px; padding-bottom: 20px; }
+.motion-gallery-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 28px; }
+.motion-eyebrow { font-size: var(--text-control); color: var(--dim); margin-bottom: 9px; }
+.motion-gallery-heading h2 { font-size: clamp(26px, 2.6vw, 36px); font-weight: var(--weight-emphasis); letter-spacing: -.02em; }
+.workshop-showcase .marketing-gallery.motion-gallery { gap: 32px 24px; align-items: start; }
+.motion-tile { min-width: 0; opacity: 0; transform: translateY(8px); transition: opacity var(--motion-slow) var(--ease-sprout), transform var(--motion-slow) var(--ease-sprout); transition-delay: calc(var(--tile-order) * var(--motion-stagger)); }
+.motion-tile[data-revealed=true], .motion-tile:focus-within { opacity: 1; transform: translateY(0); }
+.motion-gallery .marketing-example { width: 100%; }
+.motion-gallery .marketing-example-image { transition: transform var(--motion-standard) var(--ease-sprout), border-color var(--motion-quick); }
+.motion-gallery .marketing-example-image img { transition: transform var(--motion-slow) var(--ease-sprout); }
+.motion-card-open { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 6px; padding: 8px 10px; color: var(--text); background: var(--canvas); border-radius: var(--radius-control); font-size: var(--text-caption); opacity: 0; transform: translateY(5px); transition: opacity var(--motion-quick), transform var(--motion-standard) var(--ease-sprout); }
+.motion-card-open svg { width: 14px; height: 14px; }
+.motion-card-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.motion-card-caption h3 { font-size: var(--text-body); font-weight: var(--weight-emphasis); }
+.motion-card-caption > svg { width: 17px; height: 17px; color: var(--dim); transition: transform var(--motion-quick); }
+.motion-gallery .marketing-example .motion-card-description { margin-top: 6px; font-size: var(--text-caption); color: var(--dim); line-height: 1.6; }
+.motion-gallery .marketing-example:focus-visible .motion-card-open { opacity: 1; transform: none; }
+@media(hover:hover) {
+  .motion-gallery .marketing-example:hover .marketing-example-image { transform: translateY(-4px); border-color: var(--line-strong); }
+  .motion-gallery .marketing-example:hover .marketing-example-image img { transform: scale(1.025); }
+  .motion-gallery .marketing-example:hover .motion-card-open { opacity: 1; transform: none; }
+  .motion-gallery .marketing-example:hover .motion-card-caption > svg { transform: translateX(3px); }
+}
+.motion-gallery-bottom { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 28px; }
+.motion-more { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--muted); transition: background var(--motion-quick), transform var(--motion-quick); }
+.motion-more svg { width: 22px; height: 22px; }
+.motion-more:hover { background: var(--surface-hover); }
+.motion-more:active { transform: translateY(1px); }
+.motion-showcase[data-motion-off=true] .motion-tile { opacity: 1; transform: none; transition: none; }
+.motion-showcase[data-motion-off=true] *, .motion-showcase[data-motion-off=true] *::before { transition: none !important; }
+.motion-showcase[data-motion-off=true] .marketing-example:hover .marketing-example-image, .motion-showcase[data-motion-off=true] .marketing-example:hover img, .motion-showcase[data-motion-off=true] .marketing-example:hover svg { transform: none; }
+@media(max-width:600px) {
+  .workshop-showcase.motion-showcase { padding-top: 28px; }
+  .motion-gallery-heading { flex-direction: column; gap: 4px; margin-bottom: 16px; }
+  .motion-gallery-heading h2 { font-size: 26px; }
+  .workshop-showcase .marketing-gallery.motion-gallery { grid-template-columns: 1fr; gap: 28px; }
+  .motion-card-open { opacity: 1; transform: none; }
+}
+@media(prefers-reduced-motion:reduce) { .motion-tile { opacity: 1; transform: none; transition: none; } .motion-showcase * { animation: none !important; transition: none !important; } }
+@media(max-width:900px) { .workshop-showcase .marketing-gallery.motion-gallery { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .workshop-showcase .marketing-gallery.motion-gallery { grid-template-columns: 1fr; } }

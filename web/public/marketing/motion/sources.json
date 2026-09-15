@@ -1,0 +1,103 @@
+{
+  "source": "https://motionsites.ai/",
+  "use": "Third-party website motion previews, attributed on homepage; not Yingya generated works",
+  "assets": [
+    {
+      "file": "rabbit.webp",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(16).webp",
+      "name": "Pulse 3D"
+    },
+    {
+      "file": "flower.webp",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(21).webp",
+      "name": "3D Story"
+    },
+    {
+      "file": "books.webp",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(57).webp",
+      "name": "Book Hero"
+    },
+    {
+      "file": "toy.webp",
+      "name": "3D Collectible Hero",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(24).webp",
+      "width": 640,
+      "height": 470,
+      "frames": 75,
+      "durationMs": 5025
+    },
+    {
+      "file": "ocean.webp",
+      "name": "Immersive Ocean",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(14).webp",
+      "width": 640,
+      "height": 478,
+      "frames": 42,
+      "durationMs": 2814
+    },
+    {
+      "file": "bloom.webp",
+      "name": "Bloom",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(96).webp",
+      "width": 640,
+      "height": 478,
+      "frames": 75,
+      "durationMs": 5025
+    },
+    {
+      "file": "clouds.webp",
+      "name": "Golden Portal",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(13).webp",
+      "width": 640,
+      "height": 470,
+      "frames": 75,
+      "durationMs": 5025
+    },
+    {
+      "file": "portal.webp",
+      "name": "Dreamcore Landing",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(22).webp",
+      "width": 640,
+      "height": 468,
+      "frames": 73,
+      "durationMs": 4891
+    },
+    {
+      "file": "flow.webp",
+      "name": "Future-State",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(20).webp",
+      "width": 640,
+      "height": 470,
+      "frames": 75,
+      "durationMs": 5025
+    },
+    {
+      "file": "terrain.webp",
+      "name": "Interactive Discovery",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(7).webp",
+      "width": 640,
+      "height": 474,
+      "frames": 75,
+      "durationMs": 5025
+    },
+    {
+      "file": "air.webp",
+      "name": "Pureflow",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(26).webp",
+      "width": 640,
+      "height": 468,
+      "frames": 75,
+      "durationMs": 5025
+    },
+    {
+      "file": "beauty.webp",
+      "name": "Beauty Store",
+      "original": "https://pub-86dc5b5484314368ac5436a674b0d919.r2.dev/hero%20sections/animated%20(77).webp",
+      "width": 366,
+      "height": 640,
+      "frames": 73,
+      "durationMs": 4891
+    }
+  ],
+  "previews": "Original WebPs unchanged; still posters and native-dialog MP4 conversions provided. New MP4 frame rates match average WebP frame duration."
+}
