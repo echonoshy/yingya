@@ -298,8 +298,8 @@ impl CodexClient {
                 json!({
                     "model": model,
                     "cwd": cwd,
-                    "approvalPolicy": "on-request",
-                    "sandbox": "workspace-write",
+                    "approvalPolicy": "never",
+                    "sandbox": "danger-full-access",
                     "ephemeral": !persist,
                     "serviceName": "yingya"
                 }),
@@ -489,7 +489,11 @@ impl CodexClient {
 
         let mut params = json!({
             "threadId": thread_id,
-            "input": input
+            "input": input,
+            // Override persisted permissions too: existing projects must receive
+            // the same full access as newly created conversations.
+            "approvalPolicy": "never",
+            "sandboxPolicy": { "type": "dangerFullAccess" }
         });
         if let Some(model) = options.model {
             params["model"] = json!(model);
@@ -512,7 +516,7 @@ impl CodexClient {
             let mut loaded = self.loaded_threads.lock().await;
             if !loaded.contains(thread_id) {
                 self.request("thread/resume", json!({
-                    "threadId": thread_id, "approvalPolicy": "on-request", "sandbox": "workspace-write"
+                    "threadId": thread_id, "approvalPolicy": "never", "sandbox": "danger-full-access"
                 })).await?;
                 loaded.insert(thread_id.to_owned());
             }
@@ -919,6 +923,12 @@ fn spawn_app_server(
     );
     command
         .arg("app-server")
+        // Codex runs with full access inside Yingya's per-user OS sandbox.
+        // Keep Sandbox::command above as the filesystem/network boundary.
+        .arg("-c")
+        .arg("approval_policy=\"never\"")
+        .arg("-c")
+        .arg("sandbox_mode=\"danger-full-access\"")
         .arg("-c")
         .arg(format!(
             "sandbox_workspace_write.network_access={}",
@@ -1031,6 +1041,94 @@ fn turn_user_input(prompt: &str, images: &[PathBuf]) -> Vec<Value> {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[tokio::test]
+    async fn full_access_applies_to_new_ephemeral_loaded_and_resumed_threads() {
+        use std::os::unix::fs::PermissionsExt;
+        let root =
+            std::env::temp_dir().join(format!("yingya-codex-permissions-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("auth.json"), "{}").unwrap();
+        let script = root.join("mock.py");
+        std::fs::write(&script, r#"#!/usr/bin/python3
+import json,sys,pathlib
+def send(x):print(json.dumps(x),flush=True)
+for line in sys.stdin:
+ r=json.loads(line); method=r.get('method'); p=r.get('params',{})
+ if 'id' not in r:continue
+ pathlib.Path('requests').open('a').write(json.dumps(r)+'\n')
+ error=None
+ if method=='initialize':
+  if 'approval_policy="never"' not in sys.argv or 'sandbox_mode="danger-full-access"' not in sys.argv:error='process defaults missing'
+ elif method in ('thread/start','thread/resume','turn/start'):
+  if p.get('approvalPolicy')!='never':error='approval would block execution'
+  if method=='turn/start':
+   if p.get('sandboxPolicy')!={'type':'dangerFullAccess'}:error='turn retains old sandbox'
+  elif p.get('sandbox')!='danger-full-access':error='thread retains old sandbox'
+ if error:
+  send({'id':r['id'],'error':{'code':-1,'message':error}});continue
+ if method=='thread/start':send({'id':r['id'],'result':{'thread':{'id':'ephemeral' if p['ephemeral'] else 'persisted'}}})
+ elif method=='turn/start':
+  send({'id':r['id'],'result':{'turn':{'id':'turn'}}})
+  send({'method':'turn/completed','params':{'threadId':p['threadId'],'turn':{'id':'turn','status':'completed'}}})
+ else:send({'id':r['id'],'result':{}})
+"#).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let client = CodexClient::spawn(CodexConfig {
+            binary: script,
+            home: root.clone(),
+            workspace: root.clone(),
+            model: "test".into(),
+            network_access: false,
+            sandbox: None,
+            accounting: None,
+            hyperframes_browser: None,
+            video_agent_skill: None,
+            turn_timeout: Duration::from_secs(10),
+        })
+        .await
+        .unwrap();
+        let thread = client.start_thread().await.unwrap();
+        client.start_ephemeral_thread_at(&root, None).await.unwrap();
+        // A loaded thread skips resume, so turn/start must still override policy.
+        client
+            .run_turn(&thread.thread_id, "continue", &[], TurnOptions::default())
+            .await
+            .unwrap();
+        client.restart().await.unwrap();
+        client
+            .run_turn(
+                &thread.thread_id,
+                "continue after restart",
+                &[],
+                TurnOptions::default(),
+            )
+            .await
+            .unwrap();
+        let requests: Vec<Value> = std::fs::read_to_string(root.join("requests"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let methods: Vec<_> = requests
+            .iter()
+            .map(|r| r["method"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            methods,
+            [
+                "initialize",
+                "thread/start",
+                "thread/start",
+                "turn/start",
+                "initialize",
+                "thread/resume",
+                "turn/start"
+            ]
+        );
+        client._child.lock().await.kill().await.unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn overload_backoff_is_bounded_and_increases() {
