@@ -1,6 +1,7 @@
 import { useAutosizeTextarea } from "../hooks/useAutosizeTextarea";
 import { createClientRequestId } from "../requestId";
 import { ComposerForm } from "./ComposerForm";
+import { ProjectVisualStyle } from "./VisualStylePicker";
 import { SelectionIndicator } from "./SelectionIndicator";
 import { ArtifactList } from "./ArtifactList";
 import { AssetPicker } from "./AssetPicker";
@@ -283,6 +284,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "用对话调整内容、画面与节奏"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
       <section className="timeline" aria-label="创作消息" tabIndex={0} ref={timelineRef} onScroll={onScroll}><div className="timeline-inner" ref={contentRef}>
+        <ProjectVisualStyle style={project.visualStyle}/>
         {syncFailed || submissionSyncFailed || stalled || connectionState === "disconnected" ? <ConnectionNotice syncFailed={syncFailed || submissionSyncFailed} stalled={stalled} onRetry={() => void resync()}/> : null}
         <ConversationFeed projectId={project.id} entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
@@ -414,7 +416,7 @@ function ActivityFeed({ activities }: { activities: TimelineActivity[] }) {
 
 function ActivityRow({ activity }: { activity: TimelineActivity }) {
   if (activity.kind === "assistant") return <article className="agent-update"><p>{activity.summary}</p>{activity.status === "running" ? <CircleNotch className="spin"/> : null}</article>;
-  if (activity.kind === "request" && activity.event) return <section className="activity-request"><header><Warning/><b>{activity.title}</b></header><RequestControls event={activity.event}/></section>;
+  if (activity.kind === "request" && activity.event && activity.status === "waiting") return <section className="activity-request"><header><Warning/><b>{activity.title}</b></header><RequestControls event={activity.event}/></section>;
   const icon = activity.kind === "command" ? <Terminal/> : activity.kind === "file" ? <File/> : activity.kind === "plan" ? <Check/> : activity.kind === "system" ? <Warning/> : <Code/>;
   const statusLabel = activity.status === "running" ? "进行中" : activity.status === "waiting" ? "自动重试中" : activity.status === "failed" ? "失败" : activity.status === "interrupted" ? "已中断" : "完成";
   return <div className={`activity-item activity-item--${activity.status}`} role={activity.kind === "system" ? "status" : undefined}><div className="activity-item-content"><span className="activity-icon" key={activity.status}>{activity.status === "running" ? <CircleNotch className="spin"/> : activity.status === "failed" ? <Warning/> : activity.status === "completed" ? <Check/> : icon}</span><b>{activity.status === "failed" ? `${activity.title}失败` : activity.title}</b>{activity.summary ? <em>{activity.summary}</em> : null}<small>{statusLabel}</small></div></div>;
@@ -428,7 +430,7 @@ function RequestControls({ event }: { event: AgentEvent }) {
   if (event.method.includes("permissions/requestApproval")) return <div className="request-controls"><p>{String(params.reason ?? "Codex 请求临时扩展项目权限。")}</p><div><button onClick={() => void respond({ scope: "turn", permissions: params.permissions ?? {} })}>仅本次允许</button><button onClick={() => void respond({ permissions: {} })}>拒绝</button></div>{error ? <small>{error}</small> : null}</div>;
   if (event.method.includes("elicitation/request")) return <div className="request-controls"><p>{String(params.message ?? "外部工具请求输入；请先检查原始事件中的表单结构。")}</p><div><button onClick={() => void respond({ action: "decline", content: null })}>拒绝请求</button><button onClick={() => void respond({ action: "cancel", content: null })}>取消工具</button></div>{error ? <small>{error}</small> : null}</div>;
   if (event.method === "execCommandApproval" || event.method === "applyPatchApproval") return <div className="request-controls"><p>{String(params.reason ?? "Codex 请求执行受限操作。")}</p><div><button onClick={() => void respond({ decision: "allow" })}>允许</button><button onClick={() => void respond({ decision: "deny" })}>拒绝</button></div>{error ? <small>{error}</small> : null}</div>;
-  return <div className="request-controls"><p>{String(params.reason ?? "Codex 请求执行项目范围外的操作，请检查原始事件后决定。")}</p><div><button onClick={() => void respond({ decision: "accept" })}>仅本次允许</button><button onClick={() => void respond({ decision: "decline" })}>拒绝</button></div>{error ? <small>{error}</small> : null}</div>;
+  return <div className="request-controls"><p>{String(params.reason ?? "此操作需要你的批准。")}</p><div><button onClick={() => void respond({ decision: "accept" })}>仅本次允许</button><button onClick={() => void respond({ decision: "decline" })}>拒绝</button></div>{error ? <small>{error}</small> : null}</div>;
 }
 
 function CheckpointCard({ title, summary, busy, confirming, onPreview, onConfirm }: { title: string; summary: string; busy: boolean; confirming: boolean; onPreview?: () => void; onConfirm: () => void }) {

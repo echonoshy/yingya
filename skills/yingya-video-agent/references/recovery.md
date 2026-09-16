@@ -2,6 +2,8 @@
 
 ## Resume from evidence
 
+Legacy `.yingya/reports/delivery-audit.json` is diagnostic history, not a mandatory gate. Confirm actual defects before repeating work. If media is confirmed broken: preserve the original, repair the actual source/timeline, rerun checks and render a new immutable version. Reuse valid narration and assets, but never reuse a failed render or copy an old report to certify changed source. A previous export command succeeding does not mean delivery passed.
+
 If the root manifest is `briefing` but composition or render files exist, treat them as unapproved recovery material. Inspect without continuing production; prepare `.yingya/plan.md`, register a `plan_review` checkpoint, and preserve the files. Do not present existing media as approved merely because it exists. Honor explicit prior user approval if the conversation proves it and reconcile the manifest accordingly.
 
 For interrupted or timed-out quality commands:
@@ -12,7 +14,7 @@ For interrupted or timed-out quality commands:
 4. Probe an expected existing video with `ffprobe` and verify it belongs to the checked source and requested render settings. File existence alone is insufficient.
 5. Resume only the incomplete stage: narration, alignment, scene build, quality check, render, or version registration. Never regenerate a passing render solely because the command client stopped waiting.
 
-Start long checks and renders through an execution path that yields and can be polled. Allow up to ten minutes for healthy work that continues producing progress. A client wait limit is `incomplete` until the process exits or valid output proves the result. A renderer failure is not permission to mark a draft ready.
+Start checks and renders through the durable production runner described in `runtime-tools.md`. A client wait window ending means the process is still running: poll its session or recorded job and continue the same task. Do not turn a wait window, empty log, or finished JavaScript wrapper into a workflow interruption. The runner has a separate execution deadline and records actual exits, cancellation, and failures. A renderer failure is not permission to mark a draft ready.
 
 ## Immutable drafts
 

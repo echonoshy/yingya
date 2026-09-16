@@ -8,6 +8,7 @@ export const codexModelSchema = z.object({
   supportedReasoningEfforts: z.array(reasoningEffortOptionSchema), defaultReasoningEffort: z.string(), isDefault: z.boolean(),
 });
 export const projectRecordSchema = z.object({
+  visualStyle: z.object({ id: z.string(), version: z.number().int().positive(), name: z.string() }).nullish(),
   posterUrl: z.string().optional(),
   workflowStatus: z.enum(["active", "review", "ready", "completed", "failed"]).optional(), workflowLabel: z.string().optional(),
   id: z.string(), title: z.string(), status: z.string(), statusLabel: z.string(), threadId: optionalString, activeTurnId: optionalString,

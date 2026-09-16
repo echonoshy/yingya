@@ -2,6 +2,8 @@
 
 ## Establish one scene language
 
+For a project with `.yingya/visual-style-kit.json`, use the saved style and the `style/` reference files installed after approval. If explicit user authorization bypassed the UI confirmation button, materialize those reference files from the saved kit only after that authorization, without overwriting existing edits. Reuse `style/tokens.css` and `style/scenes.css`; adapt `style/scene.html` and the `yingyaStyleEntrance` GSAP helper in `style/motion.js` to the real story. Replace all sample text, choose content-appropriate scene structures, and vary composition by narrative role. Set `--frame-width` and `--frame-height` to the output size, add `ys-portrait` for square/portrait scenes, and verify Chinese fonts. Apply scene-specific motion times rather than repeating the demonstration verbatim. Keep project edits in `DESIGN.md` and CSS; the initial style is not permission to override user changes. Review actual frames against the saved palette, typography, composition and motion rules, then fix concrete deviations.
+
 Reuse the app-provided `index.html` scaffold after plan confirmation; inspect it before editing. Do not reinitialize the project or overwrite a working entry. Create `DESIGN.md` from the approved plan with shared typography, colors, scene layout rules, motion timing, transitions, caption safe areas, and audio levels. Centralize these choices in composition styles / shared source.
 
 For complex work, choose one representative difficult scene for early internal inspection. Resolve text readability, image treatment, and motion rhythm before expanding it across the film. Small/simple videos can proceed directly to the assembled draft. This does not require another user approval or a separate rendered video.
@@ -16,6 +18,7 @@ For narration-led videos:
 2. Read `.yingya/voice.json`. Use its exact `voiceId` in every VoxCPM2 call, including retries and revisions. Check the saved voice is available; a missing voice is not permission to substitute another.
 3. Synthesize by scene or natural sentence group, retaining consistent settings and tone. Reuse existing audio only when text, voice, and synthesis settings match. Use versioned filenames so earlier drafts retain their original audio.
 4. Measure each output with `ffprobe`. Record scene-local audio paths and measured durations in the scene fields. Use actual speech duration plus intentional pauses to set scene ends; never truncate a sentence to fit an earlier estimate.
+   Generate HTML audio start/duration and scene windows from these same fields. Ordinary section nesting does not add the section start to an audio element's zero start. Only real sub-composition offsets are inherited. For a single full narration track, obtain sentence/scene offsets from the recording before setting visual cuts; never keep estimated cuts and label them measured.
 5. Derive captions from the resulting audio using an installed alignment / transcription capability. Check recognized text against the script. If only manual sentence alignment is available, describe it accurately and verify it by listening; do not claim word-level alignment.
 6. Keep caption times scene-local until assembly, then add the scene offset exactly once. Recompute offsets after duration changes. Hold the ending until narration and captions finish.
 
@@ -31,9 +34,11 @@ Independent media preparation can run concurrently when tools support it; integr
 
 ## Review evidence
 
-The unified `hyperframes check --snapshots --json` is the final technical gate. Use installed CLI help for supported flags. Where default sampling misses a short scene or critical transition, use explicit timestamps / transition sampling. Review the opening, scene midpoints, important transitions, caption-dense frames, and ending; use additional snapshots only to close a specific coverage gap.
+The unified `hyperframes check --snapshots --json` is the final technical gate. Invoke it through `python3 "$YINGYA_PRODUCTION_TASK" check` with the current request ID and report path (see `runtime-tools.md`); use the same runner's `render` command for draft rendering. It preserves command status and separates JSON from stderr. Use installed CLI help for supported flags. Where default sampling misses a short scene or critical transition, use explicit timestamps / transition sampling. Review the opening, scene midpoints, important transitions, caption-dense frames, and ending; use additional snapshots only to close a specific coverage gap.
 
 Technical success is not narrative approval. Review frames for hierarchy, safe areas, continuity, and legibility. Listen to narration and inspect caption sync; check music does not mask words. Probe the rendered draft for actual duration, dimensions, fps, and expected audio streams. Keep specific evidence and limitations with the draft. Do not add a numeric aesthetic score or iterate without a concrete defect. If the same failure persists after two targeted repairs, stop repeating the operation, preserve failed evidence, and report the blocker and reusable work without registering a passing draft.
+
+Check each gate's enabled state and actual samples, not only top-level `ok`. For animation, repair invalid motion assertions using the installed CLI schema; deleting the assertion file is not a repair. Preserve scene, asset, style, font and audio dependencies inside the immutable version.
 
 ## Revision dependency table
 

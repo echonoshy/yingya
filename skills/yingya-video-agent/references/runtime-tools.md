@@ -62,6 +62,42 @@ Playwright can help distinguish a source error from HyperFrames bundling behavio
 
 ## Audio and command results
 
+For every shell tool, preserve the full result: `text(await tools.exec_command(...))`,
+not `text(result.output)`. A `session_id` with no `exit_code` is still running.
+Poll that same session with `write_stdin` and preserve its entire result too.
+`functions.exec` finishing refers to the wrapper, not a yielded child process.
+No output for 30 seconds does not mean failure, completion, or a need to stop.
+
+Use the durable runner for production checks/renders (REQUEST is the current
+request ID supplied in the turn). Paths are relative to the project root:
+
+```sh
+python3 "$YINGYA_PRODUCTION_TASK" check --request-id REQUEST --source . --output .yingya/reports/check-draft-N.json --continue-workflow
+python3 "$YINGYA_PRODUCTION_TASK" render --request-id REQUEST --source . --output renders/draft-N.mp4 --quality high --resolution landscape --fps 30 --continue-workflow
+python3 "$YINGYA_PRODUCTION_TASK" status --request-id REQUEST
+```
+
+Pass extra supported check options after `--`. The runner prints a job ID before
+starting work, saves stdout/stderr separately, and publishes complete JSON/video
+atomically. Poll the original shell session; if its handle was lost, query `status`.
+`busy` means wait for the recorded job. A passed check is reusable only when source,
+dependencies, options, and output hashes match. The runner refuses to overwrite an
+unrelated existing output: retain it and choose a new report/video filename.
+Never redirect stderr into the report or use `; echo` to replace a failure exit code.
+Use `--continue-workflow` only when the user authorized completing production;
+omit it for diagnosis, explanation, or a check-only request. It permits bounded
+continuation of the original request, never expansion into another task.
+
+At an actual blocker or a question requiring the user, save
+`.yingya/turn-result.json` as
+`{"requestId":"REQUEST","disposition":"needs_input","reason":"具体缺失信息"}`
+(or disposition `blocked` for an execution blocker). This prevents automatic
+continuation. Do not write a blocker for a yielded command: keep polling it.
+Complete a real plan/draft checkpoint when review is required; never use an
+automatic continuation to bypass user approval. The backend can continue at most
+two extra rounds when new successful execution evidence arrives, within this same
+authorized request. It never treats that evidence as approval or media quality.
+
 Yingya does not limit media generation by count. Token limits and disabled-account
 checks still apply. Reuse valid existing narration on retries and visual-only
 edits; unlimited counts do not make repeated synthesis useful.

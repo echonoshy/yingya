@@ -164,6 +164,10 @@ impl Sandbox {
                 "YINGYA_RUNTIME_TOOLS",
                 self.resources.join("runtime/agent-tools.mjs"),
             )
+            .env(
+                "YINGYA_PRODUCTION_TASK",
+                self.resources.join("runtime/production-task.py"),
+            )
             .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
             .env("HYPERFRAMES_SKIP_SKILLS", "1")
             .env("CODEX_HOME", self.root.join("runtime/codex-home"))
@@ -195,7 +199,7 @@ impl Sandbox {
             "当前沙箱没有可用的 Chromium 入口，Browser 专用工具也未提供。不要尝试默认 Chrome/Playwright 路径、安装浏览器或反复运行截图命令。网页文本改用 Python requests/BeautifulSoup 或 Node.js fetch；图片检查用 Pillow，视频信息用 ffprobe/ffmpeg。可做静态检查，但无法宣称浏览器预览或渲染通过；需要渲染时报告具体缺失能力。"
         };
         format!(
-            "\n运行工具说明（当前用户沙箱）：{python}\n{browser}\n当前中继未接通内置网页搜索和 Apps 连接器，已停用这些工具。网页资料用 Python requests/BeautifulSoup 或 Node.js fetch 读取已知官方页面；需要搜索才能找到来源时如实说明限制，不编造来源。\n详细用法见 yingya-video-agent 的 references/runtime-tools.md。"
+            "\n运行工具说明（当前用户沙箱）：{python}\n{browser}\n执行工具必须返回完整结果：functions.exec 中使用 text(await tools.exec_command(...))，不能只输出 r.output。session_id 表示命令仍在运行，使用 write_stdin 轮询同一 session_id，直到获得 exit_code；等待窗口结束、空日志、Script completed 都不是命令完成或超时的证据。不要因此结束制作任务。检查和渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\"，用当前请求编号登记任务，按 references/runtime-tools.md 查询已有任务，不启动重复进程。\n当前中继未接通内置网页搜索和 Apps 连接器，已停用这些工具。网页资料用 Python requests/BeautifulSoup 或 Node.js fetch 读取已知官方页面；需要搜索才能找到来源时如实说明限制，不编造来源。\n详细用法见 yingya-video-agent 的 references/runtime-tools.md。"
         )
     }
 }

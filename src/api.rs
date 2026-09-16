@@ -25,6 +25,7 @@ use crate::config::AppPaths;
 use crate::feedback::{self, FeedbackAsset};
 use crate::heygen::{HeyGenAudioSearchResponse, HeyGenClient, HeyGenError};
 use crate::model_settings::validate_model_settings;
+use crate::production_jobs::{self, ContinuationJournal, ProductionJob};
 use crate::render_jobs::{RenderJob, RenderJobStatus, RenderJobStore};
 use crate::studio_sessions::{StudioSession, StudioSessionManager};
 use crate::voices::{UploadedVoice, VoiceClient, VoiceError, VoiceList};
@@ -1335,7 +1336,19 @@ async fn ensure_hyperframes_scaffold(
         .agent_projects
         .project_dir(project_id)
         .map_err(ApiError::Project)?;
-    write_hyperframes_scaffold(&project_dir, project_id, aspect_ratio, output_spec).await
+    let mut style_files = crate::visual_styles::install(&project_dir).await?;
+    match write_hyperframes_scaffold(&project_dir, project_id, aspect_ratio, output_spec).await {
+        Ok(files) => {
+            style_files.extend(files);
+            Ok(style_files)
+        }
+        Err(error) => {
+            for path in style_files {
+                let _ = fs::remove_file(path).await;
+            }
+            Err(error)
+        }
+    }
 }
 
 async fn write_hyperframes_scaffold(
@@ -1377,12 +1390,18 @@ async fn write_hyperframes_scaffold(
         }))
         .map_err(|error| ApiError::External(error.to_string()))?
     );
+    let style_links = if project_dir.join("style/tokens.css").is_file() {
+        "<link rel=\"stylesheet\" href=\"style/tokens.css\"><link rel=\"stylesheet\" href=\"style/scenes.css\"><script src=\"style/motion.js\"></script>"
+    } else {
+        ""
+    };
     let html = format!(
         r#"<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width={width}, height={height}" />
+    {style_links}
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       * {{ box-sizing: border-box; }}
@@ -1680,7 +1699,7 @@ async fn run_render_job(
             verify_render_output(&output_path).await?;
             return Ok(());
         }
-        preflight_render_source(&state, &project_id, &job_id, &version, &source_dir).await?;
+        preflight_render_source(&state, &project_id, &job_id, &source_dir).await?;
         update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
             job.progress = 12;
             job.message = "正在捕获 HyperFrames 画面".to_owned();
@@ -1874,7 +1893,6 @@ async fn preflight_render_source(
     state: &AppState,
     project_id: &str,
     job_id: &str,
-    version: &agent_projects::DraftVersion,
     source_dir: &FilePath,
 ) -> Result<(), String> {
     reject_source_symlinks(source_dir).await?;
@@ -1894,15 +1912,6 @@ async fn preflight_render_source(
             }
             Err(error) => return Err(error.to_string()),
         }
-    }
-
-    if version_report_is_reusable(state, project_id, version, source_dir).await {
-        update_render_job(state, project_id, job_id, "render/progress", |job| {
-            job.progress = 10;
-            job.message = "已复用草稿版本的通过检查".to_owned();
-        })
-        .await?;
-        return Ok(());
     }
 
     let project_dir = state.agent_projects.project_dir(project_id)?;
@@ -1951,62 +1960,6 @@ fn reject_source_symlinks(
         }
         Ok(())
     })
-}
-
-async fn version_report_is_reusable(
-    state: &AppState,
-    project_id: &str,
-    version: &agent_projects::DraftVersion,
-    source_dir: &FilePath,
-) -> bool {
-    let Some(relative_report) = version.report_path.as_deref() else {
-        return false;
-    };
-    let Ok(report_path) = state
-        .agent_projects
-        .resolve_relative(project_id, relative_report)
-    else {
-        return false;
-    };
-    let Ok(report_bytes) = fs::read(&report_path).await else {
-        return false;
-    };
-    let Ok(report) = serde_json::from_slice::<Value>(&report_bytes) else {
-        return false;
-    };
-    if report.get("ok").and_then(Value::as_bool) != Some(true) {
-        return false;
-    }
-    let Some(report_dir) = report_path.parent() else {
-        return false;
-    };
-    let Ok(fingerprint_bytes) = fs::read(report_dir.join("source-fingerprint.json")).await else {
-        return false;
-    };
-    let Ok(fingerprint) = serde_json::from_slice::<Value>(&fingerprint_bytes) else {
-        return false;
-    };
-    for name in ["index.html", "index.motion.json"] {
-        let path = source_dir.join(name);
-        let expected = fingerprint
-            .pointer(&format!("/files/{name}"))
-            .and_then(Value::as_str);
-        let exists = fs::try_exists(&path).await.unwrap_or(false);
-        let (true, Some(expected)) = (exists, expected) else {
-            if !exists && expected.is_none() {
-                continue;
-            }
-            return false;
-        };
-        let Ok(bytes) = fs::read(path).await else {
-            return false;
-        };
-        let actual = format!("{:x}", Sha256::digest(bytes));
-        if actual != expected {
-            return false;
-        }
-    }
-    true
 }
 
 async fn run_preflight_command(
@@ -3301,7 +3254,11 @@ async fn run_agent_turn(
         "用户请求：{}{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 HyperFrames 核心能力或说明 fallback。",
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
-    let prompt = format!("{prompt}{}", feedback::prompt_context(&queued.feedback));
+    let prompt = format!(
+        "{prompt}{}{}",
+        feedback::prompt_context(&queued.feedback),
+        crate::visual_styles::prompt_note(project.visual_style.as_ref())
+    );
     let prompt = if state.heygen.is_configured() {
         prompt
     } else {
@@ -3311,11 +3268,15 @@ async fn run_agent_turn(
     };
     let prompt = if queued.recovery {
         format!(
-            "这是一次经用户确认的中断恢复。先读取已有对话、项目 manifest、检查点、文件及外部任务记录，核对已完成工作，只继续缺失步骤。已完成的生成、付费调用和导出不得重复执行；外部请求结果不明确且无法查询时停止并说明需要核对的信息。以下是原始任务：\n{prompt}"
+            "这是一次经用户确认的中断恢复。先读取已有对话、项目 manifest、检查点、文件及外部任务记录，核对已完成工作，只继续缺失步骤。旧的 .yingya/reports/delivery-audit.json 仅作历史诊断参考，不是交付门槛；不要据此暂停任务或要求恢复。复用有效素材和旁白，修复失败原因后必须重新检查受影响的源文件并重新渲染，不得仅复制旧报告或补登记版本。只有已经通过验收且输入未变的生成、付费调用和导出才不得重复执行；外部请求结果不明确且无法查询时停止并说明需要核对的信息。以下是原始任务：\n{prompt}"
         )
     } else {
         prompt
     };
+    let prompt = format!(
+        "{prompt}\n当前请求编号：{}。本轮检查和渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\" 并传 --request-id {}。等待原命令结束，保存完整结果后完成原任务。若确实需要用户输入或遇到阻塞，按 references/runtime-tools.md 写入当前请求的 .yingya/turn-result.json 并说明具体原因。",
+        queued.id, queued.id
+    );
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Value>();
     let event_store = state.agent_projects.clone();
     let event_bus = state.agent_events.clone();
@@ -3390,7 +3351,7 @@ async fn run_agent_turn(
             },
         )
         .await;
-    let result = match result {
+    let mut result = match result {
         Err(error) if is_thread_not_found(&error) && !cancellation.is_cancelled() => {
             let project_dir = match state.agent_projects.project_dir(project_id) {
                 Ok(path) => path,
@@ -3449,6 +3410,219 @@ async fn run_agent_turn(
         }
         result => result,
     };
+    // A model round ending is not proof that its local production work ended.
+    // Keep this logical request active while waiting and during bounded follow-ups.
+    let project_dir = state
+        .agent_projects
+        .project_dir(project_id)
+        .expect("validated project");
+    let mut recovery_reason = None;
+    let mut journal = ContinuationJournal::load(&project_dir, &queued.id);
+    let mut last_job_status = String::new();
+    loop {
+        let Ok(turn) = &mut result else {
+            break;
+        };
+        if cancellation.is_cancelled() {
+            let _ = production_jobs::cancel(&project_dir, &queued.id);
+            result = Err(CodexError::TurnInterrupted(turn.turn_id.clone()));
+            break;
+        }
+        let manifest = state
+            .agent_projects
+            .manifest(project_id)
+            .await
+            .unwrap_or_default();
+        let workflow = validate_completed_workflow(state, project_id, &manifest).await;
+        let paused = state
+            .agent_projects
+            .read_project(project_id)
+            .await
+            .map_or(true, |record| record.queue_paused);
+        let pause_reason = production_jobs::pause_reason(&project_dir, &queued.id);
+        if !production_jobs::eligible(
+            &manifest.phase,
+            workflow.needs_recovery,
+            paused,
+            turn.execution.requested_input,
+        ) || pause_reason.is_some()
+        {
+            recovery_reason = pause_reason;
+            break;
+        }
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1200);
+        let jobs = loop {
+            let jobs = match read_production_jobs(&project_dir, &queued.id).await {
+                Ok(jobs) => jobs,
+                Err(error) => {
+                    recovery_reason = Some(format!("无法核对执行记录：{error}"));
+                    break None;
+                }
+            };
+            let job_status = serde_json::to_string(&jobs).unwrap_or_default();
+            if !jobs.is_empty() && job_status != last_job_status {
+                let _ = event_tx.send(json!({"method":"project/productionJobs","params":{
+                    "threadId":thread_id,"turnId":turn.turn_id,"requestId":queued.id,"jobs":jobs
+                }}));
+                last_job_status = job_status;
+            }
+            let managed_running = jobs
+                .iter()
+                .any(|job| matches!(job.status.as_str(), "running" | "publishing"));
+            let unmanaged_running = jobs.is_empty()
+                && turn
+                    .execution
+                    .commands
+                    .values()
+                    .any(|item| production_command(item) && item["status"] == "inProgress");
+            if !managed_running && !unmanaged_running {
+                break Some(jobs);
+            }
+            if tokio::time::Instant::now() >= deadline {
+                recovery_reason = Some("等待原检查或渲染结束已达 20 分钟，尚未确认结果。执行记录和日志已保留，请查询原任务后继续。".into());
+                break None;
+            }
+            let _ = state
+                .agent_projects
+                .update_project(project_id, |record| {
+                    if record.status == "running" {
+                        record.status_label = "正在等待检查或渲染完成".into();
+                    }
+                })
+                .await;
+            emit_agent_state_event(
+                state,
+                project_id,
+                Some(queued.id.clone()),
+                "project/updated",
+            )
+            .await;
+            tokio::select! {
+                _ = cancellation.cancelled() => {
+                    let _ = production_jobs::cancel(&project_dir, &queued.id);
+                    break None;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+            }
+            if unmanaged_running {
+                let reconciled = tokio::select! {
+                    _ = cancellation.cancelled() => break None,
+                    result = state.codex.reconcile_execution(turn) => result,
+                };
+                if let Err(error) = reconciled {
+                    recovery_reason = Some(format!(
+                        "原命令仍未确认结束，无法读取最终状态：{error}。未重复启动该命令。"
+                    ));
+                    break None;
+                }
+            }
+        };
+        if cancellation.is_cancelled() {
+            let _ = production_jobs::cancel(&project_dir, &queued.id);
+            result = Err(CodexError::TurnInterrupted(turn.turn_id.clone()));
+            break;
+        }
+        let Some(jobs) = jobs else {
+            break;
+        };
+        // An earlier failure must not veto a later targeted successful repair.
+        if let Some(job) = jobs.last()
+            && matches!(job.status.as_str(), "failed" | "lost" | "cancelled")
+        {
+            recovery_reason = Some(format!(
+                "{}\n执行记录：.yingya/production-jobs/{}.json\n诊断日志：{}；{}",
+                job.message, job.id, job.stderr, job.stdout
+            ));
+            break;
+        }
+        let mut evidence = production_jobs::successful_evidence(&jobs);
+        let commands: Vec<Value> = turn.execution.commands.values().filter(|item| production_command(item))
+            .map(|item| json!({"command":item["command"],"status":item["status"],"exitCode":item["exitCode"],
+                "output":item["aggregatedOutput"].as_str().unwrap_or_default().chars().take(6000).collect::<String>()})).collect();
+        if jobs.is_empty() && queued.recovery {
+            for command in &commands {
+                if command["status"] == "completed" && command["exitCode"] == 0 {
+                    evidence.push(format!(
+                        "command:{:x}",
+                        Sha256::digest(command.to_string().as_bytes())
+                    ));
+                }
+            }
+        }
+        let reserved = journal
+            .as_mut()
+            .map_err(|e| e.clone())
+            .and_then(|journal| journal.reserve(&project_dir, &queued.id, evidence));
+        match reserved {
+            Ok(true) => {}
+            Ok(false) => {
+                if journal.as_ref().is_ok_and(|j| j.attempts > 0) {
+                    recovery_reason = Some("自动接续后尚未形成新的完成结果，已停止重复尝试。现有检查、视频和执行日志已保留。".into());
+                }
+                break;
+            }
+            Err(error) => {
+                recovery_reason = Some(format!("无法登记自动接续：{error}"));
+                break;
+            }
+        }
+        let attempt = journal.as_ref().expect("reserved journal").attempts;
+        let _ = state
+            .agent_projects
+            .update_project(project_id, |record| {
+                if record.status == "running" {
+                    record.status_label =
+                        format!("检查或渲染已有结果，正在继续收尾（{attempt}/2）");
+                }
+            })
+            .await;
+        let _ = event_tx.send(json!({"method":"project/productionContinuation","params":{
+            "threadId":thread_id,"turnId":turn.turn_id,"requestId":queued.id,"attempt":attempt,
+            "jobs":jobs,"commands":commands
+        }}));
+        emit_agent_state_event(
+            state,
+            project_id,
+            Some(queued.id.clone()),
+            "project/updated",
+        )
+        .await;
+        let continuation = format!(
+            "继续当前请求 {} 的未完成步骤（自动接续 {attempt}/2）。这是同一用户任务，不是新需求。原执行结果已核对如下；命令退出成功仅表示执行结束，不等于视频验收或用户批准。\n{}\n当前 manifest 阶段：{}。先读取最新文件和报告；对于输入和输出一致的成功任务复用结果，只补齐原用户请求内的缺失步骤。检查/渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\" --request-id {}；查询原任务，不重复启动。不要重做已有旁白、付费生成或扩大原任务范围。遇到用户确认点立即停在该 checkpoint；若有具体阻塞或需要用户信息，写入本请求的 .yingya/turn-result.json，说明原因后结束。若原请求仅要求分析、解释或检查，不能自行制作或渲染。原用户请求：\n{}",
+            queued.id,
+            json!({"jobs":jobs,"commands":commands}),
+            manifest.phase,
+            queued.id,
+            queued.text
+        );
+        result = state
+            .codex
+            .run_turn(
+                &thread_id,
+                &continuation,
+                &[],
+                TurnOptions {
+                    use_imagegen: false,
+                    model: Some(queued.model.as_deref().unwrap_or(&project.model)),
+                    effort: Some(
+                        queued
+                            .reasoning_effort
+                            .as_deref()
+                            .unwrap_or(&project.reasoning_effort),
+                    ),
+                    cancellation: Some(cancellation),
+                    use_video_agent: true,
+                    event_tx: Some(event_tx.clone()),
+                },
+            )
+            .await;
+    }
+    if cancellation.is_cancelled() {
+        let _ = production_jobs::cancel(&project_dir, &queued.id);
+        if let Ok(turn) = &result {
+            result = Err(CodexError::TurnInterrupted(turn.turn_id.clone()));
+        }
+    }
     drop(event_tx);
     let observed_turn_id = event_task.await.ok().flatten();
     if result
@@ -3482,22 +3656,6 @@ async fn run_agent_turn(
                 .agent_projects
                 .update_message_status(project_id, &queued.id, "completed")
                 .await;
-            if !turn.text.trim().is_empty() {
-                let _ = state
-                    .agent_projects
-                    .append_message(
-                        project_id,
-                        AppendAgentMessage {
-                            turn_id: Some(queued.id.clone()),
-                            role: "assistant".to_owned(),
-                            text: turn.text,
-                            attachments: vec![],
-                            context: vec![],
-                            status: "completed".to_owned(),
-                        },
-                    )
-                    .await;
-            }
             let mut manifest = state
                 .agent_projects
                 .manifest(project_id)
@@ -3517,7 +3675,25 @@ async fn run_agent_turn(
                         AppendAgentMessage {
                             turn_id: Some(queued.id.clone()),
                             role: "assistant".to_owned(),
-                            text: workflow.guidance.to_owned(),
+                            text: recovery_reason
+                                .clone()
+                                .unwrap_or_else(|| workflow.guidance.to_owned()),
+                            attachments: vec![],
+                            context: vec![],
+                            status: "completed".to_owned(),
+                        },
+                    )
+                    .await;
+            }
+            if !workflow.needs_recovery && !turn.text.trim().is_empty() {
+                let _ = state
+                    .agent_projects
+                    .append_message(
+                        project_id,
+                        AppendAgentMessage {
+                            turn_id: Some(queued.id.clone()),
+                            role: "assistant".to_owned(),
+                            text: turn.text,
                             attachments: vec![],
                             context: vec![],
                             status: "completed".to_owned(),
@@ -3588,11 +3764,32 @@ async fn run_agent_turn(
     emit_agent_state_event(state, project_id, Some(queued.id), "project/updated").await;
 }
 
+fn production_command(item: &Value) -> bool {
+    let command = item["command"].as_str().unwrap_or_default();
+    // Legacy direct invocations can supply completion evidence, but status
+    // probes containing just 'hyperframes' cannot trigger model retries.
+    command.contains("hyperframes check")
+        || command.contains("hyperframes render")
+        || command.contains("production-task.py")
+        || command.contains("YINGYA_PRODUCTION_TASK")
+}
+
+async fn read_production_jobs(
+    project: &FilePath,
+    request_id: &str,
+) -> Result<Vec<ProductionJob>, String> {
+    let project = project.to_owned();
+    let request_id = request_id.to_owned();
+    tokio::task::spawn_blocking(move || production_jobs::read(&project, &request_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 struct WorkflowCompletion {
     status: &'static str,
     label: &'static str,
     needs_recovery: bool,
-    guidance: &'static str,
+    guidance: String,
 }
 
 fn apply_workflow_completion(record: &mut AgentProjectRecord, workflow: &WorkflowCompletion) {
@@ -3742,7 +3939,7 @@ fn classify_completed_workflow(
                 status: "waiting_plan",
                 label: "制作方案等待确认",
                 needs_recovery: false,
-                guidance: "",
+                guidance: "".to_owned(),
             }
         }
         "draft_review"
@@ -3750,13 +3947,14 @@ fn classify_completed_workflow(
                 && evidence.checkpoint_artifacts_valid
                 && evidence.referenced_paths_exist
                 && evidence.draft_valid
-                && evidence.draft_source_synced =>
+                && evidence.draft_source_synced
+            =>
         {
             WorkflowCompletion {
                 status: "draft_review",
                 label: "草稿等待确认",
                 needs_recovery: false,
-                guidance: "",
+                guidance: "".to_owned(),
             }
         }
         "completed" if manifest.checkpoint.is_none() && evidence.completed_video_valid => {
@@ -3764,7 +3962,7 @@ fn classify_completed_workflow(
                 status: "completed",
                 label: "高清成片已完成",
                 needs_recovery: false,
-                guidance: "",
+                guidance: "".to_owned(),
             }
         }
         "briefing"
@@ -3776,27 +3974,27 @@ fn classify_completed_workflow(
                 status: "waiting_input",
                 label: "等待补充创作信息",
                 needs_recovery: false,
-                guidance: "",
+                guidance: "".to_owned(),
             }
         }
         "production" | "final_render" if evidence.quality_report_passed => WorkflowCompletion {
             status: "incomplete",
             label: "检查已通过，草稿待封存",
             needs_recovery: true,
-            guidance: "质量检查已经通过，但草稿尚未完成封存。现有报告和视频已保留；请登记不可变版本、currentDraft 与 draft checkpoint 后提交审核。",
+            guidance: "质量检查已经通过，但草稿尚未完成封存。现有报告和视频已保留；请登记不可变版本、currentDraft 与 draft checkpoint 后提交审核。".to_owned(),
         },
         "briefing" | "plan_review" | "production" | "draft_review" | "final_render"
         | "completed" => WorkflowCompletion {
             status: "incomplete",
             label: "制作流程待收尾",
             needs_recovery: true,
-            guidance: "本次制作已停止在可恢复的中间状态，现有文件已保留。请先复用与当前源码匹配的有效检查报告和视频，只补齐缺失步骤，再完成版本与 checkpoint 登记。",
+            guidance: "本次制作已停止在可恢复的中间状态，现有文件已保留。请先复用与当前源码匹配的有效检查报告和视频，只补齐缺失步骤，再完成版本与 checkpoint 登记。".to_owned(),
         },
         _ => WorkflowCompletion {
             status: "failed",
             label: "项目状态无法识别",
             needs_recovery: true,
-            guidance: "项目 manifest 使用了无法识别的阶段，已暂停后续队列。请检查 manifest 后恢复到受支持的制作阶段。",
+            guidance: "项目 manifest 使用了无法识别的阶段，已暂停后续队列。请检查 manifest 后恢复到受支持的制作阶段。".to_owned(),
         },
     }
 }
@@ -3887,6 +4085,18 @@ async fn audit_existing_project_workflows(state: &AppState) {
             continue;
         };
         let workflow = validate_completed_workflow(state, &project.id, &manifest).await;
+        // Retire only the pause/dirty state introduced by the removed audit.
+        // Explicit interruptions and unrelated incomplete workflows remain intact.
+        let retired_audit_failure = project.status == "incomplete"
+            && project.status_label == "声画验收未通过，待修复"
+            && !workflow.needs_recovery;
+        if retired_audit_failure {
+            manifest.dirty = false;
+            let _ = state
+                .agent_projects
+                .write_manifest(&project.id, &manifest)
+                .await;
+        }
         if workflow.needs_recovery && !manifest.dirty {
             manifest.dirty = true;
             let _ = state
@@ -3898,6 +4108,9 @@ async fn audit_existing_project_workflows(state: &AppState) {
             .agent_projects
             .update_project(&project.id, |record| {
                 apply_workflow_completion(record, &workflow);
+                if retired_audit_failure && record.queue_depth == 0 {
+                    record.queue_paused = false;
+                }
             })
             .await;
     }
@@ -5235,7 +5448,7 @@ mod tests {
             status: "awaiting_confirmation",
             label: "已完成",
             needs_recovery: false,
-            guidance: "",
+            guidance: "".to_owned(),
         };
         store
             .update_project(&project.id, |record| {
@@ -5577,6 +5790,32 @@ mod tests {
         assert_eq!(result.status, "incomplete");
         assert_eq!(result.label, "检查已通过，草稿待封存");
         assert!(result.needs_recovery);
+    }
+
+    #[test]
+    fn registered_drafts_and_exports_do_not_require_heuristic_media_audit() {
+        let mut value = serde_json::to_value(agent_projects::AgentManifest::default()).unwrap();
+        value["phase"] = json!("draft_review");
+        value["checkpoint"] = json!({"id":"review", "kind":"draft", "title":"草稿", "summary":"", "artifactIds":["video"]});
+        let manifest: agent_projects::AgentManifest = serde_json::from_value(value).unwrap();
+        let evidence = WorkflowEvidence {
+            checkpoint_artifacts_valid: true,
+            draft_valid: true,
+            draft_source_synced: true,
+            completed_video_valid: true,
+            ..workflow_evidence()
+        };
+        let draft = classify_completed_workflow(&manifest, evidence);
+        assert_eq!(draft.status, "draft_review");
+        assert!(!draft.needs_recovery);
+        let completed = agent_projects::AgentManifest {
+            phase: "completed".to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            classify_completed_workflow(&completed, evidence).status,
+            "completed"
+        );
     }
 
     #[test]

@@ -8,10 +8,12 @@ mod feedback;
 mod heygen;
 mod model_relay;
 mod model_settings;
+mod production_jobs;
 mod render_jobs;
 mod runtime;
 mod sandbox;
 mod studio_sessions;
+mod visual_styles;
 mod voices;
 
 #[tokio::main]

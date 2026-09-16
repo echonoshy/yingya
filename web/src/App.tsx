@@ -1,4 +1,6 @@
 import { ComposerForm } from "./components/ComposerForm";
+import { VisualStylePicker } from "./components/VisualStylePicker";
+import { visualStyleIdSchema, visualStyleRequest } from "./visualStyles";
 import { SelectionIndicator } from "./components/SelectionIndicator";
 import { useMotionPresence } from "./hooks/useMotionPresence";
 import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, Images, MagnifyingGlass, Paperclip, Plus, Trash, X } from "@phosphor-icons/react";
@@ -93,6 +95,7 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
 function StartScreen({ accountPanel, openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { accountPanel?: ReactNode; openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
   const [prompt, setPrompt, promptSaved] = useSavedState("yingya-home-prompt", z.string(), ""); const [aspectRatio, setAspectRatio] = useSavedState("yingya-home-aspect", z.enum(["9:16", "16:9", "1:1"]), "9:16"); const [files, setFiles, fileDraftStatus] = useDraftFiles("home");
   const [settings, setSettings] = useSavedState("yingya-creation-settings", creationSettingsSchema, defaultCreationSettings);
+  const [visualStyleId, setVisualStyleId, styleSaved] = useSavedState("yingya-visual-style", visualStyleIdSchema, "auto");
   const [libraryIds, setLibraryIds] = useSavedState("yingya-home-library", z.array(z.string()), []); const [busy, setBusy] = useState(false); const [creationStage, setCreationStage] = useState<ProjectCreationStage>("creating"); const [error, setError] = useState(""); const fileRef = useRef<HTMLInputElement>(null);
   const attemptKey = useRef(userStorageKey("yingya-home-creation-attempt")).current;
   const [restoredAttempt] = useState(() => readCreationAttempt(attemptKey));
@@ -127,7 +130,8 @@ function StartScreen({ accountPanel, openingProjectId, projects, loading, openEr
     const brief = creationBrief(settings);
     const normalizedPrompt = [prompt.trim(), brief ? `创作要求：${brief}` : ""].filter(Boolean).join("\n\n");
     const fileKeys = files.map((file, index) => `${index}:${file.name}:${file.size}:${file.lastModified}:${file.type}`);
-    const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId, selection, fileKeys, libraryIds });
+    const styleInput = visualStyleRequest(visualStyleId);
+    const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId, selection, fileKeys, libraryIds, ...styleInput });
     let attempt = creationAttemptRef.current;
     if (!attempt || (!attempt.accepted && attempt.signature !== signature)) {
       attempt = newCreationAttempt(signature);
@@ -138,7 +142,7 @@ function StartScreen({ accountPanel, openingProjectId, projects, loading, openEr
       // Save before the first request, including when a response may be lost on reload.
       saveCreationAttempt(attemptKey, attempt);
       if (!attempt.projectId) {
-        const project = await api.createProject({ prompt: normalizedPrompt, clientRequestId: attempt.creationRequestId, aspectRatio, voiceId, ...selection });
+        const project = await api.createProject({ prompt: normalizedPrompt, clientRequestId: attempt.creationRequestId, aspectRatio, voiceId, ...selection, ...styleInput });
         attempt.projectId = project.id;
         saveCreationAttempt(attemptKey, attempt);
       }
@@ -212,6 +216,8 @@ function StartScreen({ accountPanel, openingProjectId, projects, loading, openEr
           <div className="composer-tools"><div><button className="icon-button" type="button" onClick={() => fileRef.current?.click()} aria-label="添加附件" title="添加图片、视频或参考文件"><Paperclip/></button><input ref={fileRef} hidden multiple type="file" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); event.target.value = ""; }}/><select aria-label="视频画幅" value={aspectRatio} onChange={event => setAspectRatio(event.target.value as typeof aspectRatio)}><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select><VoiceSelector value={voiceId} onChange={onVoice}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={(!prompt.trim() && !acceptedCreation) || busy || fileDraftStatus === "loading"} aria-label={acceptedCreation ? "继续打开任务" : "创建视频任务"} title={acceptedCreation ? "继续打开任务" : "创建视频任务"}><span>{acceptedCreation ? "继续打开任务" : "开始制作"}</span><ArrowUp weight="bold"/></button></div>
           </ComposerForm>
           {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加。</p> : files.length ? <p className="draft-save-status">{fileDraftStatus === "saved" ? "附件已保存" : "正在保存附件…"}</p> : null}
+          <VisualStylePicker value={visualStyleId} onChange={setVisualStyleId} disabled={acceptedCreation}/>
+          {!styleSaved ? <p className="form-error" role="status">风格选择未能保存到浏览器，本次制作仍会使用所选风格。</p> : null}
           <CreationSettings value={settings} onChange={setSettings} selectedIds={libraryIds} onSelect={setLibraryIds}/>
           <div className="home-starters" aria-label="创作方向"><span>从一个方向开始</span>{starterIdeas.map(idea => <button key={idea.label} type="button" onClick={() => { setPrompt(idea.prompt); startCreating(); }}>{idea.label}<ArrowRight/></button>)}</div>
           <ol className="home-workflow" id="creation-workflow" aria-label="视频制作流程">

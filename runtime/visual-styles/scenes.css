@@ -1,0 +1,55 @@
+/* Customer-video composition styles, separate from Yingya's product UI tokens.
+   Set --frame-width / --frame-height on the composition root. Sizes use cqw. */
+.ys-scene { box-sizing: border-box; container-type: size; width: var(--frame-width, 1280px); height: var(--frame-height, 720px); padding: 6%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; gap: 6%; overflow: hidden; color: var(--ys-ink); background: var(--ys-canvas); font-family: var(--ys-font); }
+.ys-scene * { box-sizing: border-box; }
+.ys-heading { align-self: center; min-width: 0; }
+.ys-eyebrow { font-size: 1.4cqw; color: var(--ys-muted); letter-spacing: .08em; }
+.ys-title { margin: 2cqw 0; font-size: 6.5cqw; line-height: 1.14; font-weight: 600; letter-spacing: 0; }
+.ys-title em { color: var(--ys-accent); font-style: normal; }
+.ys-subtitle { font-size: 1.65cqw; line-height: 1.7; color: var(--ys-muted); margin: 0; }
+.ys-story { align-self: center; display: grid; gap: 1.4cqw; min-width: 0; }
+.ys-step { position: relative; display: flex; align-items: center; gap: 1.6cqw; min-width: 0; padding: 2cqw; border: 1px solid var(--ys-line); border-radius: var(--ys-radius); background: var(--ys-surface); }
+.ys-number { flex-shrink: 0; font-size: 2.6cqw; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--ys-accent); }
+.ys-step h2 { margin: 0 0 .4cqw; font-size: 2cqw; font-weight: 600; }
+.ys-step p { margin: 0; color: var(--ys-muted); font-size: 1.35cqw; line-height: 1.7; }
+.ys-mark { display: none; }
+.ys-footer { grid-column: 1 / -1; display: flex; justify-content: space-between; border-top: 1px solid var(--ys-line); padding-top: 1.5cqw; font-size: 1.15cqw; color: var(--ys-muted); }
+[data-style-layout="product"] .ys-step { border: 0; padding: 2.5cqw; }
+[data-style-layout="technical"] .ys-step { border-left: 3px solid var(--ys-accent); }
+[data-style-layout="technical"] .ys-number { font-family: monospace; font-size: 2cqw; }
+[data-style-layout="editorial"] { grid-template-columns: 1.2fr 1fr; }
+[data-style-layout="editorial"] .ys-title { font-weight: 400; }
+[data-style-layout="editorial"] .ys-step { background: transparent; border-width: 0 0 1px; padding: 1.5cqw 0; }
+[data-style-layout="editorial"] .ys-number { font-size: 4cqw; font-style: italic; }
+[data-style-layout="diagram"] .ys-step { border: 2px solid var(--ys-line); }
+[data-style-layout="diagram"] .ys-step:not(:last-child)::after { content: ''; position: absolute; top: 100%; height: 1.5cqw; left: 3.5cqw; border-left: 2px dashed var(--ys-accent); }
+[data-style-layout="diagram"] .ys-number { border: 2px solid var(--ys-accent); border-radius: 50%; width: 4cqw; height: 4cqw; font-size: 1.8cqw; display: grid; place-items: center; }
+[data-style-layout="geometric"] { grid-template-columns: 1.15fr 1fr; }
+[data-style-layout="geometric"] .ys-title { font-size: 7cqw; font-weight: 700; }
+[data-style-layout="geometric"] .ys-step { border: 0; background: transparent; padding: 1.2cqw 0; }
+[data-style-layout="geometric"] .ys-number { background: var(--ys-ink); color: var(--ys-canvas); display: grid; place-items: center; width: 5cqw; height: 5cqw; font-size: 2.3cqw; }
+[data-style-layout="geometric"] .ys-step:nth-child(2) .ys-number { border-radius: 50%; }
+[data-style-layout="geometric"] .ys-step:nth-child(3) .ys-number { background: var(--ys-accent); }
+[data-style-layout="data"] .ys-step { border: 0; border-bottom: 1px solid var(--ys-line); border-radius: 0; background: transparent; padding: 1.6cqw 0; }
+[data-style-layout="data"] .ys-number { font-size: 4cqw; font-weight: 600; }
+[data-style-layout="data"] .ys-step > div { flex: 1; }
+[data-style-layout="data"] .ys-mark { display: block; width: .5cqw; height: 3cqw; background: var(--ys-accent); }
+@container (max-aspect-ratio: 1/1) {
+  .ys-heading { align-self: end; }
+  .ys-title { font-size: 11cqw; }
+  .ys-eyebrow { font-size: 2.6cqw; }
+  .ys-subtitle { font-size: 3cqw; }
+  .ys-story { align-self: start; gap: 3cqw; }
+  .ys-step { padding: 3cqw; gap: 3cqw; }
+  .ys-step h2 { font-size: 3.8cqw; }
+  .ys-step p { font-size: 2.8cqw; }
+  .ys-number { font-size: 5cqw; }
+  .ys-footer { font-size: 2.1cqw; }
+}
+/* Container queries cannot restyle their own container. The scaffold sets this
+   class for square/portrait output while child typography uses the query above. */
+.ys-scene.ys-portrait { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr auto; padding: 9%; gap: 6%; }
+.ys-portrait[data-style-layout="geometric"] .ys-title { font-size: 11cqw; }
+.ys-portrait[data-style-layout="geometric"] .ys-number { width: 8cqw; height: 8cqw; font-size: 4cqw; }
+.ys-portrait[data-style-layout="diagram"] .ys-number { width: 7cqw; height: 7cqw; font-size: 3cqw; }
+.ys-portrait[data-style-layout="diagram"] .ys-step:not(:last-child)::after { height: 3cqw; left: 6.5cqw; }

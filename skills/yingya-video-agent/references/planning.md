@@ -10,6 +10,8 @@ Prefer supplied assets, then suitable existing local assets, then generation whe
 
 ## One reviewable plan
 
+When `.yingya/visual-style.md` and `.yingya/visual-style-kit.json` exist, read the saved project style before planning. The kit is a versioned snapshot containing design tokens, motion settings and reusable scene source. During planning, read it as reference only; do not render or create composition HTML before approval. Describe how the selected language supports this particular story. Explicit user brand assets and later instructions override the starting style; preserve already-approved changes in `DESIGN.md`. Do not add a separate style approval gate.
+
 Write `.yingya/plan.md` with:
 
 - **Goal and audience:** what viewers should understand or do, and where they will watch.

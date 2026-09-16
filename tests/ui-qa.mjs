@@ -1308,10 +1308,48 @@ async function assertComposerFileDrop(browser) {
   }
 }
 
+async function assertVisualStyles(browser) {
+  for (const width of [1440, 390, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await installApiMock(page);
+    await page.goto(workspaceUrl);
+    await page.locator('.visual-style-open').click();
+    const dialog = page.locator('.visual-style-dialog');
+    if (await dialog.locator('.visual-style-card').count() !== 6) throw new Error('Missing style options');
+    for (let index = 0; index < 6; index++) {
+      await dialog.locator('.visual-style-card').nth(index).click();
+      await dialog.locator('video').evaluate(video => new Promise((resolve, reject) => {
+        if (video.readyState >= 1) return resolve();
+        video.addEventListener('loadedmetadata', resolve, { once: true });
+        video.addEventListener('error', () => reject(new Error('Style preview failed')), { once: true });
+      }));
+    }
+    const bounds = await dialog.boundingBox();
+    if (bounds.x < 0 || bounds.x + bounds.width > width || await dialog.evaluate(e => e.scrollWidth > e.clientWidth)) throw new Error('Style dialog overflows');
+    await page.screenshot({ path: `/tmp/yingya-style-qa-${width}.png` });
+    await dialog.getByRole('button', { name: '使用这个风格' }).click();
+    await page.reload();
+    await page.locator('.visual-style-open').click();
+    if (await dialog.locator('.visual-style-card[aria-pressed="true"]').count() !== 1) throw new Error('Style selection not restored');
+    await page.keyboard.press('Escape');
+    await page.getByPlaceholder('粘贴文案或网页链接，也可以上传截图、图片和视频。告诉映芽要讲什么、给谁看…').fill('测试已选风格');
+    const request = page.waitForRequest(r => r.url().endsWith('/agent-projects') && r.method() === 'POST');
+    await page.getByRole('button', { name: '创建视频任务' }).click();
+    const payload = (await request).postDataJSON();
+    if (!payload.visualStyleId || payload.visualStyleId === 'auto' || payload.visualStyleVersion !== 1) throw new Error('Style selection missing from creation');
+    if (errors.length) throw new Error(errors.join('\n'));
+    await page.close();
+  }
+  console.log('Visual styles QA passed: six previews, selection persistence, creation payload, desktop/mobile and reduced motion.');
+}
+
 let browser;
 try {
   await waitForFrontend();
   browser = await chromium.launch({ headless: true });
+  await assertVisualStyles(browser);
   await assertComposerFileDrop(browser);
   await assertFeedbackLifecycle(browser);
   await assertFrontendRecovery(browser);

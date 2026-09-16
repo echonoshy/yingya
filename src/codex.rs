@@ -108,6 +108,34 @@ pub struct TurnCompleted {
     pub text: String,
     #[serde(skip_serializing)]
     pub generated_images: Vec<GeneratedImageEvent>,
+    #[serde(skip_serializing)]
+    pub execution: ExecutionEvidence,
+}
+
+#[derive(Debug, Default)]
+pub struct ExecutionEvidence {
+    pub commands: HashMap<String, Value>,
+    pub requested_input: bool,
+}
+
+impl ExecutionEvidence {
+    fn observe(&mut self, event: &Value) {
+        let method = event["method"].as_str().unwrap_or_default();
+        if method.contains("requestUserInput")
+            || method.contains("requestApproval")
+            || method.contains("elicitation")
+        {
+            // Even a resolved question ends this round's automatic continuation.
+            self.requested_input = true;
+        }
+        if matches!(method, "item/started" | "item/completed")
+            && let Some(item) = event.pointer("/params/item")
+            && item["type"] == "commandExecution"
+            && let Some(id) = item["id"].as_str()
+        {
+            self.commands.insert(id.to_owned(), item.clone());
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -549,6 +577,7 @@ impl CodexClient {
         let wait_for_turn = async {
             let mut final_text = String::new();
             let mut generated_images = Vec::new();
+            let mut execution = ExecutionEvidence::default();
             let mut interrupt_sent = false;
             let mut inactivity_deadline = Instant::now() + self.config.turn_timeout;
             let mut interrupt_deadline = None;
@@ -662,6 +691,7 @@ impl CodexClient {
                 if let Some(sender) = &options.event_tx {
                     let _ = sender.send(event.clone());
                 }
+                execution.observe(&event);
 
                 if method == Some("item/completed") {
                     let item = event.pointer("/params/item");
@@ -749,6 +779,7 @@ impl CodexClient {
                         status,
                         text: final_text,
                         generated_images,
+                        execution,
                     });
                 }
             }
@@ -763,6 +794,19 @@ impl CodexClient {
             json!({"threadId": thread_id, "includeTurns": true}),
         )
         .await
+    }
+
+    pub async fn reconcile_execution(&self, turn: &mut TurnCompleted) -> Result<(), CodexError> {
+        let snapshot = self.read_thread(&turn.thread_id).await?;
+        let saved = snapshot
+            .pointer("/thread/turns")
+            .and_then(Value::as_array)
+            .and_then(|turns| turns.iter().find(|saved| saved["id"] == turn.turn_id))
+            .ok_or(CodexError::MissingField("thread.turns"))?;
+        for event in snapshot_events(&turn.thread_id, saved) {
+            turn.execution.observe(&event);
+        }
+        Ok(())
     }
 
     async fn request(&self, method: &str, params: Value) -> Result<Value, CodexError> {
@@ -1041,6 +1085,21 @@ fn turn_user_input(prompt: &str, images: &[PathBuf]) -> Vec<Value> {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn execution_evidence_keeps_completion_after_start_and_user_input() {
+        let mut evidence = ExecutionEvidence::default();
+        evidence.observe(&json!({"method":"item/started","params":{"item":{
+            "id":"check","type":"commandExecution","status":"inProgress","exitCode":null}}}));
+        assert_eq!(evidence.commands["check"]["status"], "inProgress");
+        evidence.observe(&json!({"method":"item/completed","params":{"item":{
+            "id":"check","type":"commandExecution","status":"completed","exitCode":0,"aggregatedOutput":"result"}}}));
+        assert_eq!(evidence.commands.len(), 1);
+        assert_eq!(evidence.commands["check"]["exitCode"], 0);
+        evidence.observe(&json!({"method":"item/tool/requestUserInput","params":{}}));
+        evidence.observe(&json!({"method":"serverRequest/resolved","params":{}}));
+        assert!(evidence.requested_input);
+    }
 
     #[tokio::test]
     async fn full_access_applies_to_new_ephemeral_loaded_and_resumed_threads() {

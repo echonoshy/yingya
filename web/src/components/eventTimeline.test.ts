@@ -53,6 +53,22 @@ describe("lost execution connection", () => {
   it("keeps the current running command active", () => {
     expect(buildTimeline([started], new Set(), {status: "running", activeTurnId: "request-id"})[0].status).toBe("running");
   });
+  it("does not infer command success from a completed model round", () => {
+    const ended = event(2, "turn/completed", {params: {turn: {status: "completed"}}});
+    expect(buildTimeline([started, ended], new Set(), {status: "running", activeTurnId: "request"})[0].status).toBe("running");
+    expect(buildTimeline([started, ended], new Set(), {status: "incomplete", activeTurnId: undefined})[0].status).toBe("interrupted");
+  });
+  it("follows durable job completion across rounds without duplicate rows", () => {
+    const jobs = (seq: number, status: string) => event(seq, "project/productionJobs", {params: {jobs: [
+      {id: "job", kind: "check", status, message: status === "succeeded" ? "检查通过。" : ""},
+    ]}});
+    const ended = event(2, "turn/completed", {params: {turn: {status: "completed"}}});
+    expect(buildTimeline([jobs(1, "running"), ended], new Set())[0].status).toBe("running");
+    const completed = buildTimeline([jobs(1, "running"), ended, jobs(3, "succeeded")], new Set());
+    expect(completed).toHaveLength(1);
+    expect(completed[0]).toMatchObject({title: "检查视频", status: "completed", summary: "检查通过。"});
+    expect(buildTimeline([jobs(1, "running"), jobs(2, "cancelled")], new Set())[0].status).toBe("interrupted");
+  });
   it("does not revive old commands when a later run starts", () => {
     const ended = event(2, "project/executionEnded", {params: {status: "interrupted"}});
     expect(buildTimeline([started, ended], new Set(), {status: "running", activeTurnId: "next-request"})[0].status).toBe("interrupted");
@@ -89,5 +105,34 @@ describe("model overload recovery", () => {
   it("settles a retry abandoned by a lost worker", () => {
     const rows = buildTimeline([retry(3, "waiting")], new Set(), {status: "failed", activeTurnId: undefined});
     expect(rows[0].status).toBe("interrupted");
+  });
+});
+
+describe("validated completion and approval history", () => {
+  it("settles request id zero from the server and does not settle a later reused id", () => {
+    const request = (seq: number, turn: string) => event(seq, "item/commandExecution/requestApproval", { id: 0, params: { turnId: turn } }, turn);
+    const rows = buildTimeline([
+      request(1, "turn-1"),
+      event(2, "serverRequest/resolved", { params: { requestId: 0 } }),
+      request(3, "turn-2"),
+    ], new Set());
+    expect(rows.map(row => row.status)).toEqual(["completed", "waiting"]);
+    expect(rows[0].title).toBe("请求已处理");
+    expect(rows[1].turnId).toBe("turn-2");
+  });
+  it("expires unanswered requests when their turn ends even during a later active turn", () => {
+    const rows = buildTimeline([
+      event(1, "item/commandExecution/requestApproval", { id: 3, params: {} }),
+      event(2, "turn/completed", { params: { turn: { status: "interrupted" } } }),
+    ], new Set(), { status: "running", activeTurnId: "turn-2" });
+    expect(rows[0].status).toBe("interrupted");
+  });
+  it("shows commentary but withholds unvalidated final answers including streamed text", () => {
+    const rows = buildTimeline([
+      event(1, "item/completed", { params: { item: { id: "progress", type: "agentMessage", phase: "commentary", text: "正在检查" } } }),
+      event(2, "item/started", { params: { item: { id: "final", type: "agentMessage", phase: "final_answer", text: "" } } }),
+      event(3, "item/agentMessage/delta", { params: { itemId: "final", delta: "已修复" } }),
+    ], new Set());
+    expect(rows.map(row => row.summary)).toEqual(["正在检查"]);
   });
 });

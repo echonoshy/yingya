@@ -13,6 +13,7 @@ export interface TimelineActivity {
   createdAt: number;
   turnId?: string;
   event?: AgentEvent;
+  phase?: string;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -51,6 +52,19 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
     const item = asObject(params.item);
     const itemId = stringValue(params.itemId) || stringValue(item.id);
 
+    if (event.method === "project/productionJobs" && Array.isArray(params.jobs)) {
+      for (const value of params.jobs) {
+        const job = asObject(value);
+        const row = activity(`production-${stringValue(job.id)}`, "system", event, job.kind === "render" ? "渲染视频" : "检查视频");
+        // Local production spans model rounds and finishes on its own receipt.
+        row.turnId = undefined;
+        row.status = job.status === "succeeded" ? "completed" : job.status === "failed" ? "failed"
+          : job.status === "cancelled" || job.status === "lost" ? "interrupted" : "running";
+        row.summary = row.status === "running" ? "原任务仍在运行，完成后继续制作。" : stringValue(job.message);
+      }
+      continue;
+    }
+
     if (event.method === "project/modelRetry") {
       const status = stringValue(params.status);
       const row = activity(`model-retry-${stringValue(params.retryId)}`, "system", event, "模型暂时繁忙");
@@ -82,8 +96,15 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
       continue;
     }
 
+    if (event.method === "serverRequest/resolved") {
+      const request = [...activities].reverse().find(row => row.kind === "request" && row.status === "waiting"
+        && asObject(row.event?.payload).id === params.requestId);
+      if (request) { request.status = "completed"; request.title = "请求已处理"; request.lastSeq = event.seq; }
+      continue;
+    }
+
     if (isRequest(event, payload)) {
-      activities.push({ id: `request-${event.seq}`, kind: "request", title: requestTitle(event.method), summary: stringValue(params.reason) || stringValue(params.message), output: "", status: "waiting", firstSeq: event.seq, lastSeq: event.seq, createdAt: event.createdAt, event });
+      activities.push({ id: `request-${event.seq}`, kind: "request", title: requestTitle(event.method), summary: stringValue(params.reason) || stringValue(params.message), output: "", status: "waiting", firstSeq: event.seq, lastSeq: event.seq, createdAt: event.createdAt, turnId: event.turnId || stringValue(params.turnId), event });
       continue;
     }
 
@@ -98,6 +119,7 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
       if (type === "userMessage" || type === "reasoning") continue;
       if (type === "agentMessage") {
         const row = activity(`message-${itemId}`, "assistant", event, "Codex");
+        row.phase = stringValue(item.phase) || row.phase;
         const text = stringValue(item.text);
         if (text) row.summary = text;
         row.status = event.method === "item/completed" ? "completed" : "running";
@@ -140,7 +162,8 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
 
   for (const item of activities) {
     const turnStatus = item.turnId ? completedTurns.get(item.turnId) : undefined;
-    if ((item.status === "running" || item.status === "waiting") && turnStatus) item.status = turnStatus === "interrupted" ? "interrupted" : turnStatus === "failed" ? "failed" : "completed";
+    if ((item.status === "running" || item.status === "waiting") && turnStatus
+      && !(item.kind === "command" && turnStatus === "completed")) item.status = turnStatus === "interrupted" ? "interrupted" : turnStatus === "failed" ? "failed" : "completed";
     // Transport failures may leave no final event. Do not keep spinning after
     // the server has settled the project, or label unobserved work successful.
     if (project && !project.activeTurnId && !["starting", "queued", "running"].includes(project.status)
@@ -150,7 +173,13 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
     }
   }
 
+  for (const item of activities) {
+    if (item.kind === "request" && item.status !== "waiting" && item.title !== "请求已处理") item.title = "请求已结束";
+  }
+
   return activities.filter(item => {
+    // Final answers are published as messages only after server workflow validation.
+    if (item.kind === "assistant" && item.phase === "final_answer") return false;
     if (item.kind === "assistant") return Boolean(item.summary.trim()) && !persistedAssistantTexts.has(item.summary.trim());
     return Boolean(item.title || item.summary || item.output);
   });
