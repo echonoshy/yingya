@@ -22,10 +22,10 @@
   .motion-gallery .marketing-example:hover .motion-card-caption > svg { transform: translateX(3px); }
 }
 .motion-gallery-bottom { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 28px; }
-.motion-more { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--muted); transition: background var(--motion-quick), transform var(--motion-quick); }
-.motion-more svg { width: 22px; height: 22px; }
-.motion-more:hover { background: var(--surface-hover); }
-.motion-more:active { transform: translateY(1px); }
+.motion-more { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--muted); transition: color var(--motion-quick); }
+.motion-more svg { width: 28px; height: 28px; }
+.motion-more:hover { background: transparent; color: var(--text); }
+.motion-more:active { transform: none; }
 .motion-showcase[data-motion-off=true] .motion-tile { opacity: 1; transform: none; transition: none; }
 .motion-showcase[data-motion-off=true] *, .motion-showcase[data-motion-off=true] *::before { transition: none !important; }
 .motion-showcase[data-motion-off=true] .marketing-example:hover .marketing-example-image, .motion-showcase[data-motion-off=true] .marketing-example:hover img, .motion-showcase[data-motion-off=true] .marketing-example:hover svg { transform: none; }

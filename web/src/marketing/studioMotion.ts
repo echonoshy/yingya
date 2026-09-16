@@ -1,13 +1,10 @@
+import { cutout, type Region } from './studioLayers';
+import { createStudioProps } from './studioProps';
 // Composite independently moving cutouts from the original illustration with
 // Canvas 2D, including embedded browsers where WebGL is disabled or unavailable.
 const WIDTH = 1942;
 const HEIGHT = 809;
 
-type Region = {
-  path: string;
-  bounds: readonly [number, number, number, number];
-  pivot: readonly [number, number];
-};
 const regions: readonly Region[] = [
   {
     // The gripper and held photograph share one rigid layer.
@@ -26,37 +23,18 @@ const regions: readonly Region[] = [
   },
 ];
 
-function cutout(image: HTMLImageElement, region: Region, backing: boolean) {
-  const layer = document.createElement('canvas');
-  const [x, y, width, height] = region.bounds;
-  layer.width = width; layer.height = height;
-  const context = layer.getContext('2d');
-  if (!context) return null;
-  context.translate(-x, -y);
-  context.filter = 'blur(0.6px)';
-  const path = new Path2D(region.path);
-  context.fill(path);
-  if (backing) {
-    // Cover the old silhouette's antialiased edge as the foreground moves away.
-    context.lineWidth = 12;
-    context.lineJoin = 'round';
-    context.stroke(path);
-  }
-  context.filter = 'none';
-  context.globalCompositeOperation = 'source-in';
-  context.drawImage(image, 0, 0, WIDTH, HEIGHT);
-  return layer;
-}
 
-export function createStudioRenderer(canvas: HTMLCanvasElement, image: HTMLImageElement, plate: HTMLImageElement) {
+export function createStudioRenderer(canvas: HTMLCanvasElement, image: HTMLImageElement, plate: HTMLImageElement, propsPlate?: HTMLImageElement) {
   const context = canvas.getContext('2d', { alpha: false });
   if (!context) return null;
+  const props = propsPlate ? createStudioProps(image, plate, propsPlate) : null;
   const parts = regions.map(region => ({
     region,
     front: cutout(image, region, false),
     back: cutout(plate, region, true),
   }));
   const dispose = () => {
+    props?.dispose();
     for (const { front, back } of parts) {
       if (front) front.width = front.height = 0;
       if (back) back.width = back.height = 0;
@@ -105,7 +83,7 @@ export function createStudioRenderer(canvas: HTMLCanvasElement, image: HTMLImage
 
   };
   return {
-    draw(left: number, right: number) {
+    draw(left: number, right: number, objects: readonly number[] = []) {
       const scale = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.round(canvas.clientWidth * scale), height = Math.round(canvas.clientHeight * scale);
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
@@ -113,6 +91,7 @@ export function createStudioRenderer(canvas: HTMLCanvasElement, image: HTMLImage
       context.drawImage(image, 0, 0, WIDTH, HEIGHT);
       paint(0, left);
       paintRight(right);
+      props?.draw(context, objects);
     },
     dispose,
   };

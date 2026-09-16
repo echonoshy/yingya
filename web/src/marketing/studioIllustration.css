@@ -18,3 +18,16 @@
 .studio-arm-trigger--right { left: 68%; top: 10%; width: 22%; height: 49%; }
 .studio-scene .studio-arm-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .studio-arm-trigger { display: none; } }
+
+.studio-prop-trigger--box { left: 3%; top: 56%; width: 21%; height: 25%; }
+.studio-prop-trigger--ocean { left: 15.5%; top: 79%; width: 13.5%; height: 12%; }
+.studio-prop-trigger--flower { left: 29%; top: 81.5%; width: 7%; height: 10%; }
+.studio-prop-trigger--sunflower { left: 80.5%; top: 79%; width: 13%; height: 14%; }
+.studio-prop-trigger--stationery { left: 89%; top: 49%; width: 8%; height: 31%; }
+.studio-prop-trigger--photo-pair { display: none; }
+@media (max-width: 599px) {
+  .studio-prop-trigger--ocean, .studio-prop-trigger--flower { display: none; }
+  .studio-prop-trigger--photo-pair { display: block; left: 15.5%; top: 79%; width: 20.5%; height: 14%; }
+  .studio-prop-trigger--stationery { left: auto; right: 1%; width: 11%; }
+}
+@media (prefers-reduced-motion: reduce) { .studio-scene .studio-arm-trigger { display: none; } }
