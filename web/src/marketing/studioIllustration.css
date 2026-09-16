@@ -1,0 +1,20 @@
+.studio-scene { position: relative; margin: 8px auto 0; }
+.studio-scene .studio-illustration { margin: 0; }
+.studio-motion { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+.studio-scene[data-rendered=true] .studio-motion { opacity: 1; }
+@media (max-width: 799px) {
+  .studio-scene { margin-top: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-motion { display: none; }
+}
+
+.studio-scene .studio-arm-trigger {
+  position: absolute; padding: 0; margin: 0; min-width: 40px; min-height: 40px;
+  border: 0; border-radius: var(--radius-button); background: transparent;
+  box-shadow: none; cursor: pointer; touch-action: manipulation;
+}
+.studio-arm-trigger--left { left: 11%; top: 8%; width: 28%; height: 42%; }
+.studio-arm-trigger--right { left: 68%; top: 10%; width: 22%; height: 49%; }
+.studio-scene .studio-arm-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .studio-arm-trigger { display: none; } }

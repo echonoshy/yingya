@@ -58,7 +58,7 @@ try {
     await page.setViewportSize({ width, height: width === 1440 ? 1400 : 1000 });
     await page.locator('.marketing-page').evaluate(el => el.scrollTo({ top: 0, behavior: 'instant' }));
     assert.equal(await page.locator('.marketing-page').evaluate(el => el.scrollWidth <= el.clientWidth), true, `No overflow at ${width}`);
-    assert.equal(await page.locator('.studio-illustration').evaluate(el => el.getAnimations().length), 0, 'Hero stays static');
+    assert.equal(await page.locator('.studio-illustration').evaluate(el => el.getAnimations().length), 0, 'Original hero fallback has no autonomous animation');
     await page.locator('#showcase').evaluate(el => el.scrollIntoView({ block: 'start' }));
     await page.waitForTimeout(450);
     const box = await page.locator('.motion-more').boundingBox();
@@ -105,6 +105,6 @@ try {
   await page.getByRole('link', { name: '返回映芽首页', exact: true }).click();
   await page.locator('#marketing-title').waitFor();
   assert.deepEqual(errors, []);
-  console.log('Marketing QA passed: centered reference layout, static hero, 12 WebPs, six-card initial page, icon expansion/collapse, removed controls, concise four-step workflow, 12 dialog conversions, full intro, focus/copy, responsive widths, reduced motion, GitHub and login.');
+  console.log('Marketing QA passed: centered reference layout, static hero fallback, 12 WebPs, six-card initial page, icon expansion/collapse, removed controls, concise four-step workflow, 12 dialog conversions, full intro, focus/copy, responsive widths, reduced motion, GitHub and login.');
   await context.close();
 } finally { await browser.close(); }

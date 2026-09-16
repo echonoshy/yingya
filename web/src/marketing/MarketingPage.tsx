@@ -4,6 +4,7 @@ import { featuredIntro, posterPath, videoPath, type VideoExample } from './examp
 import { BrandLogo as Brand } from './BrandLogo';
 import { MotionGallery } from './MotionGallery';
 import { WorkflowShowcase } from './WorkflowShowcase';
+import { StudioIllustration } from './StudioIllustration';
 import './marketing.css';
 import './workshopHome.css';
 
@@ -49,7 +50,7 @@ export function MarketingPage() {
     <main id="main-content" tabIndex={-1}>
       <section className="marketing-hero" aria-labelledby="marketing-title">
         <div className="marketing-hero-copy"><h1 id="marketing-title">你的想法，映芽来制作。</h1><p>从文案、网页或素材开始，用对话完成一支视频。</p><div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div></div>
-        <img className="studio-illustration" src="/marketing/static-studio.png" alt="两只卡通机械臂围绕视频剪辑工作台，整理照片和视频素材" width="1536" height="640" fetchPriority="high" />
+        <StudioIllustration suspended={Boolean(selected)} />
       </section>
       <MotionGallery onOpen={setSelected} suspended={Boolean(selected)} reduced={reduced} />
       <WorkflowShowcase />
