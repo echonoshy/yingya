@@ -6,18 +6,22 @@
 - `yingya-type.mp4`：映芽动态文字短片，8 秒无声；源文件在 `examples/marketing-type/`。
 - `yingya-landscape.jpg`：原创生成山景素材的网页优化版本，仅用于对话修改示意。
 
-## HyperFrames 官方效果参考
-来源页面：https://hyperframes.heygen.com/examples
-保留原视频内容，移除声音并生成静态封面供首页播放；一般示例压缩到 960 像素宽。知识动画改用原始 1920×1080 视频 `decision-tree-hd.mp4`（视频流直接复制，不二次压缩，启用 faststart），封面 `decision-tree-hd.png` 从原片第 6 秒按原始尺寸无损提取。首页与作品列表均使用高清版本。不声称为映芽客户作品，不表示示例中的公司使用或认可映芽。数据示例中的数值仅为原模板演示数据。
+## 当前首页效果参考
 
-- `product-promo.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/product-promo.mp4
-- `decision-tree-hd.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/decision-tree.mp4
-- `nyt-graph.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/nyt-graph.mp4
-- `website-story.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1-s.mp4
-- `kinetic-type-hd.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/kinetic-type.mp4 — 作品列表的人物动效示例，原始 1920×1080、15 秒，保留原音轨与视频流，仅重封装为 faststart MP4。封面 `kinetic-type-hd.png` 在第 3.5 秒按原始尺寸无损提取。
-- `warm-grain.mp4`: https://static.heygen.ai/hyperframes-oss/docs/images/templates/warm-grain.mp4 — 首屏左侧的绿色品牌动效，原始 1920×1080、5 秒，视频流直接复制。封面 `warm-grain.png` 在第 2 秒按原始尺寸无损提取。
+当前首页展示 12 个 MotionSites 参考案例，WebP、视频和封面逐一对应；来源见 `motion/sources.json`。
 
-首屏左侧绿色品牌动效、中间映芽介绍、右侧产品演示不进入下方作品列表。下方保留六个独立示例，并按素材 ID 排除首屏视频。
+## 原型页效果参考
 
-源项目：https://github.com/heygen-com/hyperframes
-官方示例使用独立归属标注。媒体中的原品牌标识归各自所有者；首页不将其作为客户背书。
+`/prototype-home` 仍使用 `yingya-brand`、`yingya-type` 和 `website-story` 三个示例，以及 `yingya-landscape.jpg` 和主宣传片。
+
+- `website-story.mp4`：https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1-s.mp4
+- 来源页面：https://hyperframes.heygen.com/examples
+- 源项目：https://github.com/heygen-com/hyperframes
+
+保留原视频内容，移除声音并压缩到 960 像素宽，生成静态封面。不声称为映芽客户作品，不表示示例中的公司使用或认可映芽。媒体中的原品牌标识归各自所有者。
+
+## 资源维护
+
+2026-09-16 清理了无入口的旧首屏组件、机械臂分层试验素材、三段旧首屏视频、已替换的 ZCOOL KuaiLe 字体，以及已撤下的五组示例视频和封面。当前首页三张工作台合成图与字体、12 组动效参考、介绍视频和原型页实际使用资源均保留。
+
+历史发布快照及公共缓存静态资源不随源码清理删除，以保留回滚能力。
