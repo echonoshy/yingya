@@ -22,6 +22,7 @@ async function pixelDifference(page, region) {
 async function prepare(page) {
   page.on('pageerror', e=>errors.push(e.message));
   await page.goto(url); await page.locator('.studio-illustration').evaluate(i=>i.decode());
+  assert.equal(await page.locator('.studio-scene button[title]').count(), 0, 'Illustration hotspots have no native tooltip');
   await page.evaluate(()=>document.fonts.ready);
   assert.equal(await page.title(),'映芽 | 对话式动画视频制作工作台');
   assert.equal(await page.locator('vite-error-overlay').count(),0);

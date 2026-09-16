@@ -1,3 +1,4 @@
+import { projectCardPoint } from './cardProjection';
 import { cutout, type Region } from './studioLayers';
 
 // Coordinates are in the original 1942 × 809 illustration. Front walls are
@@ -44,14 +45,46 @@ export function createStudioProps(image: HTMLImageElement, clean: HTMLImageEleme
     if (shadow) { ctx.shadowColor = 'rgba(36,38,43,.18)'; ctx.shadowBlur = shadow * 5; ctx.shadowOffsetY = shadow * 4; }
     ctx.drawImage(layer, region.bounds[0], region.bounds[1]); ctx.restore();
   };
+  const flipCard = (ctx: CanvasRenderingContext2D, layer: HTMLCanvasElement, region: Region, pulse: number) => {
+    if (!pulse) { stamp(ctx, layer, region); return; }
+    const [x, y, width, height] = region.bounds;
+    // A small textured mesh preserves perspective across the entire rigid card.
+    const cells = 6;
+    const triangle = (points: readonly (readonly [number, number])[]) => {
+      const [a, b, c] = points;
+      const [pa, pb, pc] = points.map(([u, v]) => projectCardPoint(x + u, y + v, region.pivot, -pulse * .65));
+      const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+      const m11 = ((pb[0] - pa[0]) * (c[1] - a[1]) - (pc[0] - pa[0]) * (b[1] - a[1])) / det;
+      const m12 = ((pb[1] - pa[1]) * (c[1] - a[1]) - (pc[1] - pa[1]) * (b[1] - a[1])) / det;
+      const m21 = ((pc[0] - pa[0]) * (b[0] - a[0]) - (pb[0] - pa[0]) * (c[0] - a[0])) / det;
+      const m22 = ((pc[1] - pa[1]) * (b[0] - a[0]) - (pb[1] - pa[1]) * (c[0] - a[0])) / det;
+      ctx.save(); ctx.beginPath();
+      // Subpixel overlap avoids antialiased seams between adjacent triangles.
+      const cx = (pa[0] + pb[0] + pc[0]) / 3, cy = (pa[1] + pb[1] + pc[1]) / 3;
+      [pa, pb, pc].forEach(([px, py], i) => {
+        const distance = Math.hypot(px - cx, py - cy);
+        const xx = px + (px - cx) / distance * .35, yy = py + (py - cy) / distance * .35;
+        if (i) ctx.lineTo(xx, yy); else ctx.moveTo(xx, yy);
+      });
+      ctx.closePath(); ctx.clip();
+      ctx.transform(m11, m12, m21, m22, pa[0] - m11 * a[0] - m21 * a[1], pa[1] - m12 * a[0] - m22 * a[1]);
+      ctx.drawImage(layer, 0, 0); ctx.restore();
+    };
+    for (let row = 0; row < cells; row++) for (let col = 0; col < cells; col++) {
+      const a = [col * width / cells, row * height / cells] as const;
+      const b = [(col + 1) * width / cells, row * height / cells] as const;
+      const c = [(col + 1) * width / cells, (row + 1) * height / cells] as const;
+      const d = [col * width / cells, (row + 1) * height / cells] as const;
+      triangle([a, b, c]); triangle([a, c, d]);
+    }
+  };
   return {
     draw(ctx: CanvasRenderingContext2D, values: readonly number[]) {
       const [boxPulse = 0, sea = 0, bloom = 0, sun = 0, penPulse = 0] = values;
       if (boxPulse || values.slice(5, 9).some(Boolean)) {
         ctx.save(); ctx.clip(boxOpening); ctx.drawImage(boxBack!, box.bounds[0], box.bounds[1]);
-        // Small phase differences let cards emerge in order while their feet
-        // remain inside the box, avoiding invented pixels below visible cards.
-        cards.forEach((card, i) => stamp(ctx, cardFronts[i]!, card, 0, 0, 0, 1 + (values[5 + i] ?? Math.pow(boxPulse, 1 + i * .4)) * .2));
+        // Cards turn around their bottom edges behind the fixed box rim.
+        cards.forEach((card, i) => flipCard(ctx, cardFronts[i]!, card, values[5 + i] ?? Math.pow(boxPulse, 1 + i * .4)));
         ctx.restore();
       }
       if (sea || bloom) {

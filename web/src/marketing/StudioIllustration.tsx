@@ -204,8 +204,8 @@ export function StudioIllustration({ suspended }: { suspended: boolean }) {
   return <div ref={rootRef} className="studio-scene">
     <img ref={imageRef} className="studio-illustration" src="/marketing/static-studio.png" alt="两只卡通机械臂围绕视频剪辑工作台，整理照片和视频素材" width="1942" height="809" fetchPriority="high" draggable={false} />
     <canvas ref={canvasRef} className="studio-motion" aria-hidden="true" />
-    <button type="button" className="studio-arm-trigger studio-arm-trigger--left" data-studio-arm="0" aria-label="播放左侧机械臂动作" title="点击播放机械臂动作" disabled={suspended} />
-    <button type="button" className="studio-arm-trigger studio-arm-trigger--right" data-studio-arm="1" aria-label="播放右侧机械臂动作" title="点击播放机械臂动作" disabled={suspended} />
+    <button type="button" className="studio-arm-trigger studio-arm-trigger--left" data-studio-arm="0" aria-label="播放左侧机械臂动作" disabled={suspended} />
+    <button type="button" className="studio-arm-trigger studio-arm-trigger--right" data-studio-arm="1" aria-label="播放右侧机械臂动作" disabled={suspended} />
     {[
       ['box', '播放素材盒照片动作', 2],
       ['ocean', '播放海景照片动作', 3],
@@ -213,6 +213,6 @@ export function StudioIllustration({ suspended }: { suspended: boolean }) {
       ['sunflower', '播放向日葵照片动作', 5],
       ['stationery', '播放文具动作', 6],
       ['photo-pair', '播放桌面照片动作', 7],
-    ].map(([name, label, index]) => <button key={name} type="button" className={`studio-arm-trigger studio-prop-trigger--${name}`} data-studio-arm={index} aria-label={String(label)} title={String(label)} disabled={suspended} />)}
+    ].map(([name, label, index]) => <button key={name} type="button" className={`studio-arm-trigger studio-prop-trigger--${name}`} data-studio-arm={index} aria-label={String(label)} disabled={suspended} />)}
   </div>;
 }

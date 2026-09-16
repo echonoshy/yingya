@@ -36,7 +36,7 @@
 
 ## 桌面物品交互
 
-- 素材盒：盒子、前沿保持固定，四张照片在盒内轻轻探出；支持悬停一次与点击重播。
+- 素材盒：盒子、前沿保持固定，四张照片绕底边做刚性三维翻动，经透视投影绘制，不拉伸照片高度；支持悬停一次与点击重播。
 - 海景照片：点击抬起一角后回落；花朵照片：点击向右探出后归位。保持海景在花朵上方的遮挡顺序。
 - 向日葵照片：点击轻翘、回落，不随鼠标移动。
 - 笔筒：筒身与文字保持原图，筒口内两件文具轻摆；支持悬停与点击。
@@ -50,3 +50,5 @@
 生成提示词：
 
 > Use case precise-object-edit. Edit target is original 1942x809 studio illustration. Produce one perfectly registered 1942x809 clean background plate. Remove ONLY: all standing photograph cards inside the lower-left open storage box, all stationery sticking out of the far-right pencil cup, and the loose BLUE OCEAN photograph on the desk at lower left. KEEP the pink flower photograph underneath that ocean photograph and reconstruct its previously hidden upper-left portion as one complete rectangular photograph in its exact original position and perspective. Keep the sunflower desk photograph. The empty storage box must keep its EXACT original front wall, rim, ghost logo, size and location; reconstruct its dark gray empty interior and robot base previously hidden behind its photos. The pencil cup must keep its EXACT original front wall, elliptical rim, text GOOD IDEAS BETTER VIDEOS, shadow and position; reconstruct empty dark cup opening and white background behind removed stationery. Keep BOTH mechanical arms, their bases, the landscape photograph held by the left arm, the entire monitor with its content, keyboard/plinth, and all remaining objects pixel-aligned and visually unchanged. No shifting, scaling, reframing, restyling, no new objects, no transparency. Only inpaint the specified removed areas. This is a compositing plate, not a redesigned illustration.
+
+首屏交互热点不设置原生 `title` 提示，避免鼠标停留时遮挡插画；保留 `aria-label`、键盘焦点和 Enter/空格触发。
