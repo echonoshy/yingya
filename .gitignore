@@ -14,6 +14,7 @@ data/*
 artifacts/*
 
 # One-off design generations and historical QA evidence are not product source.
+/experiments/
 output/
 docs/design-audit/
 design-qa.md

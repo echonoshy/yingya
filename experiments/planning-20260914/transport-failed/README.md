@@ -1,1 +1,0 @@
-Initial six requests completed, but the harness only read response.completed.output. This transport returns final items as streaming events, so text was lost. Usage is retained and counted; none of these unreadable results is used for comparison. Both conditions are rerun unchanged after capturing output_item.done and text deltas.
