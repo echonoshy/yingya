@@ -13,7 +13,6 @@ mod render_jobs;
 mod runtime;
 mod sandbox;
 mod studio_sessions;
-mod visual_styles;
 mod voices;
 
 #[tokio::main]

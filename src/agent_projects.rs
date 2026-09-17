@@ -30,10 +30,6 @@ pub struct AgentProjectStore {
 pub struct CreateAgentProjectRequest {
     pub prompt: String,
     #[serde(default)]
-    pub visual_style_id: Option<String>,
-    #[serde(default)]
-    pub visual_style_version: Option<u32>,
-    #[serde(default)]
     pub client_request_id: Option<String>,
     pub title: Option<String>,
     #[serde(default = "default_aspect")]
@@ -50,8 +46,6 @@ pub struct CreateAgentProjectRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProjectRecord {
     pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub visual_style: Option<crate::visual_styles::VisualStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creation_request_id: Option<String>,
     pub title: String,
@@ -331,6 +325,10 @@ impl AgentProjectStore {
             creation_gate: Arc::new(Mutex::new(())),
         };
         store
+            .remove_retired_style_references()
+            .await
+            .map_err(std::io::Error::other)?;
+        store
             .migrate_legacy_titles()
             .await
             .map_err(std::io::Error::other)?;
@@ -343,6 +341,33 @@ impl AgentProjectStore {
             .await
             .map_err(std::io::Error::other)?;
         Ok(store)
+    }
+
+    // Retire system-supplied design instructions in active project workspaces.
+    // Authored style/ dependencies and immutable versions remain renderable.
+    async fn remove_retired_style_references(&self) -> Result<(), String> {
+        for project in self.list().await? {
+            let directory = self.project_dir(&project.id)?;
+            for name in [".yingya/visual-style.md", ".yingya/visual-style-kit.json"] {
+                let path = directory.join(name);
+                reject_symlink_components(&path)?;
+                match fs::remove_file(path).await {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+            let path = directory.join("project.json");
+            let mut record: Value = read_json(&path).await?;
+            if record
+                .as_object_mut()
+                .and_then(|value| value.remove("visualStyle"))
+                .is_some()
+            {
+                write_json(&path, &record).await?;
+            }
+        }
+        Ok(())
     }
 
     async fn migrate_legacy_titles(&self) -> Result<(), String> {
@@ -445,11 +470,6 @@ impl AgentProjectStore {
                 deduplicated: true,
             });
         }
-        let visual_style = crate::visual_styles::select(
-            request.visual_style_id.as_deref(),
-            request.visual_style_version,
-            prompt,
-        )?;
         let id = Uuid::new_v4().to_string();
         let directory = self.project_dir(&id)?;
         for child in [
@@ -467,7 +487,6 @@ impl AgentProjectStore {
         let created_at = now_millis();
         let project = AgentProjectRecord {
             id: id.clone(),
-            visual_style,
             creation_request_id: request.client_request_id.clone(),
             title: request
                 .title
@@ -499,9 +518,6 @@ impl AgentProjectStore {
             current_draft: None,
             studio_entry: default_studio_entry(),
         };
-        if let Some(style) = &project.visual_style {
-            crate::visual_styles::snapshot(&directory, style).await?;
-        }
         write_json(&directory.join("project.json"), &project).await?;
         write_json(
             &directory.join(".yingya/voice.json"),
@@ -1927,8 +1943,6 @@ mod tests {
     fn request() -> CreateAgentProjectRequest {
         CreateAgentProjectRequest {
             prompt: "测试删除项目".to_owned(),
-            visual_style_id: None,
-            visual_style_version: None,
             client_request_id: None,
             title: None,
             aspect_ratio: "16:9".to_owned(),
@@ -1952,6 +1966,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retired_style_metadata_is_removed_without_changing_authored_video() {
+        let root = std::env::temp_dir().join(format!("yingya-retired-style-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        // Older clients can still send retired fields; they have no effect.
+        let input: CreateAgentProjectRequest = serde_json::from_value(serde_json::json!({
+            "prompt": "用产品素材制作短片", "visualStyleId": "warm-editorial", "visualStyleVersion": 1
+        })).unwrap();
+        let project = store.create(&input).await.unwrap();
+        let directory = store.project_dir(&project.id).unwrap();
+        assert!(!directory.join(".yingya/visual-style-kit.json").exists());
+        assert!(
+            !serde_json::to_value(&project.project)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("visualStyle")
+        );
+
+        let record_path = directory.join("project.json");
+        let mut record: Value = read_json(&record_path).await.unwrap();
+        record["visualStyle"] = serde_json::json!({"id": "warm-editorial", "version": 1});
+        record["customMetadata"] = serde_json::json!({"keep": true});
+        write_json(&record_path, &record).await.unwrap();
+        for name in [".yingya/visual-style.md", ".yingya/visual-style-kit.json"] {
+            fs::write(directory.join(name), "retired system reference")
+                .await
+                .unwrap();
+        }
+        let preserved = [
+            (
+                "index.html",
+                "<link rel=\"stylesheet\" href=\"style/tokens.css\"><h1>用户作品</h1>",
+            ),
+            ("style/tokens.css", ":root{--brand:blue}"),
+            ("DESIGN.md", "用户确认的设计"),
+            (
+                ".yingya/versions/draft-1/.yingya/visual-style-kit.json",
+                "immutable old snapshot",
+            ),
+        ];
+        for (name, contents) in preserved {
+            let path = directory.join(name);
+            fs::create_dir_all(path.parent().unwrap()).await.unwrap();
+            fs::write(path, contents).await.unwrap();
+        }
+        drop(store);
+        for _ in 0..2 {
+            let store = AgentProjectStore::new(root.clone()).await.unwrap();
+            assert_eq!(store.get(&project.id).await.unwrap().project.id, project.id);
+            for name in [".yingya/visual-style.md", ".yingya/visual-style-kit.json"] {
+                assert!(!directory.join(name).exists());
+            }
+            let saved: Value = read_json(&record_path).await.unwrap();
+            assert!(saved.get("visualStyle").is_none());
+            assert_eq!(saved["customMetadata"]["keep"], true);
+            for (name, contents) in preserved {
+                assert_eq!(
+                    fs::read_to_string(directory.join(name)).await.unwrap(),
+                    contents
+                );
+            }
+        }
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn duplicate_creation_request_reuses_the_project() {
         let root =
             std::env::temp_dir().join(format!("yingya-create-idempotency-test-{}", Uuid::new_v4()));
@@ -1960,33 +2040,16 @@ mod tests {
             .expect("create store");
         let mut input = request();
         input.client_request_id = Some(Uuid::new_v4().to_string());
-        input.visual_style_id = Some("warm-editorial".into());
-        input.visual_style_version = Some(1);
 
         let first = store.create(&input).await.expect("first create");
-        input.visual_style_id = Some("precise-tech".into());
+        input.prompt = "修改后的重复请求".into();
         let second = store.create(&input).await.expect("duplicate create");
 
         assert!(!first.deduplicated);
         assert!(second.deduplicated);
         assert_eq!(first.id, second.id);
-        assert_eq!(second.visual_style.as_ref().unwrap().id, "warm-editorial");
         let restored = store.get(&first.id).await.unwrap();
-        assert_eq!(restored.project.visual_style.as_ref().unwrap().version, 1);
-        assert!(
-            store
-                .project_dir(&first.id)
-                .unwrap()
-                .join(".yingya/visual-style-kit.json")
-                .is_file()
-        );
-        assert!(
-            !store
-                .project_dir(&first.id)
-                .unwrap()
-                .join("style/scene.html")
-                .exists()
-        );
+        assert_eq!(restored.project.title, first.title);
         assert_eq!(store.list().await.expect("list projects").len(), 1);
         fs::remove_dir_all(root).await.expect("clean create store");
     }

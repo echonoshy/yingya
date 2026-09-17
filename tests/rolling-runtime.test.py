@@ -295,7 +295,7 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
             tts.shutdown()
             tts.server_close()
 
-    def test_visual_style_reaches_worker_and_approved_scaffold(self):
+    def test_retired_style_input_does_not_reach_worker_or_scaffold(self):
         self.release('v1')
         self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
         request_id = str(uuid.uuid4())
@@ -305,29 +305,30 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
         project = created['id']
         prefix = '/api/agent-projects/' + project
         root = self.data / 'users' / self.user['id'] / 'projects' / project
-        self.assertEqual(created['visualStyle']['id'], 'warm-editorial')
-        self.assertTrue((root / '.yingya/visual-style-kit.json').exists())
+        self.assertNotIn('visualStyle', created)
+        self.assertFalse((root / '.yingya/visual-style-kit.json').exists())
         self.assertFalse((root / 'style/scene.html').exists())
         duplicate = self.request('/api/agent-projects', {
             'prompt': 'changed request', 'clientRequestId': request_id, 'visualStyleId': 'data-story'})
         self.assertEqual(duplicate['id'], project)
-        self.assertEqual(duplicate['visualStyle']['id'], 'warm-editorial')
-        self.request(prefix + '/turns', {'text': '只读检查风格', 'clientRequestId': str(uuid.uuid4())})
+        self.assertNotIn('visualStyle', duplicate)
+        self.request(prefix + '/turns', {'text': '只读检查素材与要求', 'clientRequestId': str(uuid.uuid4())})
         self.wait(lambda: any(x['event'] == 'done' for x in self.log(project)))
         self.wait(lambda: not self.request(prefix)['activeTurnId'])
         prompt = next(x['prompt'] for x in self.log(project) if x['event'] == 'start')
-        self.assertIn('warm-editorial v1', prompt)
-        self.assertIn('.yingya/visual-style-kit.json', prompt)
+        self.assertNotIn('warm-editorial', prompt)
+        self.assertNotIn('.yingya/visual-style', prompt)
+        self.assertNotIn('style/scene.html', prompt)
         manifest_path = root / '.yingya/manifest.json'
         manifest = json.loads(manifest_path.read_text())
         manifest.update(phase='plan_review', checkpoint={
-            'id': 'style-plan', 'kind': 'plan', 'title': '方案', 'summary': '风格验证', 'artifactIds': []})
+            'id': 'content-plan', 'kind': 'plan', 'title': '方案', 'summary': '素材与要求', 'artifactIds': []})
         manifest_path.write_text(json.dumps(manifest))
         self.request(prefix + '/checkpoint', {})
-        self.wait(lambda: (root / 'style/scene.html').exists())
-        self.assertIn('data-style-layout="editorial"', (root / 'style/scene.html').read_text())
-        self.assertIn('style/tokens.css', (root / 'index.html').read_text())
-        self.assertIn('--ys-accent: #995332', (root / 'style/tokens.css').read_text())
+        self.wait(lambda: (root / 'index.html').exists())
+        self.assertFalse((root / 'style').exists())
+        self.assertNotIn('style/tokens.css', (root / 'index.html').read_text())
+        self.assertIn('window.__timelines["main"]', (root / 'index.html').read_text())
         self.wait(lambda: len([x for x in self.log(project) if x['event'] == 'done']) >= 2)
         self.wait(lambda: not self.request(prefix)['activeTurnId'])
 

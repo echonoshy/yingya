@@ -2,8 +2,6 @@
 
 ## Establish one scene language
 
-For a project with `.yingya/visual-style-kit.json`, use the saved style and the `style/` reference files installed after approval. If explicit user authorization bypassed the UI confirmation button, materialize those reference files from the saved kit only after that authorization, without overwriting existing edits. Reuse `style/tokens.css` and `style/scenes.css`; adapt `style/scene.html` and the `yingyaStyleEntrance` GSAP helper in `style/motion.js` to the real story. Replace all sample text, choose content-appropriate scene structures, and vary composition by narrative role. Set `--frame-width` and `--frame-height` to the output size, add `ys-portrait` for square/portrait scenes, and verify Chinese fonts. Apply scene-specific motion times rather than repeating the demonstration verbatim. Keep project edits in `DESIGN.md` and CSS; the initial style is not permission to override user changes. Review actual frames against the saved palette, typography, composition and motion rules, then fix concrete deviations.
-
 Reuse the app-provided `index.html` scaffold after plan confirmation; inspect it before editing. Do not reinitialize the project or overwrite a working entry. Create `DESIGN.md` from the approved plan with shared typography, colors, scene layout rules, motion timing, transitions, caption safe areas, and audio levels. Centralize these choices in composition styles / shared source.
 
 For complex work, choose one representative difficult scene for early internal inspection. Resolve text readability, image treatment, and motion rhythm before expanding it across the film. Small/simple videos can proceed directly to the assembled draft. This does not require another user approval or a separate rendered video.

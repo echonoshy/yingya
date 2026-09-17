@@ -350,7 +350,7 @@ async function assertDraftCheckpoint(browser) {
   if (!(await currentDownload.getAttribute("href"))?.includes("draft-3/draft.mp4")) throw new Error("Returning to the preview version must restore its download source");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "导出其他规格", exact: true }).click();
-  if (!(await renderPanel.locator(".export-settings").evaluate(el => el.open))) throw new Error("Header export action must expand settings");
+  await renderPanel.locator(".export-settings[open]").waitFor();
   if (await renderPanel.getByText("直接生成下载文件，不进入对话").count()) throw new Error("Export panel should not show redundant explanatory copy");
   if (await renderPanel.getByLabel("分辨率").inputValue() !== "portrait-4k") throw new Error("The 4K portrait resolution should be the default export setting");
   if ((await renderPanel.getByLabel("分辨率").locator("option:checked").textContent()) !== "2160 × 3840 p") throw new Error("Resolution should display its p suffix");
@@ -1345,11 +1345,39 @@ async function assertVisualStyles(browser) {
   console.log('Visual styles QA passed: six previews, selection persistence, creation payload, desktop/mobile and reduced motion.');
 }
 
+async function assertRetiredStyleIsAbsent(browser) {
+  for (const width of [1440, 390, 320]) {
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    // An old response may still carry the field during a rolling deployment.
+    await installApiMock(page, { ...structuredClone(detail), visualStyle: { id: 'warm-editorial', version: 1, name: '温暖编辑' } });
+    await page.goto(workspaceUrl);
+    await page.getByRole('button', { name: /^秋季新品短片/ }).click();
+    const composer = page.getByRole('textbox', { name: '修改描述', exact: true });
+    await composer.waitFor();
+    if (await page.locator('.project-visual-style,.visual-style-open').count()) throw new Error('Retired style UI is still present');
+    if (await page.getByText('起始风格', { exact: false }).count()) throw new Error('Retired style is still shown');
+    await composer.focus();
+    if (!await composer.evaluate(element => element === document.activeElement)) throw new Error('Composer focus is broken');
+    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error(`Workspace overflow at ${width}px`);
+    await page.screenshot({ path: `/tmp/yingya-no-style-${width}.png` });
+    await composer.fill('保留产品图片，把标题改为新品上市');
+    const sent = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/turns'));
+    await page.getByRole('button', { name: '发送消息', exact: true }).click();
+    if ((await sent).postDataJSON().text !== '保留产品图片，把标题改为新品上市') throw new Error('Conversation revision changed');
+    if (errors.length) throw new Error(errors.join('\n'));
+    await page.close();
+  }
+  console.log('Retired style QA passed: legacy projects, no style reference UI, conversation edits, focus, desktop/390/320 and reduced motion.');
+}
+
 let browser;
 try {
   await waitForFrontend();
   browser = await chromium.launch({ headless: true });
   await assertVisualStyles(browser);
+  await assertRetiredStyleIsAbsent(browser);
   await assertComposerFileDrop(browser);
   await assertFeedbackLifecycle(browser);
   await assertFrontendRecovery(browser);

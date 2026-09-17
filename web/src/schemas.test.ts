@@ -7,6 +7,7 @@ describe("projectDetailSchema", () => {
       id: "p", title: "测试", status: "idle", statusLabel: "空闲", threadId: null,
       activeTurnId: null, queueDepth: 0, queuePaused: false, model: "model", reasoningEffort: "medium",
       aspectRatio: "16:9", createdAt: 1, updatedAt: 2, messages: [], queue: [], eventCursor: 42,
+      visualStyle: { id: "warm-editorial", version: 1, name: "温暖编辑" },
       manifest: { schemaVersion: 1, phase: "planning", dirty: false, checkpoint: null, outputSpec: {}, artifacts: [], versions: [], currentDraft: null, studioEntry: "" },
     });
     expect(parsed.threadId).toBeUndefined();
@@ -14,6 +15,7 @@ describe("projectDetailSchema", () => {
     expect(parsed.eventCursor).toBe(42);
     expect(parsed.renderJobs).toEqual([]);
     expect("events" in parsed).toBe(false);
+    expect("visualStyle" in parsed).toBe(false);
   });
 
   it("parses persistent render jobs", () => {

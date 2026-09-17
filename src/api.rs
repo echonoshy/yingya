@@ -1336,19 +1336,7 @@ async fn ensure_hyperframes_scaffold(
         .agent_projects
         .project_dir(project_id)
         .map_err(ApiError::Project)?;
-    let mut style_files = crate::visual_styles::install(&project_dir).await?;
-    match write_hyperframes_scaffold(&project_dir, project_id, aspect_ratio, output_spec).await {
-        Ok(files) => {
-            style_files.extend(files);
-            Ok(style_files)
-        }
-        Err(error) => {
-            for path in style_files {
-                let _ = fs::remove_file(path).await;
-            }
-            Err(error)
-        }
-    }
+    write_hyperframes_scaffold(&project_dir, project_id, aspect_ratio, output_spec).await
 }
 
 async fn write_hyperframes_scaffold(
@@ -1390,18 +1378,12 @@ async fn write_hyperframes_scaffold(
         }))
         .map_err(|error| ApiError::External(error.to_string()))?
     );
-    let style_links = if project_dir.join("style/tokens.css").is_file() {
-        "<link rel=\"stylesheet\" href=\"style/tokens.css\"><link rel=\"stylesheet\" href=\"style/scenes.css\"><script src=\"style/motion.js\"></script>"
-    } else {
-        ""
-    };
     let html = format!(
         r#"<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width={width}, height={height}" />
-    {style_links}
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       * {{ box-sizing: border-box; }}
@@ -3254,11 +3236,7 @@ async fn run_agent_turn(
         "用户请求：{}{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 HyperFrames 核心能力或说明 fallback。",
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
-    let prompt = format!(
-        "{prompt}{}{}",
-        feedback::prompt_context(&queued.feedback),
-        crate::visual_styles::prompt_note(project.visual_style.as_ref())
-    );
+    let prompt = format!("{prompt}{}", feedback::prompt_context(&queued.feedback));
     let prompt = if state.heygen.is_configured() {
         prompt
     } else {

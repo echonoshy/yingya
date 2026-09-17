@@ -15,6 +15,8 @@ Choose typography, diagrams, charts, interface highlights, transitions, and medi
 
 A request for new photorealistic footage, character performance, or complex camera action needs actual footage or a verified installed video-generation capability. Do not imply HyperFrames synthesizes those shots. When required inputs are missing, explain the gap before approval and propose either supplied footage or an animation treatment for the user to choose; never silently change the requested result. Videos generated elsewhere can be used as source footage.
 
+Choose composition and motion from the user's content and requirements, without applying a retired bundled style example.
+
 ## Communicate in the product's language
 
 User-facing progress and final replies should lead with the usable result, the change made, and the next decision. Use concise Chinese such as “草稿已生成”“旁白已调整”“请确认制作方案”. Mention the version when asking for feedback or presenting an export. Link to project-relative artifact paths (for example `[查看草稿](renders/draft-1.mp4)`); do not expose an absolute filesystem path as a website route.

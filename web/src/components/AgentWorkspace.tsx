@@ -1,7 +1,6 @@
 import { useAutosizeTextarea } from "../hooks/useAutosizeTextarea";
 import { createClientRequestId } from "../requestId";
 import { ComposerForm } from "./ComposerForm";
-import { ProjectVisualStyle } from "./VisualStylePicker";
 import { SelectionIndicator } from "./SelectionIndicator";
 import { ArtifactList } from "./ArtifactList";
 import { AssetPicker } from "./AssetPicker";
@@ -284,7 +283,6 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     <main className="thread">
       <header className="thread-header"><div><span>创作对话</span><b>{running ? "正在制作，可继续补充要求" : "用对话调整内容、画面与节奏"}</b></div>{titleError ? <small className="thread-title-error">{titleError}</small> : null}</header>
       <section className="timeline" aria-label="创作消息" tabIndex={0} ref={timelineRef} onScroll={onScroll}><div className="timeline-inner" ref={contentRef}>
-        <ProjectVisualStyle style={project.visualStyle}/>
         {syncFailed || submissionSyncFailed || stalled || connectionState === "disconnected" ? <ConnectionNotice syncFailed={syncFailed || submissionSyncFailed} stalled={stalled} onRetry={() => void resync()}/> : null}
         <ConversationFeed projectId={project.id} entries={conversation} onQuickReply={selectQuickReply}/>
         {waitingInputMessage ? <WaitingInputCard choices={waitingInputChoices} busy={busy} onAnswer={choice => void answerWaitingInput(choice)} onCompose={focusWaitingComposer}/> : null}
