@@ -6,7 +6,7 @@ use axum::{
     extract::Request,
     http::{
         Uri,
-        header::{CONTENT_LENGTH, SET_COOKIE},
+        header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_LENGTH, SET_COOKIE},
     },
 };
 use std::collections::HashMap;
@@ -1352,6 +1352,29 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
     };
     let deletion = deleted_project(request.method(), &path);
     let mut response = router.oneshot(request).await.unwrap();
+    // Sandboxed preview HTML has an opaque origin, so even its own fonts need
+    // CORS. Grant/session checks above still authorize every request; expose
+    // only successful font responses, never ordinary API or preview documents.
+    if preview_request.is_some()
+        && response.status().is_success()
+        && response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| {
+                value.starts_with("font/")
+                    || matches!(
+                        value,
+                        "application/font-woff"
+                            | "application/font-sfnt"
+                            | "application/vnd.ms-fontobject"
+                    )
+            })
+    {
+        response
+            .headers_mut()
+            .insert(ACCESS_CONTROL_ALLOW_ORIGIN, "*".parse().unwrap());
+    }
     if response.status().is_success()
         && let Some(project) = deletion
     {
@@ -1556,6 +1579,180 @@ pub(super) async fn voice_proxy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn preview_fonts_allow_opaque_origins_only_after_valid_grant_and_session() {
+        let root = env::temp_dir().join(format!("yingya-preview-fonts-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let accounts = Accounts::open(&root.join("db.sqlite"), vec![]).unwrap();
+        let (user, session) = accounts.login("preview-fonts@example.test").unwrap();
+        let project = Uuid::new_v4().to_string();
+        let own = root.join("users").join(&user.id);
+        let project_root = own.join("projects").join(&project);
+        fs::create_dir_all(project_root.join("assets/fonts"))
+            .await
+            .unwrap();
+        for (name, bytes) in [
+            ("project.json", b"{}".as_slice()),
+            ("index.html", b"<html><body>preview</body></html>"),
+            ("assets/fonts/test.woff2", b"wOF2-test-font-response"),
+            ("assets/fonts/test.woff", b"wOFF-test-font-response"),
+            ("assets/fonts/test.ttf", b"test-font-response"),
+            ("assets/fonts/test.otf", b"test-font-response"),
+            ("assets/fonts/style.css", b"body { color: black; }"),
+        ] {
+            fs::write(project_root.join(name), bytes).await.unwrap();
+        }
+        let paths = AppPaths {
+            app_data: root.clone(),
+            resources: root.clone(),
+            cache: root.clone(),
+            runtime: root.clone(),
+            projects: own.join("projects"),
+            assets: own.join("assets"),
+            codex_home: root.clone(),
+            hyperframes_home: root.clone(),
+        };
+        let g = Gateway {
+            shares: shares::Store::open(&paths.app_data).unwrap(),
+            paths,
+            accounts,
+            model_relay: crate::model_relay::ModelRelay::new(&root).unwrap(),
+            previews: Default::default(),
+            tenants: Default::default(),
+            service_tokens: Default::default(),
+            registry: None,
+            pool: None,
+            worker: None,
+            control: Default::default(),
+            service_base: "http://127.0.0.1:8797".into(),
+        };
+        // Exercise the real dispatch authorization and streaming/MIME response
+        // path through a tenant Router, without booting a customer worker.
+        let router = Router::new().route(
+            "/api/agent-projects/{project_id}/files/{*path}",
+            get(
+                move |Path((_, file)): Path<(String, String)>, request: Request| {
+                    let file = project_root.join(file);
+                    async move { stream_project_file(file, request).await }
+                },
+            ),
+        );
+        tenant_slot(&g.tenants, &user.id).await.set(router).unwrap();
+        for (token, expires) in [
+            ("valid", crate::accounts::now() + 600),
+            ("expired", crate::accounts::now() - 1),
+        ] {
+            g.previews.lock().await.insert(
+                token.into(),
+                PreviewGrant {
+                    user: user.clone(),
+                    project: project.clone(),
+                    session: session.clone(),
+                    expires,
+                },
+            );
+        }
+        for (method, extension, expected_mime, range) in [
+            ("GET", "woff2", "font/woff2", false),
+            ("HEAD", "woff2", "font/woff2", false),
+            ("GET", "woff2", "font/woff2", true),
+            ("GET", "woff", "application/font-woff", false),
+            ("GET", "ttf", "font/ttf", false),
+            ("GET", "otf", "application/font-sfnt", false),
+        ] {
+            let mut request = Request::builder()
+                .method(method)
+                .uri(format!("/api/preview/valid/assets/fonts/test.{extension}"))
+                .header("origin", "null");
+            if range {
+                request = request.header("range", "bytes=0-3");
+            }
+            let response = dispatch(State(g.clone()), request.body(Body::empty()).unwrap()).await;
+            assert_eq!(
+                response.status(),
+                if range {
+                    StatusCode::PARTIAL_CONTENT
+                } else {
+                    StatusCode::OK
+                }
+            );
+            assert_eq!(response.headers()[CONTENT_TYPE], expected_mime);
+            assert_eq!(response.headers()[ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+            assert!(
+                !response
+                    .headers()
+                    .contains_key("access-control-allow-credentials")
+            );
+            assert_eq!(response.headers()["cache-control"], "private, no-store");
+            let body = to_bytes(response.into_body(), 1024).await.unwrap();
+            if method == "HEAD" {
+                assert!(body.is_empty());
+            } else if range {
+                assert_eq!(body.as_ref(), b"wOF2");
+            } else {
+                assert!(body.ends_with(b"font-response"));
+            }
+        }
+        for (path, token, origin, expected_status) in [
+            ("assets/fonts/style.css", "valid", "null", StatusCode::OK),
+            ("index.html", "valid", "null", StatusCode::OK),
+            (
+                "assets/fonts/test.woff2",
+                "missing",
+                "null",
+                StatusCode::UNAUTHORIZED,
+            ),
+            (
+                "assets/fonts/test.woff2",
+                "expired",
+                "null",
+                StatusCode::UNAUTHORIZED,
+            ),
+            ("assets/fonts/test.woff2", "", "", StatusCode::OK),
+            ("assets/fonts/test.woff2", "", "null", StatusCode::FORBIDDEN),
+        ] {
+            let uri = if token.is_empty() {
+                format!("/api/agent-projects/{project}/files/{path}")
+            } else {
+                format!("/api/preview/{token}/{path}")
+            };
+            let mut request = Request::builder()
+                .uri(uri)
+                .header("cookie", format!("yingya_session={session}"))
+                .header("host", "yingya.test");
+            if !origin.is_empty() {
+                request = request.header("origin", origin);
+            }
+            let response = dispatch(State(g.clone()), request.body(Body::empty()).unwrap()).await;
+            assert_eq!(response.status(), expected_status);
+            assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+            if path == "index.html" {
+                assert_eq!(
+                    response.headers()["content-security-policy"],
+                    "sandbox allow-scripts; frame-ancestors 'self'; form-action 'none'; base-uri 'none'"
+                );
+            }
+        }
+        let request = Request::builder()
+            .uri("/api/preview/valid/assets/fonts/missing.woff2")
+            .header("origin", "null")
+            .body(Body::empty())
+            .unwrap();
+        let response = dispatch(State(g.clone()), request).await;
+        assert!(!response.status().is_success());
+        assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+        g.accounts.logout(&session).unwrap();
+        let request = Request::builder()
+            .uri("/api/preview/valid/assets/fonts/test.woff2")
+            .header("origin", "null")
+            .body(Body::empty())
+            .unwrap();
+        let response = dispatch(State(g), request).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(!response.headers().contains_key(ACCESS_CONTROL_ALLOW_ORIGIN));
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
     #[tokio::test]
     async fn account_permissions_and_empty_quota_are_enforced_before_tenant_work() {
         let root = env::temp_dir().join(format!("yingya-account-gateway-{}", Uuid::new_v4()));

@@ -4,7 +4,7 @@ import { readStringSetting, writeStringSetting } from "../storage";
 import { visualFeedbackSchema } from "../schemas";
 import type { TurnInput } from "../types";
 
-const inputSchema = z.object({ text: z.string(), clientRequestId: z.string().uuid(), attachments: z.array(z.string()).optional(), context: z.array(z.string()).optional(), interrupt: z.boolean().optional(), model: z.string().optional(), reasoningEffort: z.string().optional(), feedback: z.array(visualFeedbackSchema).optional() });
+const inputSchema = z.object({ text: z.string(), baseVersionId: z.string().nullable().optional(), clientRequestId: z.string().uuid(), attachments: z.array(z.string()).optional(), context: z.array(z.string()).optional(), interrupt: z.boolean().optional(), model: z.string().optional(), reasoningEffort: z.string().optional(), feedback: z.array(visualFeedbackSchema).optional() });
 const attemptSchema = z.object({ signature: z.string(), id: z.string().uuid(), input: inputSchema.optional() });
 export type SubmissionAttempt = { signature: string; id: string; input?: TurnInput };
 export function submissionAttempt(projectId: string, signature: string): SubmissionAttempt {

@@ -1,0 +1,67 @@
+/* Map these properties from the composition's DESIGN.md, not the product UI. */
+.yga-scene {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  container: yga / size;
+  background: var(--yga-background, transparent);
+  color: var(--yga-foreground, inherit);
+  font-family: var(--yga-font, inherit);
+}
+.yga-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4cqh;
+  padding: 7cqh 7cqw;
+}
+.yga-scene *, .yga-scene *::before, .yga-scene *::after { box-sizing: border-box; }
+.yga-scene h2, .yga-scene h3, .yga-scene p, .yga-scene ol { margin: 0; }
+.yga-heading { display: flex; flex-direction: column; gap: 2.4cqh; min-width: 0; }
+.yga-eyebrow { color: var(--yga-accent, currentColor); font-size: min(2cqw, 3.8cqh); font-weight: 700; letter-spacing: .1em; }
+.yga-title { font-size: min(5.4cqw, 9cqh); line-height: 1.18; letter-spacing: -.035em; font-weight: var(--yga-heading-weight, 800); overflow-wrap: anywhere; text-wrap: balance; }
+.yga-title-reveal .yga-title { font-size: min(var(--yga-title-size, 10cqw), 17cqh); line-height: 1.23; max-width: 100%; }
+.yga-char { transform-origin: 50% 90%; }
+.yga-accent { height: max(5px, .8cqh); width: 15cqw; background: var(--yga-accent, currentColor); transform-origin: left center; }
+.yga-subtitle { max-width: 82%; font-size: min(3.1cqw, 4.9cqh); line-height: 1.55; color: var(--yga-muted, inherit); overflow-wrap: anywhere; }
+.yga-flow { position: relative; min-height: 28cqh; margin-top: 5cqh; }
+.yga-nodes { position: relative; display: flex; justify-content: space-between; gap: 2cqw; padding: 0; list-style: none; z-index: 1; }
+.yga-node { flex: 1 1 0; min-width: 0; text-align: center; display: flex; align-items: center; flex-direction: column; gap: 3cqh; }
+.yga-node-marker { display: grid; place-items: center; width: 8cqw; height: 8cqw; max-width: 13cqh; max-height: 13cqh; border: 2px solid var(--yga-accent, currentColor); background: var(--yga-background, transparent); color: var(--yga-accent, currentColor); border-radius: 50%; font-size: min(2.8cqw, 5cqh); font-weight: 750; font-variant-numeric: tabular-nums; }
+.yga-node-copy { display: flex; flex-direction: column; gap: 1.5cqh; width: 100%; }
+.yga-node-label { font-size: min(2.9cqw, 4.5cqh); line-height: 1.3; overflow-wrap: anywhere; font-weight: 750; }
+.yga-node-detail { font-size: min(1.75cqw, 3cqh); line-height: 1.5; color: var(--yga-muted, inherit); overflow-wrap: anywhere; }
+.yga-flow-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: 0; }
+.yga-flow-line { stroke: var(--yga-accent, currentColor); stroke-width: 3; }
+.yga-flow-dot { fill: var(--yga-accent, currentColor); stroke: var(--yga-background, transparent); stroke-width: 3; }
+.yga-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqw; margin-top: 2cqh; }
+.yga-metric { min-width: 0; padding: 4cqh 3cqw; background: var(--yga-surface, transparent); border: 1px solid var(--yga-line, currentColor); border-radius: var(--yga-radius, 0px); display: flex; flex-direction: column; gap: 3cqh; }
+.yga-metric-label { font-size: min(2.4cqw, 4cqh); line-height: 1.4; overflow-wrap: anywhere; color: var(--yga-muted, inherit); }
+.yga-value-row { display: flex; align-items: baseline; gap: .12em; font-size: min(var(--yga-number-size), 18cqh); line-height: 1.2; min-width: 0; }
+.yga-value { font-variant-numeric: tabular-nums; letter-spacing: -.055em; font-weight: 800; white-space: nowrap; }
+.yga-unit { font-size: .24em; line-height: 1.4; overflow-wrap: anywhere; max-width: 2.2em; font-weight: 600; }
+.yga-metric-2 .yga-value { color: var(--yga-accent, currentColor); }
+.yga-metric-rail { height: .8cqh; min-height: 3px; background: var(--yga-line, currentColor); }
+.yga-metric-fill { width: 100%; height: 100%; background: currentColor; transform-origin: left center; }
+.yga-metric-2 .yga-metric-fill { color: var(--yga-accent, currentColor); }
+.yga-footnote { color: var(--yga-muted, inherit); font-size: min(1.9cqw, 3.4cqh); line-height: 1.5; overflow-wrap: anywhere; }
+@container yga (aspect-ratio < 1 / 1) {
+  .yga-title { font-size: min(8.5cqw, 7cqh); }
+  .yga-title-reveal .yga-title { font-size: min(var(--yga-title-size, 10cqw), 10cqh); }
+  .yga-eyebrow { font-size: 3.5cqw; }
+  .yga-subtitle { max-width: 100%; font-size: 4.7cqw; }
+  .yga-flow { margin-top: 1cqh; }
+  .yga-nodes { flex-direction: column; gap: 3cqh; }
+  .yga-node { flex-direction: row; text-align: left; gap: 4cqw; }
+  .yga-node-marker { width: 11cqw; height: 11cqw; flex: 0 0 11cqw; font-size: 4cqw; }
+  .yga-node-copy { gap: .7cqh; }
+  .yga-node-label { font-size: 4.8cqw; }
+  .yga-node-detail { font-size: 3.3cqw; }
+  .yga-metrics { grid-template-columns: 1fr; gap: 2cqh; }
+  .yga-metric { padding: 2.5cqh 5cqw; gap: 1.6cqh; }
+  .yga-metric-label { font-size: 4.3cqw; }
+  .yga-value-row { font-size: min(calc(var(--yga-number-size) * 1.65), 12cqh); }
+  .yga-footnote { font-size: 3.2cqw; }
+}

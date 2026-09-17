@@ -1,0 +1,34 @@
+{
+  "component": {
+    "name": "ui-focus-zoom",
+    "source": "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/ui-focus-zoom/ui-focus-zoom.html",
+    "retrievedAt": "2026-09-16",
+    "sha256": "137fca93541c222f37026c8636111a1fe0d79e459546f25050d04c35638d9981",
+    "license": "Apache-2.0",
+    "licenseFile": "HYPERFRAMES-LICENSE",
+    "copyright": "Copyright 2026 HeyGen, Inc."
+  },
+  "adaptation": {
+    "name": "yingya-editorial:v1",
+    "changes": [
+      "Static video in entry before compile; no dynamic template slot",
+      "One flat timeline and absolute-time pure camera interpolation; no mutable drift or nested child timelines",
+      "Preserve ui-focus-zoom translate/scale camera law and cubic focus ease",
+      "Full overview before focus and final overview or explicit result focus",
+      "Source-ratio-contained footage; captions outside media viewport",
+      "Original audio in explicit synchronized audio node when present",
+      "Yingya-authored SVG highlight aperture and callout leader overlays with absolute-time opacity",
+      "Late result-focus recipe reuses the same original translate/scale camera law"
+    ]
+  },
+  "gsap": {
+    "version": "3.14.2",
+    "source": "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js",
+    "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280",
+    "license": "GSAP Standard License (not Apache-2.0)",
+    "licenseUrl": "https://gsap.com/community/standard-license/",
+    "licenseFile": "GSAP-LICENSE",
+    "licenseSnapshotFormat": "HTML",
+    "licenseSha256": "5b5681284d1217982e77a42d05046d41bb01381cf714dac7e2aa349eadf25a9d"
+  }
+}

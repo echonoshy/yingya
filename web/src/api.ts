@@ -1,5 +1,5 @@
 import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
-import { feedbackAssetSchema } from "./schemas";
+import { assetRoleSchema, workbenchSchema, sceneEditResultSchema, feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
 import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
@@ -77,10 +77,13 @@ export const api = {
   removeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}`, { method: "DELETE" }),
   executeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}/execute`, { method: "POST", body: "{}" }),
   confirmCheckpoint: (id: string) => request(`/api/agent-projects/${id}/checkpoint`, turnAcceptedSchema, { method: "POST", body: "{}" }),
-  renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k" | "square" | "square-4k"; fps: 30 | 60 }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
+  renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k" | "square" | "square-4k"; fps: number }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
   respondToRequest: (id: string, requestId: unknown, result: unknown) => requestVoid(`/api/agent-projects/${id}/requests/respond`, { method: "POST", body: JSON.stringify({ id: requestId, result }) }),
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),
   uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
+  getWorkbench: (id: string, versionId?: string) => request(`/api/agent-projects/${id}/workbench${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""}`, workbenchSchema),
+  setAssetRole: (id: string, path: string, role: import("./types").AssetRole) => request(`/api/agent-projects/${id}/asset-roles`, z.object({ assetRoles: z.array(z.object({ path: z.string(), role: assetRoleSchema })) }), { method: "PATCH", body: JSON.stringify({ path, role }) }),
+  editScene: (id: string, sceneId: string, input: { baseVersionId: string; expectedScenesRevision: string; patch: { title?: string; recipe?: string; focus?: { rect: { x: number; y: number; width: number; height: number } } } }) => request(`/api/agent-projects/${id}/editorial/scenes/${encodeURIComponent(sceneId)}`, sceneEditResultSchema, { method: "PATCH", body: JSON.stringify(input) }),
   getProjectMedia: (id: string) => request(`/api/agent-projects/${id}/media`, agentMediaSchema),
   studio: (id: string) => request(`/api/agent-projects/${id}/studio`, studioSchema, { method: "POST", body: "{}" }),
   heartbeatStudio: (id: string) => request(`/api/agent-projects/${id}/studio/heartbeat`, studioSchema, { method: "POST", body: "{}" }),

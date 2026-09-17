@@ -1,9 +1,9 @@
-# Develop a rough brief into a video
+# Develop ideas and manuscripts into a visual film
 
-Read this for a new video with sparse text, no usable visual assets, or an
-unresolved creative direction. Also use it when the user rejects a draft's
-overall concept as generic. A clear script with a known treatment, or a local
-revision to an approved video, does not need renewed creative exploration.
+Read this for an idea or manuscript whose visual treatment is not established,
+including a fully written script with no supplied pictures. Also use it when
+the user rejects a draft's overall concept as generic. Reuse an approved,
+verified treatment for a focused revision.
 
 ## Separate facts from creative choices
 
@@ -29,6 +29,17 @@ upload or make an all-text slideshow.
   result need a question; bundle related missing facts together.
 
 ## Explore the expression before implementation
+
+Turn the content into a visual progression. Identify the subject, the change
+the viewer should witness, and the emotional or explanatory payoff. Reorganize
+unlocked prose for viewing; preserve locked wording and factual meaning. Do not
+assign one paragraph to each slide by default. Each shot needs a visible subject
+and an action, transformation or deliberate hold that serves the film.
+
+For example, a passage about a seed growing can become a cutaway of roots
+spreading, a stem unfolding and a change of scale into the grown plant. The
+illustrated subject and its change carry the idea; labels support it. This is
+an example of translating meaning into pictures, not a required visual style.
 
 When the direction is unresolved, compare a small number of materially different
 approaches internally, usually two or three. Distinguish them by viewpoint,
@@ -68,7 +79,12 @@ It is not limited to small supplements. Choose deliberately per scene:
 | Continuous character action or complex photoreal camera motion | Verify an installed video-generation route, or resolve the scope with the user before promising it |
 
 In each scene's existing `assetStrategy`, identify its visual subject, source
-route, shared consistency needs and editable elements. Planned assets have no
+route (supplied, generated, retrieved or procedural), shared consistency needs
+and editable elements. In `visualDirection`, describe framing, depth, material
+and light; in `motion`, describe subject movement, camera/framing changes and
+the intended transition. A tool name or "fade in" alone does not describe a shot.
+Plan new assets where they improve the approved story; do not wait for the user
+to ask separately for illustration or animation. Planned assets have no
 IDs until they exist. Check only the capabilities the recommendation needs;
 an optional unavailable tool should not block a suitable core composition.
 If a required capability is absent, explain the effect on the proposed result.

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-export type AppRoute = { section: "create" | "assets"; projectId?: string };
+export type AppRoute = { section: "create" | "assets"; projectId?: string; assetTool?: "image" | "voice" };
 export function readRoute(): AppRoute {
   const hash = window.location.hash.slice(1);
   const match = /^\/projects\/([a-zA-Z0-9-]+)$/.exec(hash);
-  return match ? { section: "create", projectId: match[1] } : { section: hash === "/assets" ? "assets" : "create" };
+  const asset = /^\/assets(?:\/(image|voice))?$/.exec(hash);
+  return match ? { section: "create", projectId: match[1] } : asset ? { section: "assets", ...(asset[1] ? { assetTool: asset[1] as "image" | "voice" } : {}) } : { section: "create" };
 }
 export function useAppRoute() {
   const [route, setRoute] = useState(readRoute);
@@ -13,7 +14,7 @@ export function useAppRoute() {
     return () => { window.removeEventListener("popstate", sync); window.removeEventListener("hashchange", sync); };
   }, []);
   const navigate = useCallback((next: AppRoute) => {
-    const hash = next.projectId ? `/projects/${next.projectId}` : next.section === "assets" ? "/assets" : "/";
+    const hash = next.projectId ? `/projects/${next.projectId}` : next.section === "assets" ? `/assets${next.assetTool ? `/${next.assetTool}` : ""}` : "/";
     if (window.location.hash !== `#${hash}`) window.history.pushState(null, "", `#${hash}`);
     setRoute(next);
   }, []);

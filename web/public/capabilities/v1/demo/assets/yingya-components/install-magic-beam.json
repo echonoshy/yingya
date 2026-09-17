@@ -1,0 +1,16 @@
+{
+  "generator": "yingya-component-library:v1",
+  "component": "beam-network",
+  "version": "1.0.0",
+  "files": {
+    "clock.js": "6bd8e40183672b4ff3ad0f0987be3d4965f9ef33d01abe907d34ad42149c1c8a",
+    "catalog.json": "e5f9b2d6dc2e765f4668324ef85032c6aea66599629c28e804b1fb7e453356e7",
+    "README.md": "f258771cfbd789c6da553e5bec63420c337418737d2d55e15dfa37dead5ed7d1",
+    "magic-beam/magic-beam.PROVENANCE.json": "217c46dc220ae504f39c98fd992134981f1f48d360938ddd216dc87bfeaae763",
+    "magic-beam/magic-beam.README.md": "feab439cbba3b69bcd83822b44f3e4acefd09fec8646615b462732b804a3244d",
+    "magic-beam/magic-beam.css": "446cd72ac323f6202edb1ff1387282b20702db074d6844af195ce6890530b427",
+    "magic-beam/magic-beam.js": "11d33f9f3dcf23a66663d004ffd2befaac7a95fb5bad4e35bf91ed7ef866f3d6",
+    "magic-beam/magic-beam.upstream.tsx": "6afa2ee1d01694a428eb8517d48deebe5c6b532dc0ee871800bb9d92aae43e79",
+    "magic-beam/magic-ui-LICENSE.md": "0147b84235ed916b8b4e89c1f80655351c5afe7d211b629be61f553a227b34ba"
+  }
+}

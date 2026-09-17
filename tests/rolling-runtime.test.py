@@ -119,7 +119,7 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
         path = self.data / 'users' / self.user['id'] / 'projects' / project / '.yingya/mock.jsonl'
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
-    def seed_completed_render(self):
+    def seed_completed_render(self, verified=True):
         project = self.request('/api/agent-projects', {'prompt': 'render recovery fixture', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high', 'aspectRatio': '16:9'})['id']
         root = self.data / 'users' / self.user['id'] / 'projects' / project
         version = 'draft-test'
@@ -139,8 +139,26 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
         output = root / f'.yingya/exports/{version}-landscape-30fps-{job}.mp4'
         output.parent.mkdir(exist_ok=True)
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-            'color=c=black:s=16x16:d=0.2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(output)], check=True)
-        shutil.copy2(output, source / 'preview.mp4')
+            'color=c=black:s=16x16:d=0.2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(source / 'preview.mp4')], check=True)
+        temporary = output.parent / '.tmp' / (job + '.partial.mp4')
+        temporary.parent.mkdir(exist_ok=True)
+        cli = ['python3', str(REPO / 'runtime/production-task.py')]
+        binding = ['--project', str(root), '--source', str(source.relative_to(root)),
+                   '--output', str(output.relative_to(root)), '--request-id', job]
+        if verified:
+            before = json.loads(subprocess.check_output(cli + ['fingerprint'] + binding, text=True))
+        shutil.copy2(source / 'preview.mp4', temporary)
+        if verified:
+            log_dir = root / '.yingya/reports/render-jobs' / job
+            log_dir.mkdir(parents=True)
+            for name in ['stdout', 'stderr']:
+                (log_dir / (name + '.log')).write_text('')
+            result = json.loads(subprocess.check_output(cli + ['verify'] + binding + [
+                '--input', str(temporary.relative_to(root)), '--source-fingerprint', before['sourceFingerprint'],
+                '--stdout', str((log_dir / 'stdout.log').relative_to(root)),
+                '--stderr', str((log_dir / 'stderr.log').relative_to(root))], text=True))
+            self.assertTrue(result['ok'])
+        temporary.rename(output)
         # Simulate the crash window after output rename and before completion
         # registration. A rerender would fail: the fixture HyperFrames exits 1.
         (root / '.yingya/render-jobs.json').write_text(json.dumps([{
@@ -404,6 +422,7 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
             # Crash an actual worker process; original payload remains recoverable
             # and uncertain paid work must not be silently replayed.
             render_project, render_job, output, output_digest, preview = self.seed_completed_render()
+            unverified_project, unverified_job, _, _, _ = self.seed_completed_render(verified=False)
             crash = self.request(prefix + '/turns', {'text': 'WAIT crash task', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high', 'clientRequestId': str(uuid.uuid4())})
             self.wait(lambda: len([x for x in self.log(project) if x['event'] == 'start']) == 3)
             victim = self.worker()
@@ -414,6 +433,11 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
             rendered = self.request('/api/agent-projects/' + render_project)
             self.assertEqual(hashlib.sha256(output.read_bytes()).hexdigest(), output_digest)
             self.assertEqual(len([a for a in rendered['manifest']['artifacts'] if a['id'] == 'final-' + render_job]), 1)
+            rejected = self.wait(lambda: next((j for j in self.request('/api/agent-projects/' + unverified_project)['renderJobs']
+                if j['id'] == unverified_job and j['status'] == 'failed'), None))
+            self.assertIn('缺少渲染前验收记录', rejected['error'])
+            unverified = self.request('/api/agent-projects/' + unverified_project)
+            self.assertFalse(any(a['id'] == 'final-' + unverified_job for a in unverified['manifest']['artifacts']))
             cookie = self.cookie
             self.cookie = ''
             try:

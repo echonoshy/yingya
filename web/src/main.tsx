@@ -5,6 +5,8 @@ import "@fontsource/fragment-mono";
 import { WebsiteRouter } from "./marketing/WebsiteRouter";
 import "./styles.css";
 import "./dropdowns.css";
+import "./home.css";
+import "./capabilities.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

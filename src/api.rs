@@ -1,3 +1,5 @@
+#[path = "editorial_api.rs"]
+mod editorial_api;
 #[path = "tenancy.rs"]
 mod tenancy;
 use crate::accounts::{Accounts, User};
@@ -47,7 +49,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::{
     fs,
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
     process::Command,
     sync::{Mutex, broadcast, mpsc},
@@ -549,6 +551,18 @@ async fn user_router(
             get(get_agent_media),
         )
         .route(
+            "/api/agent-projects/{project_id}/workbench",
+            get(editorial_api::workbench),
+        )
+        .route(
+            "/api/agent-projects/{project_id}/asset-roles",
+            patch(editorial_api::set_asset_role),
+        )
+        .route(
+            "/api/agent-projects/{project_id}/editorial/scenes/{scene_id}",
+            patch(editorial_api::edit_scene),
+        )
+        .route(
             "/api/agent-projects/{project_id}/heygen/audio",
             post(import_agent_heygen_audio),
         )
@@ -954,6 +968,10 @@ async fn create_agent_project(
     }
     validate_model_settings(&request.model, &request.reasoning_effort)
         .map_err(ApiError::Validation)?;
+    request
+        .requirements
+        .validate()
+        .map_err(ApiError::Validation)?;
     let voice_id = validate_voice_name(&request.voice_id)?;
     if voice_id != "default" && !state.voices.exists(&voice_id).await? {
         return Err(ApiError::Validation(format!(
@@ -1076,7 +1094,13 @@ async fn post_agent_turn(
         .agent_projects
         .submit_turn(&project_id, request, priority)
         .await
-        .map_err(ApiError::Project)?;
+        .map_err(|error| {
+            if error.starts_with("正在查看的版本不是当前编辑版本") {
+                ApiError::Conflict(error)
+            } else {
+                ApiError::Project(error)
+            }
+        })?;
     state
         .accounts
         .request(&state.user.id, &submitted.turn.id, "agent")
@@ -1294,7 +1318,7 @@ async fn confirm_agent_checkpoint(
         }))
     } else {
         let text = if checkpoint.kind == "plan" {
-            "当前制作方案已经确认。请复用方案与 scenes.json；需要旁白时先用已选音色生成音频并实测时长，再对齐分镜和字幕。继续制作完整草稿，完成一次 HyperFrames check --snapshots --json（含结构、运行时、布局、动效与对比度检查），审阅画面并验证视频后，封存版本并写入 draft checkpoint。不要重新询问风格或增加中间确认。"
+            "当前制作方案已经确认。请复用方案与 scenes.json，按批准的视觉方向制作主体素材和动画；新的视觉表达先按 representative-scene.md 完成有实际内容与运动的代表片段，审阅和修正后再扩展全片，已有验证结果可复用。需要旁白时使用已选音色并实测时长，再对齐分镜和字幕。完整草稿完成一次 HyperFrames check --snapshots --json，并按 visual-review.md 审阅实际 MP4 的构图、素材一致性、动画、剪辑与声音，记录问题、修正及证据后封存版本、写入 draft checkpoint。不要重新询问风格或增加中间确认。"
         } else {
             "当前草稿已经明确确认。请执行最终质量检查并渲染高质量 MP4；成功后把最终视频写入 manifest artifacts，清除 checkpoint 和 dirty，并将 phase 设置为 completed。"
         };
@@ -1303,6 +1327,7 @@ async fn confirm_agent_checkpoint(
             Path(project_id.clone()),
             Json(AgentTurnRequest {
                 text: text.to_owned(),
+                base_version_id: None,
                 client_request_id: None,
                 attachments: vec![],
                 context: vec![checkpoint_context],
@@ -1445,8 +1470,10 @@ async fn start_render_job(
             return Err(ApiError::Validation("请选择支持的渲染分辨率".to_owned()));
         }
     };
-    if !matches!(request.fps, 30 | 60) {
-        return Err(ApiError::Validation("帧率必须是 30 或 60 FPS".to_owned()));
+    if !(1..=120).contains(&request.fps) {
+        return Err(ApiError::Validation(
+            "帧率必须在 1 至 120 FPS 之间".to_owned(),
+        ));
     }
 
     let _gate = state.agent_jobs.lock(&project_id).await;
@@ -1678,10 +1705,40 @@ async fn run_render_job(
             .await
             .map_err(|e| e.to_string())?
         {
-            verify_render_output(&output_path).await?;
-            return Ok(());
+            // A resumed job must retain the fingerprint taken before rendering.
+            // Computing one here would bless an output from an unknown source.
+            let project_dir = state.agent_projects.project_dir(&project_id)?;
+            let before = read_safe_bytes(
+                &project_dir.join(format!(".yingya/reports/export-{job_id}-before.json")),
+            )
+            .await
+            .map_err(|_| "已有导出缺少渲染前验收记录，请重新导出".to_owned())?;
+            let fingerprint = render_fingerprint_from_report(&before)?;
+            return verify_render_output(
+                &state,
+                &project_id,
+                &job_id,
+                &source_dir,
+                &output_path,
+                &relative_output,
+                &fingerprint,
+            )
+            .await;
         }
         preflight_render_source(&state, &project_id, &job_id, &source_dir).await?;
+        let before = run_render_acceptance_command(
+            &state,
+            &project_id,
+            &job_id,
+            &source_dir,
+            &relative_output,
+            "fingerprint",
+            &[],
+        )
+        .await?;
+        let fingerprint = render_fingerprint_from_report(
+            &serde_json::to_vec(&before).map_err(|e| e.to_string())?,
+        )?;
         update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
             job.progress = 12;
             job.message = "正在捕获 HyperFrames 画面".to_owned();
@@ -1697,17 +1754,26 @@ async fn run_render_job(
             fps,
         )
         .await?;
-        verify_render_output(&temporary_output).await?;
+        let verification = verify_render_output(
+            &state,
+            &project_id,
+            &job_id,
+            &source_dir,
+            &temporary_output,
+            &relative_output,
+            &fingerprint,
+        )
+        .await?;
         fs::rename(&temporary_output, &output_path)
             .await
             .map_err(|error| error.to_string())?;
-        Ok::<(), String>(())
+        Ok::<Value, String>(verification)
     }
     .await;
 
     let _gate = state.agent_jobs.lock(&project_id).await;
     match result {
-        Ok(())
+        Ok(verification)
             if fs::metadata(&output_path)
                 .await
                 .is_ok_and(|value| value.is_file()) =>
@@ -1737,6 +1803,7 @@ async fn run_render_job(
                         "frameRate": fps,
                         "resolution": resolution_pixels,
                         "renderJobId": job_id,
+                        "renderVerification": verification,
                     }),
                 });
                 if let Some(output_spec) = manifest.output_spec.as_object_mut() {
@@ -1799,7 +1866,7 @@ async fn run_render_job(
                 }
             }
         }
-        Ok(()) => {
+        Ok(_) => {
             remove_temporary_render_output(&output_path).await;
             finish_failed_render(
                 &state,
@@ -1898,6 +1965,7 @@ async fn preflight_render_source(
 
     let project_dir = state.agent_projects.project_dir(project_id)?;
     let report_dir = project_dir.join(format!(".yingya/reports/render-jobs/{job_id}"));
+    agent_projects::reject_symlink_components(&report_dir)?;
     fs::create_dir_all(&report_dir)
         .await
         .map_err(|error| error.to_string())?;
@@ -1992,45 +2060,114 @@ fn validate_preflight_report(
     Ok(())
 }
 
-async fn verify_render_output(path: &FilePath) -> Result<(), String> {
-    let metadata = fs::metadata(path)
+fn render_fingerprint_from_report(bytes: &[u8]) -> Result<String, String> {
+    let report: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    let fingerprint = report
+        .get("sourceFingerprint")
+        .and_then(Value::as_str)
+        .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(|| "导出缺少有效的渲染前源文件指纹".to_owned())?;
+    Ok(fingerprint.to_owned())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_render_acceptance_command(
+    state: &AppState,
+    project_id: &str,
+    job_id: &str,
+    source_dir: &FilePath,
+    relative_output: &str,
+    command: &str,
+    extra_args: &[&str],
+) -> Result<Value, String> {
+    let project_dir = state.agent_projects.project_dir(project_id)?;
+    let canonical_project = fs::canonicalize(&project_dir)
         .await
-        .map_err(|error| error.to_string())?;
-    if !metadata.is_file() || metadata.len() == 0 {
-        return Err("HyperFrames 未生成有效的视频文件".to_owned());
-    }
+        .map_err(|e| e.to_string())?;
+    let canonical_source = fs::canonicalize(source_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    let relative_source = canonical_source
+        .strip_prefix(&canonical_project)
+        .map_err(|_| "导出源目录不能位于项目外部".to_owned())?;
+    let relative_source = if relative_source.as_os_str().is_empty() {
+        FilePath::new(".")
+    } else {
+        relative_source
+    };
     let output = tokio::time::timeout(
-        Duration::from_secs(30),
-        Command::new("ffprobe")
+        Duration::from_secs(610),
+        state
+            .sandbox
+            .command("python3")
+            .arg(state.root.join("runtime/production-task.py"))
+            .arg(command)
+            .arg("--project")
+            .arg(&project_dir)
+            .arg("--source")
+            .arg(relative_source)
             .args([
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=nk=1:nw=1",
+                "--output",
+                relative_output,
+                "--request-id",
+                job_id,
+                "--timeout",
+                "600",
             ])
-            .arg(path)
+            .args(extra_args)
+            .current_dir(&project_dir)
             .kill_on_drop(true)
             .output(),
     )
     .await
-    .map_err(|_| "ffprobe 验证视频超时".to_owned())?
-    .map_err(|error| format!("无法启动 ffprobe：{error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "渲染文件验证失败：{}",
-            truncate_status(&String::from_utf8_lossy(&output.stderr), 320)
-        ));
-    }
-    let duration = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .parse::<f64>()
-        .unwrap_or_default();
-    if !duration.is_finite() || duration <= 0.0 {
-        return Err("渲染文件没有有效时长".to_owned());
-    }
-    Ok(())
+    .map_err(|_| "导出验收超时".to_owned())?
+    .map_err(|error| format!("无法启动导出验收：{error}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    validate_preflight_report(command, output.status.success(), &stdout, &stderr)?;
+    serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn verify_render_output(
+    state: &AppState,
+    project_id: &str,
+    job_id: &str,
+    source_dir: &FilePath,
+    input: &FilePath,
+    relative_output: &str,
+    fingerprint: &str,
+) -> Result<Value, String> {
+    update_render_job(state, project_id, job_id, "render/progress", |job| {
+        job.progress = 95;
+        job.message = "正在核验成片与源素材".to_owned();
+    })
+    .await?;
+    let project_dir = state.agent_projects.project_dir(project_id)?;
+    let relative_input = input
+        .strip_prefix(&project_dir)
+        .map_err(|_| "导出文件不能位于项目外部".to_owned())?
+        .to_string_lossy();
+    let log_dir = format!(".yingya/reports/render-jobs/{job_id}");
+    run_render_acceptance_command(
+        state,
+        project_id,
+        job_id,
+        source_dir,
+        relative_output,
+        "verify",
+        &[
+            "--input",
+            relative_input.as_ref(),
+            "--source-fingerprint",
+            fingerprint,
+            "--stdout",
+            &format!("{log_dir}/stdout.log"),
+            "--stderr",
+            &format!("{log_dir}/stderr.log"),
+        ],
+    )
+    .await
 }
 
 async fn read_safe_bytes(path: &FilePath) -> Result<Vec<u8>, std::io::Error> {
@@ -2060,15 +2197,51 @@ async fn run_render_command(
     resolution: &str,
     fps: u16,
 ) -> Result<(), String> {
+    let project_dir = state.agent_projects.project_dir(project_id)?;
+    let canonical_project = fs::canonicalize(&project_dir)
+        .await
+        .map_err(|error| error.to_string())?;
+    let canonical_source = fs::canonicalize(source_dir)
+        .await
+        .map_err(|error| error.to_string())?;
+    let relative_source = canonical_source
+        .strip_prefix(&canonical_project)
+        .map_err(|_| "导出源目录不能位于项目外部".to_owned())?;
+    let relative_source = if relative_source.as_os_str().is_empty() {
+        FilePath::new(".")
+    } else {
+        relative_source
+    };
+    let relative_output = output_path
+        .strip_prefix(&project_dir)
+        .map_err(|_| "导出文件不能位于项目外部".to_owned())?;
+    let report_dir = project_dir.join(format!(".yingya/reports/render-jobs/{job_id}"));
+    let stdout_path = report_dir.join("stdout.log");
+    let stderr_path = report_dir.join("stderr.log");
+    agent_projects::reject_symlink_components(&stdout_path)?;
+    agent_projects::reject_symlink_components(&stderr_path)?;
+    let stdout_log = fs::File::create(&stdout_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let stderr_log = fs::File::create(&stderr_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut child = state
         .sandbox
-        .command(state.root.join("node_modules/.bin/hyperframes"))
-        .arg("render")
-        .args(["--output", output_path.to_string_lossy().as_ref()])
+        .command("python3")
+        .arg(state.root.join("runtime/production-task.py"))
+        .arg("capture")
+        .arg("--project")
+        .arg(&project_dir)
+        .arg("--source")
+        .arg(relative_source)
+        .arg("--output")
+        .arg(relative_output)
+        .args(["--request-id", job_id, "--timeout", "7200"])
         .args(["--quality", "high"])
         .args(["--resolution", resolution])
         .args(["--fps", &fps.to_string()])
-        .current_dir(source_dir)
+        .current_dir(&project_dir)
         .env("HOME", state.hyperframes_home.as_ref())
         .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
         .stdout(Stdio::piped())
@@ -2079,27 +2252,33 @@ async fn run_render_command(
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let (lines_tx, mut lines_rx) = mpsc::channel::<(bool, String)>(64);
+    // JoinSet aborts readers on cancellation; no detached reader can keep a
+    // previous attempt's logs open while a retry starts.
+    let mut readers = tokio::task::JoinSet::new();
     if let Some(stdout) = stdout {
         let lines_tx = lines_tx.clone();
-        tokio::spawn(async move {
-            forward_process_lines(stdout, false, lines_tx).await;
-        });
+        readers
+            .spawn(async move { forward_process_lines(stdout, stdout_log, false, lines_tx).await });
     }
     if let Some(stderr) = stderr {
         let lines_tx = lines_tx.clone();
-        tokio::spawn(async move {
-            forward_process_lines(stderr, true, lines_tx).await;
-        });
+        readers
+            .spawn(async move { forward_process_lines(stderr, stderr_log, true, lines_tx).await });
     }
     drop(lines_tx);
     let mut errors = Vec::new();
     let status = tokio::time::timeout(Duration::from_secs(7_200), async {
-        loop {
+        let mut status = None;
+        let mut eof = false;
+        while status.is_none() || !eof {
             tokio::select! {
-                status = child.wait() => break status.map_err(|error| error.to_string()),
-                line = lines_rx.recv() => {
+                result = child.wait(), if status.is_none() => {
+                    status = Some(result.map_err(|error| error.to_string())?);
+                }
+                line = lines_rx.recv(), if !eof => {
                     let Some((is_error, line)) = line else {
-                        break child.wait().await.map_err(|error| error.to_string());
+                        eof = true;
+                        continue;
                     };
                     if is_error { errors.push(line.clone()); }
                     if let Some(percent) = render_percent(&line) {
@@ -2113,12 +2292,13 @@ async fn run_render_command(
                 }
             }
         }
-    }).await.map_err(|_| "视频渲染超时".to_owned())??;
-    while let Ok((is_error, line)) = lines_rx.try_recv() {
-        if is_error {
-            errors.push(line);
+        // Process exit does not mean its pipe readers have reached EOF. Wait
+        // for both logs to be flushed, including final media-extraction lines.
+        while let Some(result) = readers.join_next().await {
+            result.map_err(|error| format!("无法保存完整渲染日志：{error}"))??;
         }
-    }
+        status.ok_or_else(|| "HyperFrames 渲染进程没有退出状态".to_owned())
+    }).await.map_err(|_| "视频渲染超时".to_owned())??;
     if status.success() {
         Ok(())
     } else {
@@ -2132,14 +2312,30 @@ async fn run_render_command(
 
 async fn forward_process_lines(
     stream: impl tokio::io::AsyncRead + Unpin,
+    mut log: fs::File,
     is_error: bool,
     sender: mpsc::Sender<(bool, String)>,
-) {
-    let mut lines = BufReader::new(stream).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        if sender.send((is_error, line)).await.is_err() {
-            break;
+) -> Result<(), String> {
+    let mut reader = BufReader::new(stream);
+    let mut bytes = Vec::new();
+    loop {
+        bytes.clear();
+        if reader
+            .read_until(b'\n', &mut bytes)
+            .await
+            .map_err(|e| e.to_string())?
+            == 0
+        {
+            return log.flush().await.map_err(|e| e.to_string());
         }
+        log.write_all(&bytes).await.map_err(|e| e.to_string())?;
+        let line = String::from_utf8_lossy(&bytes)
+            .trim_end_matches(['\r', '\n'])
+            .to_owned();
+        sender
+            .send((is_error, line))
+            .await
+            .map_err(|_| "渲染日志监听已停止".to_owned())?;
     }
 }
 
@@ -2210,6 +2406,7 @@ async fn rollback_agent_version(
         Path(project_id),
         Json(AgentTurnRequest {
             text,
+            base_version_id: None,
             client_request_id: None,
             attachments: vec![],
             context: vec![format!("rollback:{}", version.id)],
@@ -3024,6 +3221,8 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
         "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
         "json" => "application/json",
+        "glb" => "model/gltf-binary",
+        "gltf" => "model/gltf+json",
         "md" => "text/markdown; charset=utf-8",
         "html" => "text/html; charset=utf-8",
         "css" => "text/css; charset=utf-8",
@@ -3132,6 +3331,22 @@ async fn run_agent_turn(
     queued: QueuedTurn,
     cancellation: &TurnCancellation,
 ) {
+    // A queued request can become stale after an earlier turn creates a draft.
+    // Check before any model dispatch, preserving the original request for review.
+    let manifest = match state.agent_projects.manifest(project_id).await {
+        Ok(manifest) => manifest,
+        Err(_) => return,
+    };
+    if crate::editorial::validate_base_version(queued.base_version_id.as_deref(), &manifest)
+        .is_err()
+    {
+        let _ = state
+            .agent_projects
+            .requeue_front(project_id, queued.clone(), "这条排队修改对应的版本已变化，尚未执行。请移除这条过期排队消息，切到当前版本后重新提交；或先回退该版本".into())
+            .await;
+        emit_agent_state_event(state, project_id, Some(queued.id), "queue/updated").await;
+        return;
+    }
     if let Err(error) = state
         .agent_projects
         .mark_turn_dispatched(project_id, &queued.id)
@@ -3237,6 +3452,24 @@ async fn run_agent_turn(
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
     let prompt = format!("{prompt}{}", feedback::prompt_context(&queued.feedback));
+    let project_root = state
+        .agent_projects
+        .project_dir(project_id)
+        .expect("validated project");
+    let requirements = manifest
+        .output_spec
+        .get("requirements")
+        .cloned()
+        .unwrap_or_else(|| json!(crate::editorial::Requirements::default()));
+    let roles = crate::editorial::asset_roles(&project_root).await;
+    let role_note = match roles {
+        Ok(roles) => serde_json::to_string(&roles).unwrap_or_default(),
+        Err(error) => format!("素材用途记录需修复：{error}"),
+    };
+    let prompt = format!(
+        "{prompt}\n项目结构化创作要求：{requirements}\n项目素材用途：{role_note}\npresentation 为用户在首页选择的表现方式：存在时先读 references/presentation-choice.md，将 capabilityId 与 variant 落到适合的镜头及可用组件，写入方案并延续到制作；没有该字段则由内容决定。后续用户明确修改优先，不能在局部修改中强制恢复初始选择。需求原件保存在 .yingya/requirements.json，素材用途保存在 .yingya/asset-roles.json。目标时长 target 为近似目标，exact 为准确时长，max 为上限；字幕 none 不生成对白字幕但允许明确要求的标题。audioMode preserve 保留原声，narration 补充旁白，replace 用旁白替换原声，mute 为静音，auto 按真实素材与用户需求决定。新创作以有审美的动态视频为目标：即使输入是完整文稿，也要按 creative-brief.md 设计视觉主体、镜头动作与素材路线，制作授权后主动生成或制作所需素材，不默认将段落排成文字卡片。上传视频时才按 existing-footage.md 分析内容、音轨和片段证据，复用 .yingya/content-index.json，结合目标剪辑与补充画面；不要将所有视频导向录屏教程。代表片段和完整草稿按 visual-review.md 审阅实际视觉效果，沿用现有方案/草稿确认点；局部修改复用已批准设计。required 素材必须使用或明确指出冲突，reference 仅供参考，brand 保留品牌素材原貌；不得将文件名当作内容理解证据。非本轮改变的镜头、原声和素材应复用。当前请求的编辑基线：{}。",
+        queued.base_version_id.as_deref().unwrap_or("当前工作区")
+    );
     let prompt = if state.heygen.is_configured() {
         prompt
     } else {
@@ -5042,6 +5275,8 @@ fn safe_library_extension(source_name: &str) -> String {
             | "md"
             | "csv"
             | "json"
+            | "glb"
+            | "gltf"
             | "doc"
             | "docx"
             | "ppt"
@@ -5635,6 +5870,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn render_fingerprint_requires_a_complete_digest() {
+        let digest = "a0".repeat(32);
+        assert_eq!(
+            render_fingerprint_from_report(
+                &serde_json::to_vec(&json!({"sourceFingerprint": digest})).unwrap()
+            )
+            .unwrap(),
+            digest
+        );
+        for report in [
+            json!({}),
+            json!({"sourceFingerprint": null}),
+            json!({"sourceFingerprint": "a0".repeat(31)}),
+            json!({"sourceFingerprint": "z".repeat(64)}),
+        ] {
+            assert!(render_fingerprint_from_report(&serde_json::to_vec(&report).unwrap()).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn render_logs_preserve_all_bytes_and_unterminated_final_diagnostics() {
+        let root = env::temp_dir().join(format!("yingya-render-log-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let path = root.join("stdout.log");
+        let log = fs::File::create(&path).await.unwrap();
+        let (mut writer, stream) = tokio::io::duplex(32);
+        let (sender, mut receiver) = mpsc::channel(2);
+        let reader = tokio::spawn(forward_process_lines(stream, log, false, sender));
+        let mut bytes = b"render 95%\r\n".repeat(100);
+        bytes.extend_from_slice(b"non-utf8: \xff\n");
+        let diagnostic = r#"{"phase":"video_extract","videoCount":1,"extractedVideoCount":1}"#;
+        bytes.extend_from_slice(diagnostic.as_bytes());
+        let expected = bytes.clone();
+        let writer = tokio::spawn(async move {
+            writer.write_all(&bytes).await.unwrap();
+            writer.shutdown().await.unwrap();
+        });
+        let mut lines = Vec::new();
+        while let Some((is_error, line)) = receiver.recv().await {
+            assert!(!is_error);
+            lines.push(line);
+        }
+        writer.await.unwrap();
+        reader.await.unwrap().unwrap();
+        assert_eq!(lines.len(), 102);
+        assert_eq!(lines.last().unwrap(), diagnostic);
+        assert_eq!(fs::read(path).await.unwrap(), expected);
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
     #[tokio::test]
     async fn scaffolds_hyperframes_after_plan_confirmation_without_overwriting_source() {
         let root = env::temp_dir().join(format!("yingya-hyperframes-scaffold-{}", Uuid::new_v4()));
@@ -5699,6 +5985,16 @@ mod tests {
         assert_eq!(safe_library_extension("产品主图.PNG"), "png");
         assert_eq!(safe_library_extension("采访素材.MOV"), "mov");
         assert_eq!(safe_library_extension("需求说明.pdf"), "pdf");
+        assert_eq!(safe_library_extension("产品模型.GLB"), "glb");
+        assert_eq!(safe_library_extension("产品模型.gltf"), "gltf");
+        assert_eq!(
+            content_type_for_path(FilePath::new("model.glb")),
+            "model/gltf-binary"
+        );
+        assert_eq!(
+            content_type_for_path(FilePath::new("model.gltf")),
+            "model/gltf+json"
+        );
         assert_eq!(safe_library_extension("page.html"), "bin");
         assert_eq!(library_category("video/quicktime", "clip.mov"), "video");
         assert_eq!(library_category("audio/mpeg", "music.mp3"), "audio");

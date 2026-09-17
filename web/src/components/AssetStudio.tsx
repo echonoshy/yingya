@@ -47,7 +47,7 @@ function assetFormat(asset: AssetLibraryItem) {
   return subtype.replace("vnd.openxmlformats-officedocument.", "").toUpperCase();
 }
 
-export function AssetStudio({ accountPanel, models, selection, voiceId, onSelection, onVoice, onCreate }: { accountPanel?: ReactNode; models: Parameters<typeof ModelSelector>[0]["models"]; selection: ModelSelection; voiceId: string; onSelection: (value: ModelSelection) => void; onVoice: (value: string) => void; onCreate: () => void }) {
+export function AssetStudio({ initialTool, accountPanel, models, selection, voiceId, onSelection, onVoice, onCreate }: { initialTool?: "image" | "voice"; accountPanel?: ReactNode; models: Parameters<typeof ModelSelector>[0]["models"]; selection: ModelSelection; voiceId: string; onSelection: (value: ModelSelection) => void; onVoice: (value: string) => void; onCreate: () => void }) {
   const [tab, setTab] = useState<AssetTab>("all");
   const [previewWidth, setPreviewWidth] = useState(360);
   const [expandedAsset, setExpandedAsset] = useState<AssetLibraryItem | null>(null);
@@ -75,7 +75,7 @@ export function AssetStudio({ accountPanel, models, selection, voiceId, onSelect
   const [preferredSource, setSourceFilter] = useState<SourceFilter>("all");
   const uploadOnly = tab === "video" || tab === "audio" || tab === "document";
   const sourceFilter = uploadOnly ? "uploaded" : preferredSource;
-  const [createKind, setCreateKind] = useState<"image" | "voice" | null>(null);
+  const [createKind, setCreateKind] = useState<"image" | "voice" | null>(initialTool ?? null);
   const drawerPresence = useMotionPresence(createKind);
   const drawerRoot = useRef<HTMLDivElement>(null);
   const createTriggerRef = useRef<HTMLButtonElement>(null);

@@ -4,7 +4,7 @@ import { createClientRequestId } from "./requestId";
 const attemptSchema = z.object({
   version: z.literal(1), signature: z.string(), creationRequestId: z.string().uuid(), turnRequestId: z.string().uuid(),
   projectId: z.string().optional(), uploadedPaths: z.record(z.string(), z.string()),
-  turnInput: z.object({ text: z.string(), clientRequestId: z.string(), attachments: z.array(z.string()), model: z.string(), reasoningEffort: z.string() }).optional(),
+  turnInput: z.object({ text: z.string(), baseVersionId: z.string().nullable().optional(), clientRequestId: z.string(), attachments: z.array(z.string()), model: z.string(), reasoningEffort: z.string() }).optional(),
   accepted: z.boolean(),
 });
 export type CreationAttempt = z.infer<typeof attemptSchema>;

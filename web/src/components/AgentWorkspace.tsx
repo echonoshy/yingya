@@ -1,3 +1,7 @@
+import { AssetRoleSelect } from "./AssetRoleSelect";
+import { SceneWorkbench } from "./SceneWorkbench";
+import { useWorkbench } from "../hooks/useWorkbench";
+import { assetRoleLabels, fileRoleKey, materialOnlyPrompt, regeneratePreviewPrompt, sceneAtTime, sceneStart, sourceClip, sourceFilePath, selectedProjectVersion } from "../workbench";
 import { useAutosizeTextarea } from "../hooks/useAutosizeTextarea";
 import { createClientRequestId } from "../requestId";
 import { ComposerForm } from "./ComposerForm";
@@ -17,7 +21,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { useDraftFiles } from "../hooks/useDraftFiles";
 import { z } from "zod";
 import { useSavedState } from "../hooks/useSavedState";
-import { assetLibraryItemSchema } from "../schemas";
+import { assetLibraryItemSchema, assetRoleSchema } from "../schemas";
 import { workflowState } from "../projectState";
 import { AudioLibrary } from "./AudioLibrary";
 import { VersionComparison } from "./VersionComparison";
@@ -62,6 +66,7 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     finally { setFeedbackCaptureBusy(false); }
   }
   const attemptRef = useRef<SubmissionAttempt | null>(null);
+  const previewAttemptRef = useRef<SubmissionAttempt | null>(null);
   const [sendStage, setSendStage] = useState<"idle" | "uploading" | "sending" | "sent" | "failed">("idle");
   const [sendResult, setSendResult] = useState<{ label: string; turnId: string; queued: boolean } | null>(null);
   const [assetFeedback, setAssetFeedback] = useState("");
@@ -88,7 +93,11 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   const [libraryFolders, setLibraryFolders] = useState<AssetFolder[]>([]);
   const [selectedAssets, setSelectedAssets] = useSavedState(`yingya-draft-assets:${project.id}`, z.array(assetLibraryItemSchema), []);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  const [media, setMedia] = useState<AgentMedia>({ scenes: [], assets: [] });
+  const [assetRoles, setAssetRoles] = useSavedState(`yingya-draft-asset-roles:${project.id}`, z.record(z.string(), assetRoleSchema), {});
+  const [selectedVersionId, setSelectedVersionId] = useState(() => savedVersionId(project));
+  const selectedVersion = selectedProjectVersion(project, selectedVersionId);
+  const oldVersion = Boolean(selectedVersion && project.manifest.currentDraft && selectedVersion.id !== project.manifest.currentDraft);
+  const selectVersion = useCallback((id: string) => { setSelectedVersionId(id); setError(current => current.includes("旧版本") || current.startsWith("请先切到当前版本") ? "" : current); writeStringSetting(`yingya-version:${project.id}`, id); }, [project.id]);
   const [editingTitle, setEditingTitle] = useState(false); const [titleDraft, setTitleDraft] = useState(""); const [renaming, setRenaming] = useState(false); const [titleError, setTitleError] = useState("");
   const [dismissedCheckpoint, setDismissedCheckpoint] = useState("");
   const refreshGeneration = useRef(0);
@@ -106,13 +115,11 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
     catch (reason) { setError(reason instanceof Error ? reason.message : "立即执行失败，请重试"); }
     finally { executingQueuedRef.current = false; setExecutingQueued(""); }
   }
-  const refreshMedia = useCallback(async () => { try { setMedia(await api.getProjectMedia(project.id)); } catch { /* media is optional for older projects */ } }, [project.id]);
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
     try {
-      const [detail, latestMedia] = await Promise.all([api.getProject(project.id), api.getProjectMedia(project.id).catch(() => undefined)]);
+      const detail = await api.getProject(project.id);
       if (generation !== refreshGeneration.current) return;
-      if (latestMedia) setMedia(latestMedia);
       setSubmissionSyncFailed(false);
       onProject(detail);
     } catch (reason) { if (generation === refreshGeneration.current) throw reason; }
@@ -134,11 +141,10 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   ]), [conversation, project.manifest.checkpoint?.id, project.queue, project.status]);
   const { timelineRef, contentRef, onScroll, hasNewContent, scrollToLatest } = useTimelineScroll(timelineRevision);
   useEffect(() => {
-    void refreshMedia();
     void Promise.all([api.listAssetLibrary(), api.listAssetFolders()])
       .then(([library, folders]) => { setLibraryAssets(library.assets); setLibraryFolders(folders); })
       .catch(() => undefined);
-  }, [refreshMedia]);
+  }, [project.id]);
   function selectCanvasTab(tab: CanvasTab) { setArtifactPreview(null); setCanvasTab(tab); writeStringSetting(`yingya-canvas-tab:${project.id}`, tab); }
 
   function clearSubmissionFeedback() {
@@ -149,12 +155,13 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
 
   async function send(event: FormEvent) {
     event.preventDefault(); if ((!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || feedbackNotesIncomplete || feedbackCaptureBusy || sendingRef.current || fileDraftStatus === "loading" || feedbackDraft.status === "loading") return;
+    if (oldVersion) { setError("正在查看旧版本。请切到当前版本，或先回退到此版本，再发送修改。"); return; }
     sendingRef.current = true;
     setBusy(true); setError(""); setAssetFeedback(""); setSubmissionSyncFailed(false);
     setSendStage(files.length || selectedAssets.length || feedbackDraft.items.some(item => item.kind === "video-frame" && !item.asset) ? "uploading" : "sending");
     try {
       const submittedFeedback = feedbackDraft.items;
-      const signature = JSON.stringify({ text, contexts, interrupt: false, selection, files: files.map(f => [f.name, f.size, f.lastModified]), assets: selectedAssets.map(a => a.id), feedback: submittedFeedback.map(({ blob: _blob, asset: _asset, ...item }) => item) });
+      const signature = JSON.stringify({ text, contexts, baseVersionId: selectedVersion?.id ?? null, assetRoles, interrupt: false, selection, files: files.map(f => [f.name, f.size, f.lastModified]), assets: selectedAssets.map(a => a.id), feedback: submittedFeedback.map(({ blob: _blob, asset: _asset, ...item }) => item) });
       const attempt = attemptRef.current?.signature === signature ? attemptRef.current : submissionAttempt(project.id, signature);
       attemptRef.current = attempt;
       if (!attempt.input) {
@@ -169,8 +176,9 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
             return { ...item, screenshotAssetId: asset.id, screenshotPath: asset.path, screenshotSha256: asset.sha256 };
           })),
         ]);
-        const assetContexts = selectedAssets.map(asset => `创作参考 · ${assetName(asset)}`);
-        attempt.input = { clientRequestId: attempt.id, text: text.trim() || (submittedFeedback.length ? "请根据修改意见调整视频，保留其他内容。" : "请结合所选素材继续创作。"), attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], feedback: visualFeedback, interrupt: false, ...selection };
+        await Promise.all(uploaded.map((item, index) => api.setAssetRole(project.id, item.path, assetRoles[index < files.length ? fileRoleKey(files[index]) : `library:${selectedAssets[index - files.length].id}`] ?? "auto")));
+        const assetContexts = selectedAssets.map(asset => `素材 · ${assetName(asset)}（${assetRoleLabels[assetRoles[`library:${asset.id}`] ?? "auto"]}）`);
+        attempt.input = { baseVersionId: selectedVersion?.id ?? null, clientRequestId: attempt.id, text: text.trim() || (submittedFeedback.length ? "请根据修改意见调整视频，保留其他内容。" : materialOnlyPrompt), attachments: uploaded.map(item => item.path), context: [...new Set([...contexts, ...assetContexts])], feedback: visualFeedback, interrupt: false, ...selection };
         saveSubmission(project.id, attempt);
       }
       setSendStage("sending");
@@ -188,6 +196,22 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
       try { await refresh(); } catch { setSubmissionSyncFailed(true); }
     }
     catch (reason) { setSendStage("failed"); setError(reason instanceof Error ? reason.message : "消息发送失败"); }
+    finally { sendingRef.current = false; setBusy(false); }
+  }
+  async function generatePreview() {
+    if (busy || running || project.queueDepth > 0 || oldVersion || !selectedVersion || !project.manifest.dirty || sendingRef.current) return;
+    sendingRef.current = true; setBusy(true); setError("");
+    const signature = JSON.stringify({ baseVersionId: selectedVersion.id, ...selection });
+    const attempt = previewAttemptRef.current?.signature === signature ? previewAttemptRef.current : submissionAttempt(project.id, signature);
+    previewAttemptRef.current = attempt;
+    attempt.input ??= { baseVersionId: selectedVersion.id, clientRequestId: attempt.id, text: regeneratePreviewPrompt, interrupt: false, ...selection };
+    try {
+      const accepted = await api.sendTurn(project.id, attempt.input);
+      previewAttemptRef.current = null;
+      setSendResult({ label: "已提交新版预览制作", turnId: accepted.turnId, queued: accepted.status === "queued" });
+      setSendStage("sent"); setMobilePanel("thread");
+      try { await refresh(); } catch { setSubmissionSyncFailed(true); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "新版预览请求发送失败，请重试"); setMobilePanel("thread"); }
     finally { sendingRef.current = false; setBusy(false); }
   }
   async function confirm() {
@@ -208,9 +232,10 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
   function selectQuickReply(value: string) { clearSubmissionFeedback(); setText(value); setMobilePanel("thread"); composerRef.current?.focus(); requestAnimationFrame(() => composerRef.current?.focus()); }
   async function answerWaitingInput(choice: string) {
     if (busy) return;
+    if (oldVersion) { setError("请先切到当前版本或回退，再继续制作。"); return; }
     setBusy(true); setError("");
     try {
-      await api.sendTurn(project.id, { text: `选择${choice.replace("（推荐）", "")}，请继续制作。`, ...selection });
+      await api.sendTurn(project.id, { baseVersionId: selectedVersion?.id ?? null, text: `选择${choice.replace("（推荐）", "")}，请继续制作。`, ...selection });
       await refresh();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "确认发送失败"); }
     finally { setBusy(false); }
@@ -298,23 +323,24 @@ export function AgentWorkspace({ project, models, selection, onSelection, onVoic
         {text && !textSaved ? <p className="form-error" role="status">草稿保存失败，请勿关闭页面</p> : null}
         {hasNewContent ? <button className="timeline-latest" type="button" onClick={() => { scrollToLatest(); timelineRef.current?.focus({ preventScroll: true }); }}><ArrowDown/>有新消息，回到最新</button> : null}
         {assetPickerOpen ? <ComposerAssetPicker folders={libraryFolders} assets={libraryAssets} selected={selectedAssets} onClose={() => setAssetPickerOpen(false)} onToggle={asset => { clearSubmissionFeedback(); if (selectedAssets.some(item => item.id === asset.id)) { setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); } else selectReferenceAssets([asset]); }}/> : null}
-        <SelectedAssetChips assets={selectedAssets} onRemove={asset => { clearSubmissionFeedback(); setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); composerRef.current?.focus({ preventScroll: true }); }}/>
+        <SelectedAssetChips assets={selectedAssets} roles={assetRoles} onRole={(id, role) => setAssetRoles(current => ({ ...current, [`library:${id}`]: role }))} onRemove={asset => { clearSubmissionFeedback(); setSelectedAssets(items => items.filter(item => item.id !== asset.id)); setAssetFeedback(`已移除 ${assetName(asset)}`); composerRef.current?.focus({ preventScroll: true }); }}/>
         {contexts.length ? <div className="context-chips">{contexts.map(value => <span key={value}>{value}<button aria-label={`移除 ${value}`} onClick={() => setContexts(items => items.filter(item => item !== value))}>×</button></span>)}</div> : null}
         <div className="composer-feedback" role="status" aria-live="polite" aria-atomic="true">{sendStage === "uploading" || sendStage === "sending" ? <span key={sendStage}><CircleNotch className="spin"/>{sendStage === "uploading" ? "正在上传素材…" : "正在发送…"}</span> : sendStage === "failed" ? <span className="composer-feedback-error"><Warning/>发送未完成，可重试</span> : assetFeedback ? <span key={assetFeedback}><Check/>{assetFeedback}</span> : sendStage === "sent" && sendResult && (sendResult.queued ? project.queue.some(turn => turn.id === sendResult.turnId) : project.activeTurnId !== sendResult.turnId && !project.messages.some(message => message.turnId === sendResult.turnId)) ? <span><Check/>{sendResult.label}</span> : null}</div>
+        {oldVersion ? <div className="version-edit-notice" role="status"><span>正在查看旧版本，修改前请切换或在预览中回退。</span><button type="button" onClick={() => selectVersion(project.manifest.currentDraft ?? "")}>切到当前版本</button></div> : null}
         <ComposerForm className="composer" onSubmit={send} onChange={clearSubmissionFeedback} filesDisabled={busy || fileDraftStatus === "loading"} onFiles={added => { clearSubmissionFeedback(); setFiles(current => [...current, ...added]); }}>
           <textarea rows={1} aria-label="修改描述" ref={composerRef} value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={running ? "继续输入，默认排到当前任务之后…" : "描述想修改的内容…"}/>
-          <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
+          <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<AssetRoleSelect name={file.name} value={assetRoles[fileRoleKey(file)]} disabled={busy} onChange={role => setAssetRoles(current => ({ ...current, [fileRoleKey(file)]: role }))}/><button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
 
-          <div className="composer-tools composer-toolbar"><div className="composer-resources"><ComposerMoreMenu onUpload={() => fileRef.current?.click()} onSelectAssets={() => setAssetPickerOpen(true)} selectedCount={selectedAssets.length} voiceId={project.voiceId} onVoice={onVoice} running={running}/><input ref={fileRef} hidden multiple type="file" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); event.target.value = ""; }}/></div>
+          <div className="composer-tools composer-toolbar"><div className="composer-resources"><ComposerMoreMenu onUpload={() => fileRef.current?.click()} onSelectAssets={() => setAssetPickerOpen(true)} selectedCount={selectedAssets.length} voiceId={project.voiceId} onVoice={onVoice} running={running} narration={(["narration", "replace"] as unknown[]).includes((project.manifest.outputSpec.requirements as Record<string, unknown> | undefined)?.audioMode)}/><input ref={fileRef} hidden multiple type="file" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); event.target.value = ""; }}/></div>
           <div className="composer-delivery"><div className="composer-settings"><ModelSelector models={models} value={selection} onChange={onSelection}/></div><div className="composer-actions">{running ? <button className="stop-button" type="button" aria-label={stopping ? "正在停止" : "停止当前任务"} title="停止当前任务" disabled={stopping} onClick={() => void stop()}>{stopping ? <CircleNotch className="spin"/> : <Stop weight="fill"/>}{stopping ? "停止中" : "停止"}</button> : null}<button className="send-button" aria-label={sendStage === "failed" ? "重试发送消息" : "发送消息"} title={sendStage === "failed" ? "重试发送" : "发送消息"} aria-busy={sendStage === "uploading" || sendStage === "sending"} disabled={(!text.trim() && !files.length && !selectedAssets.length && !feedbackDraft.items.length) || busy || feedbackNotesIncomplete || feedbackCaptureBusy || fileDraftStatus === "loading" || feedbackDraft.status === "loading"}>{sendStage === "uploading" || sendStage === "sending" ? <CircleNotch className="spin"/> : sendStage === "failed" ? <ArrowClockwise/> : <ArrowUp weight="bold"/>}</button></div></div></div></ComposerForm>{error ? <p className="form-error" role="alert">{error}</p> : null}
       </footer>
     </main>
     {feedbackAnnotation ? <VideoAnnotationEditor frame={feedbackAnnotation.frame} initial={feedbackAnnotation.initial} versionId={feedbackAnnotation.initial.versionId} videoPath={feedbackAnnotation.initial.videoPath} versionLabel={project.manifest.versions.find(version => version.id === feedbackAnnotation.initial.versionId)?.label ?? feedbackAnnotation.initial.versionId} onAdd={addFeedback} onClose={() => setFeedbackAnnotation(null)}/> : null}
-    <ArtifactCanvas exportRequest={exportRequest} onDescribe={() => { setMobilePanel("thread"); requestAnimationFrame(() => composerRef.current?.focus()); }} project={project} activeTab={canvasTab} preview={artifactPreview} media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onFeedback={addFeedback} feedbackDisabled={busy || feedbackCaptureBusy || feedbackDraft.status === "loading" || feedbackDraft.items.length >= 8} onTimedFeedback={addTimedFeedback} onCompose={selectQuickReply} onRefresh={refresh}/>
+    <ArtifactCanvas generationDisabled={busy || running || project.queueDepth > 0 || oldVersion} onGeneratePreview={() => void generatePreview()} selectedVersionId={selectedVersion?.id ?? ""} onSelectVersion={selectVersion} exportRequest={exportRequest} onDescribe={() => { setMobilePanel("thread"); requestAnimationFrame(() => composerRef.current?.focus()); }} project={project} activeTab={canvasTab} preview={artifactPreview} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onClosePreview={() => setArtifactPreview(null)} onTab={selectCanvasTab} onPreview={artifact => void previewArtifact(artifact)} onContext={value => setContexts(items => items.includes(value) ? items : [...items, value])} onSelectAssets={selectReferenceAssets} onFeedback={addFeedback} feedbackDisabled={busy || feedbackCaptureBusy || feedbackDraft.status === "loading" || feedbackDraft.items.length >= 8} onTimedFeedback={addTimedFeedback} onCompose={selectQuickReply} onRefresh={refresh}/>
   </div>;
 }
 
-function SelectedAssetChips({ assets, onRemove }: { assets: AssetLibraryItem[]; onRemove: (asset: AssetLibraryItem) => void }) {
+function SelectedAssetChips({ assets, onRemove, roles, onRole }: { assets: AssetLibraryItem[]; roles: Record<string, import("../types").AssetRole>; onRole: (id: string, role: import("../types").AssetRole) => void; onRemove: (asset: AssetLibraryItem) => void }) {
   const [previous, setPrevious] = useState(assets);
   const [visible, setVisible] = useState(() => assets.map(asset => ({ asset, exiting: false })));
   if (previous !== assets) {
@@ -327,7 +353,7 @@ function SelectedAssetChips({ assets, onRemove }: { assets: AssetLibraryItem[]; 
   }
   return <div className={`selected-asset-chips ${assets.length ? "" : "selected-asset-chips--empty"}`} role="group" aria-label="已选择素材">{visible.map(({ asset, exiting }) => <span key={asset.id} className={exiting ? "is-exiting" : ""} aria-hidden={exiting || undefined} inert={exiting} onAnimationEnd={event => {
     if (event.target === event.currentTarget && exiting) setVisible(items => items.filter(item => item.asset.id !== asset.id || !item.exiting));
-  }}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · 创作参考</small></span><button type="button" aria-label={`移除素材 ${assetName(asset)}`} onClick={() => onRemove(asset)}><X/></button></span>)}</div>;
+  }}><AssetReferenceThumb asset={asset}/><span><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)}</small></span><button type="button" aria-label={`移除素材 ${assetName(asset)}`} onClick={() => onRemove(asset)}><X/></button><AssetRoleSelect name={assetName(asset)} value={roles[`library:${asset.id}`]} onChange={role => onRole(asset.id, role)}/></span>)}</div>;
 }
 
 function ConnectionBadge({ state }: { state: AgentConnectionState }) {
@@ -441,7 +467,7 @@ function WorkflowRecoveryCard({ briefing, incomplete, statusLabel, onRecover }: 
   return <section className={`workflow-recovery ${incomplete ? "workflow-recovery--incomplete" : ""}`} role={incomplete ? "status" : "alert"}><Warning/><div><b>{incomplete ? statusLabel : "制作需要恢复"}</b><p>{detail}</p></div><button type="button" onClick={() => onRecover(prompt)}>{prompt}<ArrowRight/></button></section>;
 }
 
-function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisabled, project, activeTab, preview, media, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onCompose, onRefresh }: { exportRequest: number; onDescribe: () => void; onFeedback: (draft: FeedbackDraft) => void; feedbackDisabled: boolean; project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; media: AgentMedia; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onCompose: (text: string) => void; onTimedFeedback: (versionId: string, videoPath: string, feedback: Array<{ time: number; description: string }>) => Promise<void>; onRefresh: () => Promise<void> }) {
+function ArtifactCanvas({ generationDisabled, onGeneratePreview, selectedVersionId, onSelectVersion, exportRequest, onDescribe, onFeedback, feedbackDisabled, project, activeTab, preview, libraryAssets, libraryFolders, selectedAssets, onClosePreview, onTab, onPreview, onContext, onSelectAssets, onTimedFeedback, onCompose, onRefresh }: { generationDisabled: boolean; onGeneratePreview: () => void; selectedVersionId: string; onSelectVersion: (id: string) => void; exportRequest: number; onDescribe: () => void; onFeedback: (draft: FeedbackDraft) => void; feedbackDisabled: boolean; project: ProjectDetail; activeTab: CanvasTab; preview: { artifact: Artifact; content: string; loading: boolean; error: string } | null; libraryAssets: AssetLibraryItem[]; libraryFolders: AssetFolder[]; selectedAssets: AssetLibraryItem[]; onClosePreview: () => void; onTab: (value: CanvasTab) => void; onPreview: (artifact: Artifact) => void; onContext: (value: string) => void; onSelectAssets: (assets: AssetLibraryItem[]) => void; onCompose: (text: string) => void; onTimedFeedback: (versionId: string, videoPath: string, feedback: Array<{ time: number; description: string }>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -466,7 +492,8 @@ function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisable
   }
   const [artifactQuery, setArtifactQuery] = useState("");
   const [artifactGroups, setArtifactGroups] = useState<string[]>(["video", "plan"]);
-  const [versionId, setVersionId] = useState(() => savedVersionId(project));
+  const versionId = selectedVersionId;
+  const setVersionId = onSelectVersion;
   const [timeFeedback, setTimeFeedback] = useSavedState(`yingya-feedback:${project.id}:${versionId}`, z.array(z.object({ id: z.number(), time: z.number(), description: z.string() })), []);
   const [rollbackBusy, setRollbackBusy] = useState(false);
   const [migratingFeedback, setMigratingFeedback] = useState(false);
@@ -476,7 +503,42 @@ function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisable
   const [captureError, setCaptureError] = useState("");
   const [capturing, setCapturing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const version = project.manifest.versions.find(value => value.id === versionId) ?? project.manifest.versions.at(-1);
+  const version = selectedProjectVersion(project, versionId);
+  const workbench = useWorkbench(project.id, version?.id, project.updatedAt);
+  const [showSourcePreview, setShowSourcePreview] = useState(false);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [selectedSceneId, setSelectedSceneId] = useState("");
+  const [sourceSeek, setSourceSeek] = useState<{ time: number; nonce: number }>();
+  const isCurrentVersion = !version || version.id === project.manifest.currentDraft;
+  const sourceMode = showSourcePreview && isCurrentVersion;
+  const view = sourceMode ? workbench.data?.workspace : workbench.data;
+  const bindings = view?.sourceBindings?.scenes ?? [];
+  const resolvedSceneId = selectedSceneId || sceneAtTime(view?.scenes ?? [], bindings, playbackTime)?.id || "";
+  const versionMedia: AgentMedia = { scenes: view?.scenes ?? [], assets: (view?.assets ?? []).map(asset => {
+    const path = sourceFilePath(view?.sourcePath ?? ".", asset.hyperframesPath);
+    return { ...asset, url: path ? api.fileUrl(project.id, path) : "" };
+  }) };
+  useEffect(() => { setShowSourcePreview(false); setPlaybackTime(0); setSelectedSceneId(""); }, [version?.id]);
+  const updatePlayback = useCallback((time: number) => {
+    setPlaybackTime(Math.floor(time * 10) / 10);
+    setSelectedSceneId(sceneAtTime(view?.scenes ?? [], view?.sourceBindings?.scenes ?? [], time)?.id ?? "");
+  }, [view?.scenes, view?.sourceBindings]);
+  function selectScene(id: string, time?: number) {
+    setSelectedSceneId(id);
+    if (time === undefined) return;
+    setPlaybackTime(time);
+    if (sourceMode) setSourceSeek({ time, nonce: Date.now() });
+    else if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = time; }
+  }
+  function openSourcePreview() {
+    const scene = workbench.data?.workspace.scenes.find(item => item.id === resolvedSceneId);
+    const time = scene && sceneStart(scene, workbench.data?.workspace.sourceBindings?.scenes ?? []);
+    if (time !== undefined) setSourceSeek({ time, nonce: Date.now() });
+    videoRef.current?.pause();
+    setShowSourcePreview(true);
+  }
+  async function sceneSaved() { workbench.refresh(); await onRefresh(); openSourcePreview(); }
+
   const finalVideoArtifact = [...project.manifest.artifacts].reverse().find(value => value.kind === "final-video" && value.version === version?.id);
   const videoArtifact = version ? project.manifest.artifacts.find(value => value.kind.includes("video") && value.version === version.id) : project.manifest.artifacts.find(value => value.kind.includes("video"));
   const videoPath = finalVideoArtifact?.path ?? version?.videoPath ?? videoArtifact?.path;
@@ -524,25 +586,27 @@ function ArtifactCanvas({ exportRequest, onDescribe, onFeedback, feedbackDisable
 
   return <section className="artifact-canvas" aria-label="作品工作区">
     {annotation ? <VideoAnnotationEditor {...annotation} onAdd={onFeedback} onClose={() => setAnnotation(null)}/> : null}
-    <header><div className="canvas-version"><span className="canvas-label">{activeTab === "preview" ? "预览版本" : "当前版本"}</span>{project.manifest.versions.length ? <select aria-label="视频版本" disabled={activeTab !== "preview"} value={activeTab === "preview" ? versionId : project.manifest.currentDraft ?? project.manifest.versions.at(-1)?.id} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label.replace(/草稿/g, "视频")}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" ref={tabListRef} onKeyDown={navigateTab} role="tablist" aria-label="项目工作台"><SelectionIndicator value={activeTab} line/>{(["preview", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" id={`canvas-tab-${tab}`} aria-controls="canvas-content" tabIndex={activeTab === tab ? 0 : -1} aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{workflowState(project).sourceNotice ? <span className="dirty-chip" title={workflowState(project).sourceNotice}>源文件有更新</span> : null}</div></header>
+    <header><div className="canvas-version"><span className="canvas-label">{"预览版本"}</span>{project.manifest.versions.length ? <select aria-label="视频版本" value={version?.id ?? ""} onChange={event => { setVersionId(event.target.value); writeStringSetting(`yingya-version:${project.id}`, event.target.value); }}>{project.manifest.versions.map(item => <option key={item.id} value={item.id}>{item.label.replace(/草稿/g, "视频")}</option>)}</select> : <h2>项目工作台</h2>}</div><div className="canvas-tabs" ref={tabListRef} onKeyDown={navigateTab} role="tablist" aria-label="项目工作台"><SelectionIndicator value={activeTab} line/>{(["preview", "assets", "artifacts"] as CanvasTab[]).map(tab => <button role="tab" id={`canvas-tab-${tab}`} aria-controls="canvas-content" tabIndex={activeTab === tab ? 0 : -1} aria-selected={activeTab === tab} className={activeTab === tab ? "active" : ""} key={tab} onClick={() => onTab(tab)}>{canvasTabLabel(tab)}{tab === "assets" && selectedAssets.length ? <span>{selectedAssets.length}</span> : tab === "artifacts" && project.manifest.artifacts.length ? <span>{project.manifest.artifacts.length}</span> : null}</button>)}</div><div>{workflowState(project).sourceNotice ? <span className="dirty-chip" title={workflowState(project).sourceNotice}>源文件有更新</span> : null}</div></header>
     {rollbackError ? <p className="form-error" role="alert">{rollbackError}</p> : null}
     <div className="canvas-content" id="canvas-content" role="tabpanel" aria-labelledby={`canvas-tab-${activeTab}`} ref={contentRef}>
     {preview ? <InlineArtifactPreview projectId={project.id} preview={preview} onClose={onClosePreview}/> : <>
       {activeTab === "preview" && !videoPath && liveAvailable && exportRequest ? <div ref={exportRef} className="export-destination" role="group" tabIndex={-1} aria-label="导出设置"><p role="status">当前还没有可导出的视频。制作完成后可在这里导出视频。</p></div> : null}
-      <ManagedLiveHyperFramesPreview project={project} active={activeTab === "preview" && !videoPath && liveAvailable} available={liveAvailable}/>
-      {activeTab === "preview" && (videoPath || !liveAvailable) ? <section className="preview-panel preview-panel--with-inspector"><div className="preview-main">
+      <ManagedLiveHyperFramesPreview project={project} active={activeTab === "preview" && (!videoPath || sourceMode) && liveAvailable} available={liveAvailable} onTimeChange={sourceMode ? updatePlayback : undefined} seek={sourceSeek}/>
+      {activeTab === "preview" && (videoPath || !liveAvailable || sourceMode) ? <section className="preview-panel preview-panel--with-inspector"><div className="preview-main">
         <div className="section-heading"><h3>{videoPath ? (finalVideoArtifact ? "已导出视频" : "视频预览") : "创作方案"}</h3><span>{project.aspectRatio}</span></div>
         {project.activeTurnId && version ? <div className="preview-version-notice"><CircleNotch className="spin"/><span>正在生成新版，当前预览为 {version.label.replace(/草稿/g, "视频")}</span></div> : null}
-        <div className={`preview-stage-shell ${videoPath ? "" : "preview-stage-shell--planning"}`}><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls onLoadedData={event => animateElement(event.currentTarget, [{ opacity: .4 }, { opacity: 1 }])} onLoadedMetadata={event => restoreVideoTime(event.currentTarget, playbackKey)} onPause={event => saveVideoTime(event.currentTarget, playbackKey)} onSeeked={event => saveVideoTime(event.currentTarget, playbackKey)}/> : <div className="planning-empty"><FileText/><h3>{project.manifest.phase === "plan_review" ? "制作方案待确认" : "先梳理内容与素材"}</h3><p>{project.manifest.checkpoint?.summary || "提供要讲的内容、目标受众和素材，映芽会整理画面、动画与旁白安排，确认后开始制作。"}</p><PlanDocument project={project}/>{project.manifest.checkpoint?.artifactIds.map(id => project.manifest.artifacts.find(item => item.id === id)).filter((item): item is Artifact => Boolean(item)).map(item => <button key={item.id} onClick={() => onPreview(item)}><Eye/>查看{item.label}</button>)}<button onClick={onDescribe}><PencilSimple/>补充创作要求</button></div>}</div></div>
+        {sourceMode ? <p className="source-edit-notice" role="status">正在预览修改后的源文件，已有 MP4 仍保留原画面。<button type="button" onClick={() => setShowSourcePreview(false)}>返回已有 MP4</button></p> : null}
+        <div hidden={sourceMode} className={`preview-stage-shell ${videoPath ? "" : "preview-stage-shell--planning"}`}><div className={`video-stage ${project.aspectRatio === "9:16" ? "portrait" : project.aspectRatio === "1:1" ? "square" : ""}`}>{videoPath ? <video key={`${version?.id}:${videoPath}`} ref={videoRef} src={api.fileUrl(project.id, videoPath)} controls onLoadedData={event => animateElement(event.currentTarget, [{ opacity: .4 }, { opacity: 1 }])} onLoadedMetadata={event => { restoreVideoTime(event.currentTarget, playbackKey); updatePlayback(event.currentTarget.currentTime); }} onTimeUpdate={event => { if (!sourceMode) updatePlayback(event.currentTarget.currentTime); }} onPause={event => saveVideoTime(event.currentTarget, playbackKey)} onSeeked={event => { saveVideoTime(event.currentTarget, playbackKey); if (!sourceMode) updatePlayback(event.currentTarget.currentTime); }}/> : <div className="planning-empty"><FileText/><h3>{project.manifest.phase === "plan_review" ? "制作方案待确认" : "先梳理内容与素材"}</h3><p>{project.manifest.checkpoint?.summary || "提供要讲的内容、目标受众和素材，映芽会整理画面、动画与旁白安排，确认后开始制作。"}</p><PlanDocument project={project}/>{project.manifest.checkpoint?.artifactIds.map(id => project.manifest.artifacts.find(item => item.id === id)).filter((item): item is Artifact => Boolean(item)).map(item => <button key={item.id} onClick={() => onPreview(item)}><Eye/>查看{item.label}</button>)}<button onClick={onDescribe}><PencilSimple/>补充创作要求</button></div>}</div></div>
         {videoPath ? <>
-          <div className="canvas-actions"><button type="button" disabled={!canAnnotate || feedbackDisabled} onClick={addTimeFeedback}><Clock/>时间点反馈</button><button type="button" disabled={!canAnnotate || feedbackDisabled || capturing} onClick={() => void annotate()}><BoundingBox/>{capturing ? "正在截取…" : "框选画面"}</button>{version && version.id !== project.manifest.currentDraft ? <button disabled={rollbackBusy || Boolean(project.activeTurnId)} onClick={() => void rollback()}><ArrowClockwise/>{rollbackBusy ? "正在回退…" : "回退版本"}</button> : null}</div>
+          <div className="canvas-actions"><button type="button" disabled={!canAnnotate || sourceMode || feedbackDisabled} onClick={addTimeFeedback}><Clock/>时间点反馈</button><button type="button" disabled={!canAnnotate || sourceMode || feedbackDisabled || capturing} onClick={() => void annotate()}><BoundingBox/>{capturing ? "正在截取…" : "框选画面"}</button>{version && version.id !== project.manifest.currentDraft ? <button disabled={rollbackBusy || Boolean(project.activeTurnId)} onClick={() => void rollback()}><ArrowClockwise/>{rollbackBusy ? "正在回退…" : "回退版本"}</button> : null}</div>
           {captureError ? <p className="form-error" role="alert">{captureError}。可使用“时间点反馈”填写文字意见。</p> : null}
           {timeFeedback.length ? <section className="time-feedback" aria-label="时间点修改"><header><b>旧版时间点草稿</b><span>{timeFeedback.length} 条</span></header><div className="time-feedback-list">{timeFeedback.map((item, index) => <div className="time-feedback-row" key={item.id}><time>{formatTimestamp(item.time)}</time><input autoFocus={index === timeFeedback.length - 1} aria-label={`${formatTimestamp(item.time)} 的修改描述`} value={item.description} onChange={event => updateTimeFeedback(item.id, event.target.value)} placeholder="描述这个时间点需要如何修改"/><button aria-label={`删除 ${formatTimestamp(item.time)} 的反馈`} title="删除反馈" onClick={() => setTimeFeedback(items => items.filter(value => value.id !== item.id))}><X/></button></div>)}</div><button className="time-feedback-apply" disabled={!completedFeedback.length || migratingFeedback || feedbackDisabled} onClick={() => void applyTimeFeedback()}><ArrowLeft/>转为反馈卡片</button></section> : null}
         </> : null}
+        {workbench.error ? <p className="form-error" role="alert">镜头信息读取失败：{workbench.error}<button type="button" onClick={workbench.refresh}>重试</button></p> : workbench.data ? <SceneWorkbench projectId={project.id} workbench={workbench.data} sourceMode={sourceMode} selectedSceneId={resolvedSceneId} running={generationDisabled} onGeneratePreview={onGeneratePreview} onSelect={selectScene} onSaved={sceneSaved} onSourcePreview={openSourcePreview}/> : <p role="status">正在读取所选版本的镜头…</p>}
         {version ? <VersionComparison project={project} current={version}/> : null}
-        <div ref={exportRef} className="export-destination" role="group" tabIndex={-1} aria-label="导出设置">{version ? <PersistentRenderPanel project={project} version={version} videoPath={videoPath} exportRequest={exportRequest} onRefresh={onRefresh}/> : exportRequest ? <p role="status">请先确认制作方案并完成动画编排，预览满意后在这里导出成片。</p> : null}</div>
-      </div><PreviewAssetInspector media={media} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])}/></section> : null}
-      {activeTab === "assets" ? <><AudioLibrary projectId={project.id} onRefresh={onRefresh} onCompose={onCompose}/><ProjectAssetsPanel media={media} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])} onSelectFolder={onSelectAssets}/></> : null}
+        <div ref={exportRef} className="export-destination" role="group" tabIndex={-1} aria-label="导出设置">{version ? <PersistentRenderPanel onGeneratePreview={onGeneratePreview} generationDisabled={generationDisabled} project={project} version={version} videoPath={videoPath} exportRequest={exportRequest} onRefresh={onRefresh}/> : exportRequest ? <p role="status">请先确认制作方案并完成动画编排，预览满意后在这里导出成片。</p> : null}</div>
+      </div><PreviewAssetInspector projectId={project.id} sourcePath={view?.sourcePath ?? "."} bindings={bindings} selectedSceneId={resolvedSceneId} playbackTime={playbackTime} loading={!workbench.data} media={versionMedia} libraryAssets={libraryAssets} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])}/></section> : null}
+      {activeTab === "assets" ? <><AudioLibrary projectId={project.id} onRefresh={onRefresh} onCompose={onCompose}/><ProjectAssetsPanel media={versionMedia} libraryAssets={libraryAssets} libraryFolders={libraryFolders} selectedAssets={selectedAssets} onSelect={asset => onSelectAssets([asset])} onSelectFolder={onSelectAssets}/></> : null}
       {activeTab === "artifacts" ? <ArtifactList artifacts={project.manifest.artifacts} query={artifactQuery} onQuery={setArtifactQuery} expanded={artifactGroups} onExpanded={setArtifactGroups} onPreview={onPreview} onContext={onContext}/> : null}
     </>}
     </div>
@@ -556,10 +620,12 @@ function ProjectAssetsPanel({ media, libraryAssets, libraryFolders, selectedAsse
   return <section className="project-assets-panel"><div className="section-heading"><div><h3>参考文件</h3><p>图片、视频、音频、文档及其他文件都可加入当前创作对话。</p></div><span>{media.assets.length} 项已进入项目</span></div>{media.assets.length ? <section className="project-media-section"><h4>项目中</h4><div>{media.assets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.source === "upload" ? "对话参考" : asset.source}</small></div></article>)}</div></section> : null}<section className="project-library-section"><div className="project-library-heading"><div><h4>全局素材库</h4><span>{visibleAssets.length} 个文件</span></div><div className="project-library-controls"><label><FolderSimple/><select aria-label="筛选素材文件夹" value={folderId} onChange={event => setFolderId(event.target.value)}><option value="*">全部文件夹</option><option value="">未整理</option>{libraryFolders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>{folderId !== "*" && visibleAssets.length ? <button type="button" disabled={!selectableAssets.length} onClick={() => onSelectFolder(selectableAssets)}><FolderSimple/>{selectableAssets.length ? "选择此文件夹" : "文件夹已选择"}</button> : null}</div></div>{visibleAssets.length ? <div className="project-library-grid">{visibleAssets.map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <article key={asset.id}><AssetReferenceThumb asset={asset}/><div><b>{assetName(asset)}</b><small>{assetTypeLabel(asset)} · {asset.kind === "generated" ? "AI 生成" : "已上传"}</small></div><button disabled={selected} aria-label={`${selected ? "已选择" : "选择参考文件"} ${assetName(asset)}`} onClick={() => onSelect(asset)}>{selected ? <Check/> : <Plus/>}{selected ? "已加入" : "加入提示"}</button></article>; })}</div> : <div className="workbench-empty"><File/><b>这个文件夹暂无素材</b><p>可前往素材工坊上传任意类型的参考文件。</p></div>}</section></section>;
 }
 
-function PreviewAssetInspector({ media, libraryAssets, selectedAssets, onSelect }: { media: AgentMedia; libraryAssets: AssetLibraryItem[]; selectedAssets: AssetLibraryItem[]; onSelect: (asset: AssetLibraryItem) => void }) {
-  const scene = [...media.scenes].sort((left, right) => left.order - right.order)[0];
-  const sceneAssets = scene ? scene.assetIds.map(id => media.assets.find(asset => asset.id === id)).filter((asset): asset is AgentMedia["assets"][number] => Boolean(asset)) : media.assets.slice(0, 4);
-  return <aside className="preview-asset-inspector"><header><div><b>{scene ? `场景 ${String(scene.order || 1).padStart(2, "0")}` : "创作参考"}</b><span>{scene?.narrativeRole || "当前项目上下文"}</span></div><span>{sceneAssets.length}</span></header><section><h4>已使用素材</h4>{sceneAssets.length ? <div className="preview-used-assets">{sceneAssets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.description || asset.source}</small></div></article>)}</div> : <p>聊天中选择的参考文件会在发送后进入当前项目。</p>}</section><section><div className="inspector-section-title"><h4>全局素材库</h4><span>{libraryAssets.length}</span></div><div className="preview-library-strip">{libraryAssets.slice(0, 6).map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <button key={asset.id} disabled={selected} aria-label={`${selected ? "已加入" : "加入提示"} ${assetName(asset)}`} onClick={() => onSelect(asset)}><AssetReferenceThumb asset={asset}/><span>{selected ? <Check/> : <Plus/>}</span></button>; })}</div></section><p className="preview-inspector-hint">选择任意参考文件后可在左侧对话中补充用途，并随剧本、分镜一起创作。</p></aside>;
+function PreviewAssetInspector({ projectId, sourcePath, bindings, selectedSceneId, playbackTime, loading, media, libraryAssets, selectedAssets, onSelect }: { projectId: string; sourcePath: string; bindings: import("../types").SourceBinding[]; selectedSceneId: string; playbackTime: number; loading: boolean; media: AgentMedia; libraryAssets: AssetLibraryItem[]; selectedAssets: AssetLibraryItem[]; onSelect: (asset: AssetLibraryItem) => void }) {
+  const scene = media.scenes.find(value => value.id === selectedSceneId) ?? sceneAtTime(media.scenes, bindings, playbackTime);
+  const sceneAssets = scene ? scene.assetIds.map(id => media.assets.find(asset => asset.id === id)).filter((asset): asset is AgentMedia["assets"][number] => Boolean(asset)) : [];
+  const clip = scene && sourceClip(scene, bindings);
+  const path = clip && sourceFilePath(sourcePath, clip.source);
+  return <aside className="preview-asset-inspector" aria-label="当前镜头素材"><header><div><b>{scene ? `镜头 ${String(media.scenes.indexOf(scene) + 1).padStart(2, "0")}` : "当前播放位置"}</b><span>{formatTimestamp(playbackTime)} · {scene?.narrativeRole || "所选版本"}</span></div></header><section><h4>已使用素材</h4>{loading ? <p>正在读取版本素材…</p> : !scene ? <p>这个时间点没有已登记的镜头，可从镜头清单选择。</p> : <>{clip && path ? <article className="inspector-source"><VideoCamera/><div><b>{displayFileName(clip.source.split("/").at(-1) ?? clip.source)}</b><small>源 {formatTimestamp(clip.sourceIn)}–{formatTimestamp(clip.sourceOut)}</small><a href={api.fileUrl(projectId, path)} target="_blank" rel="noreferrer">打开源文件</a></div></article> : null}{sceneAssets.length ? <div className="preview-used-assets">{sceneAssets.map(asset => <article key={asset.id}>{asset.url && asset.mediaType?.startsWith("image/") ? <img src={asset.url} alt=""/> : <span><File/></span>}<div><b>{displayFileName(asset.name)}</b><small>{asset.description || asset.source}</small></div></article>)}</div> : !clip ? <p>此镜头没有已登记的素材绑定。</p> : null}</>}</section><section><div className="inspector-section-title"><h4>全局素材库</h4><span>{libraryAssets.length}</span></div><div className="preview-library-strip">{libraryAssets.slice(0, 6).map(asset => { const selected = selectedAssets.some(item => item.id === asset.id); return <button key={asset.id} disabled={selected} aria-label={`${selected ? "已加入" : "加入提示"} ${assetName(asset)}`} onClick={() => onSelect(asset)}><AssetReferenceThumb asset={asset}/><span>{selected ? <Check/> : <Plus/>}</span></button>; })}</div></section><p className="preview-inspector-hint">已使用素材跟随所选版本和当前播放镜头；新选择的素材将在发送消息后加入项目。</p></aside>;
 }
 
 function InlineArtifactPreview({ projectId, preview, onClose }: { projectId: string; preview: { artifact: Artifact; content: string; loading: boolean; error: string }; onClose: () => void }) {

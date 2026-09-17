@@ -1,0 +1,105 @@
+/* The creation home has a focused composer and an open, media-first library.
+   Keep its layout separate from the asset library and project workbench. */
+.home-layout--studio { grid-template-columns: 208px minmax(0, 1fr); }
+.home-layout--studio .home-nav { padding: 20px 16px 16px; }
+.home-layout--studio .home-brand { padding-inline: 8px; }
+.home-layout--studio .home-nav > .home-new-button { margin-top: 14px; }
+.home-layout--studio .home-nav nav { margin-top: 18px; }
+.home-layout--studio .home-scroll { padding: 64px clamp(24px, 3.2vw, 56px) 56px; }
+.home-layout--studio .home-header { max-width: 840px; min-height: 0; margin-bottom: 26px; padding: 0; display: block; text-align: center; }
+.home-layout--studio .home-header p { margin-top: 12px; }
+.home-layout--studio .home-create { max-width: 840px; margin-bottom: 32px; }
+.home-layout--studio .home-create h2.sr-only { margin: -1px; }
+.home-layout--studio .home-create .composer { padding: 18px; }
+.home-layout--studio .home-create textarea { min-height: 88px; padding: 2px 4px 16px; }
+.home-layout--studio .attachment-row:empty { display: none; }
+.home-layout--studio .composer-tools { align-items: center; gap: 12px; }
+.home-layout--studio .composer-tools > div:first-child { flex-wrap: wrap; }
+.home-layout--studio .composer-tools .icon-button,
+.home-layout--studio .composer-tools select,
+.home-layout--studio .model-trigger,
+.home-layout--studio .voice-trigger { height: 40px; background: var(--canvas); font-size: var(--text-control); }
+.home-layout--studio .send-button { height: 40px; flex-shrink: 0; }
+.home-layout--studio .creation-settings { margin: 6px 0 10px; border: 0; border-radius: var(--radius-control); background: transparent; }
+.home-layout--studio .creation-settings > summary { width: fit-content; max-width: 100%; min-height: 40px; padding: 8px 10px; display: flex; align-items: center; gap: 10px; border-radius: var(--radius-control); list-style: none; font-size: var(--text-caption); }
+.home-layout--studio .creation-settings > summary::-webkit-details-marker { display: none; }
+.home-layout--studio .creation-settings > summary:hover { background: var(--surface); color: var(--text); }
+.home-layout--studio .creation-settings > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.home-layout--studio .creation-settings > summary svg { width: 16px; height: 16px; flex-shrink: 0; }
+.home-layout--studio .creation-settings-chevron { transition: transform var(--motion-quick) var(--ease-sprout); }
+.home-layout--studio .creation-settings[open] { background: var(--surface); }
+.home-layout--studio .creation-settings[open] .creation-settings-chevron { transform: rotate(90deg); }
+.home-layout--studio .creation-setting-fields { padding-top: 8px; }
+.home-layout--studio .home-starters { justify-content: center; gap: 10px; margin-top: 0; }
+.home-layout--studio .home-starters button { min-height: 40px; padding-inline: 14px; gap: 10px; border-color: var(--line); background: var(--canvas); color: var(--muted); font-weight: var(--weight-medium); }
+.home-layout--studio .home-starters button:hover { border-color: var(--line-strong); background: var(--surface); color: var(--text); }
+.home-layout--studio .home-starters svg { width: 17px; height: 17px; }
+.home-layout--studio .home-workflow { display: flex; justify-content: center; gap: 14px; margin-top: 22px; padding: 0; border: 0; }
+.home-layout--studio .home-workflow li { align-items: center; gap: 8px; }
+.home-layout--studio .home-workflow li > span { flex-basis: 28px; height: 28px; border-radius: 50%; background: var(--canvas); }
+.home-layout--studio .home-workflow b { color: var(--muted); font-size: var(--text-caption); white-space: nowrap; }
+.home-layout--studio .home-workflow li > svg { width: 14px; height: 14px; margin-left: 6px; color: var(--dim); }
+.home-layout--studio .home-projects { max-width: 1200px; padding-top: 24px; border-top: 1px solid var(--line); }
+.home-layout--studio .home-project-search { width: 220px; background: var(--canvas); }
+.home-layout--studio .project-filters { margin-top: 12px; padding-bottom: 0; border-bottom: 0; gap: 6px; }
+.home-layout--studio .home-project-list { gap: 24px; padding-top: 18px; }
+.home-layout--studio .home-project-open { display: block; min-height: 0; padding: 0; border-radius: var(--radius-control); }
+.home-layout--studio .home-project-open:hover { background: transparent; }
+.home-layout--studio .home-project-cover { width: 100%; display: flex; justify-content: center; aspect-ratio: 16 / 9; }
+.home-layout--studio .home-project-copy { display: block; padding: 10px 30px 0 0; }
+.home-layout--studio .home-project-copy b { font-size: var(--text-body); font-weight: var(--weight-medium); }
+.home-layout--studio .home-project-meta { display: flex; align-items: center; flex-wrap: wrap; column-gap: 8px; row-gap: 4px; margin-top: 6px; color: var(--dim); font-size: var(--text-caption); }
+.home-layout--studio .home-project-copy small { display: inline-flex; margin: 0; }
+.home-layout--studio .home-project-open time { display: inline; padding: 0; font-family: var(--font-ui); font-size: var(--text-caption); }
+.home-layout--studio .home-project-ratio { display: inline; padding: 0 8px; border-inline: 1px solid var(--line); font-family: var(--font-ui); font-size: var(--text-caption); }
+.home-layout--studio .home-project-menu-button { top: calc(100cqw * 9 / 16 + 6px); bottom: auto; right: -6px; width: 32px; height: 36px; border-radius: var(--radius-control); }
+.home-layout--studio .home-project-list > article { container-type: inline-size; }
+.home-layout--studio .home-project-menu { top: auto; right: 0; bottom: 40px; }
+.home-layout--studio .home-project-empty,
+.home-layout--studio .home-project-message { grid-column: 1 / -1; min-height: 180px; }
+@media (max-width: 1150px) {
+  .home-layout--studio .home-scroll { padding-top: 48px; }
+}
+@media (max-width: 800px) {
+  .home-layout--studio { display: block; }
+  .home-layout--studio .home-nav { padding: 0 12px; }
+  .home-layout--studio .home-nav:has(.account-panel) { padding-right: 96px; }
+  .home-layout--studio .home-brand { padding: 0; }
+  .home-layout--studio .home-nav nav { margin: 0 0 0 auto; }
+  .home-layout--studio .home-scroll { padding: 36px 20px; }
+  .home-layout--studio .home-header { margin-bottom: 24px; }
+  .home-layout--studio .home-header h1 { font-size: var(--text-display); }
+  .home-layout--studio .home-header p { max-width: 360px; margin: 12px auto 0; font-size: var(--text-control); }
+  .home-layout--studio .home-create { margin-bottom: 28px; }
+  .home-layout--studio .home-create .composer { padding: 14px; }
+  .home-layout--studio .home-create textarea { min-height: 108px; }
+  .home-layout--studio .composer-tools { display: flex; flex-wrap: wrap; gap: 10px; }
+  .home-layout--studio .composer-tools > div:first-child { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .home-layout--studio .composer-tools select { width: auto; min-width: 0; padding-inline: 8px; }
+  .home-layout--studio .model-selector { flex: 1; min-width: 0; }
+  .home-layout--studio .model-trigger { max-width: 100%; min-width: 0; padding-inline: 8px; }
+  .home-layout--studio .voice-selector { flex: 1; min-width: 0; }
+  .home-layout--studio .home-create .send-button { width: 100%; }
+  .home-layout--studio .home-starters { gap: 8px; }
+  .home-layout--studio .home-starters button { padding-inline: 12px; gap: 8px; }
+  .home-layout--studio .home-workflow { gap: 8px; }
+  .home-layout--studio .home-workflow li { gap: 6px; }
+  .home-layout--studio .home-workflow li > span { flex-basis: auto; width: auto; height: auto; border: 0; }
+  .home-layout--studio .home-workflow li > svg { margin-left: 2px; width: 12px; }
+  .home-layout--studio .home-projects > header { display: flex; flex-wrap: wrap; gap: 14px; }
+  .home-layout--studio .home-project-search { width: 100%; }
+  .home-layout--studio .project-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .home-layout--studio .project-filters button { min-height: 40px; }
+}
+@media (max-width: 360px) {
+  .home-layout--studio .home-scroll { padding-inline: 14px; }
+  .home-layout--studio .home-header h1 { font-size: 28px; }
+  .home-layout--studio .composer-tools .model-selector { flex-basis: 100%; }
+  .home-layout--studio .home-starters button { padding-inline: 10px; }
+  .home-layout--studio .home-workflow { gap: 6px; }
+  .home-layout--studio .home-workflow li { gap: 4px; }
+  .home-layout--studio .home-workflow li > svg { width: 10px; margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-layout--studio .creation-settings-chevron { transition: none; }
+}

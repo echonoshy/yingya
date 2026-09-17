@@ -20,6 +20,23 @@ Start checks and renders through the durable production runner described in `run
 
 Allocate the next unused `.yingya/versions/draft-N/`; never overwrite an older version. Snapshot composition source, required local assets, nested compositions, design/config files, scene timeline, captions, selected voice metadata, passing report, source fingerprint, manifest snapshot, and draft video. Exclude `node_modules`, caches, temporary intermediates, and older version directories. Source-relative references must resolve inside the snapshot.
 
+Freeze the production requirements for every new draft, including custom and
+third-party component compositions: copy `.yingya/requirements.json` into the
+bundle at the same relative path and preserve `outputSpec.requirements` in its
+manifest snapshot. The footage assembler also emits a hashed requirements
+snapshot referenced by `source-bindings.json`; retain both. Verify export using
+that version's requirements, never the current workspace's later choices.
+Missing requirements in legacy versions do not authorize inventing historical
+constraints. Keep selected asset roles and referenced semantic observations as
+project context when they are needed to explain the saved cut decisions.
+
+For footage edits, include the entry's `source-bindings.json`, its referenced
+scene snapshot and source media. Also retain the current render verification
+report and the actual MP4 frames it references as review evidence. Project-local
+media-analysis caches need not be copied; the selected source identities and
+in/out intervals do. Do not edit a bindings file to hide mismatched media or
+relabel an old render verification as belonging to new source.
+
 Keep `source-fingerprint.json` beside the report. Its `files` map contains SHA-256 digests keyed by relative path, including `index.html` and `index.motion.json` when present. Include other production dependencies for recovery comparison. Fingerprint the actual checked source; do not label new source with an old passing report.
 
 Treat registration as a commit:

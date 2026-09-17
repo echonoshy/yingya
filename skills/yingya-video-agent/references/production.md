@@ -2,6 +2,24 @@
 
 ## Establish one scene language
 
+Choose whether to reuse project source, consult the component catalog, search
+a registry, or author an effect according to the scene's needs. Follow
+[reusable-motion.md](reusable-motion.md) for a matching installed scene and
+[third-party-components.md](third-party-components.md) when registry discovery
+and adaptation are needed. Reuse the implementation with actual content and the
+project's design. Choose by what the scene explains, not by rotating through
+effects. Design the subject and its action before choosing an implementation.
+Supplied video can be selected, edited and combined with newly produced material
+according to the plan; retain its factual meaning and required content.
+A 3D model scene displays supplied models, not newly synthesized
+footage or a model generated from a prompt.
+
+For a shot that needs a recorded action, follow
+[existing-footage.md](existing-footage.md). The installed editorial assembler
+is an optional treatment for compatible footage shots, not the default film
+structure. Check its catalog before choosing a recipe and preserve source
+evidence when assembling or revising those shots.
+
 Reuse the app-provided `index.html` scaffold after plan confirmation; inspect it before editing. Do not reinitialize the project or overwrite a working entry. Create `DESIGN.md` from the approved plan with shared typography, colors, scene layout rules, motion timing, transitions, caption safe areas, and audio levels. Centralize these choices in composition styles / shared source.
 
 If the plan used bundled design references, follow the applicable adaptation in
@@ -15,16 +33,43 @@ Use installed local fonts and the project's output dimensions. On revisions,
 reuse these saved decisions and reference copies rather than rereading a newer
 shared reference pack. New choices belong only to the affected scope.
 
-For an unresolved text-only direction, a rejected overall look, a new uncertain
-treatment or complex work, follow [representative-scene.md](representative-scene.md).
-Resolve the sample's required assets and inspect actual composition and motion
-before producing the remaining scenes. A known, well-specified simple treatment
-or focused edit may reuse valid design evidence. Keep the existing authorization
-and draft workflow; no extra approval is required.
+For every new visual treatment, follow
+[representative-scene.md](representative-scene.md). Create the sample's required
+subjects/assets and inspect actual composition and motion before producing the
+remaining scenes. Resolve generation consistency on this passage before ordering
+a full set of imagery. An established treatment or focused edit may reuse valid
+design evidence. Keep the existing authorization and draft workflow.
 
 Keep each scene's purpose distinct and its dominant visual clear. Hold key text long enough to read, leave pauses between dense ideas, and motivate movement by entrance, emphasis, cause, or transition. Do not use identical scene lengths, arbitrary camera motion, or repeated transitions merely to fill time. Respect locked timing and the requested visual style. Keep characters, products, lighting, and typography consistent across shots.
 
 ## Audio before final timing
+
+First choose the timing authority. For existing speech or recorded actions,
+source in/out and the original audio determine timing; inspect any transcript
+against the footage and preserve original sound by default. A saved TTS voice
+does not require replacing the source voice. New narration leads timing only
+when it is the approved audio treatment. Do not silently speed up, stretch or
+mute original speech to fit an estimated scene length.
+
+Follow `.yingya/requirements.json` and the approved plan. The bounded footage
+assembler can preserve or mute source audio; it cannot synthesize narration,
+choose music or prove translation merely by writing HTML. Resolve any reported
+audio production tasks with actual tracks and matching timing before claiming
+completion. `subtitles: none` omits added subtitles; `zh-en` requires both real
+language texts and verified alignment. Original text burned into source footage
+remains part of that source. Do not call an explanatory label a transcript.
+
+For every project whose structured requirements request narration, replacement
+audio, or music (including custom and third-party compositions), add actual
+audible tracks and identify their purpose on the static audio node with
+`data-editorial-audio-role="narration"`, `"replacement"` or `"music"`.
+These tracks must be different from the preserved source recording and carry
+real measured timing. Role labels alone cannot satisfy the requirement: verify
+the files have audio, the rendered output contains it, and listen to confirm
+the content and mix. Keep the requirements snapshot with each immutable
+version, whether assembled or custom; do not change frozen requirements to bypass a
+failed export. Audio roles are evidence for technical checks, not proof that
+the wording, translation or music choice is correct.
 
 For narration-led videos:
 
@@ -40,6 +85,20 @@ For music-led work, align major visual beats with the supplied track using insta
 
 ## Assets and composition
 
+Execute the approved asset strategy: generate or obtain the subjects, images,
+environments, textures and sound it needs, and build procedural objects or
+diagrams where they communicate best. Read the installed media skill when using
+its tool. Inspect generated assets before integrating them; preserve the shared
+subject design, material, lighting and palette. Missing attachments do not
+justify quietly reducing a visual concept to text panels. If a required asset
+route fails, disclose the effect on the result and preserve usable work.
+
+Compose assets for motion: choose crops, layering, masks, staging and camera
+changes that support the shot. Keep words and data editable and use actual
+subject animation when the plan promises it; panning a still does not establish
+continuous character action. Resolve each shot's action and transition within
+the common measured scene schedule.
+
 Keep narration and generated media in `assets/`, scene sources in `compositions/` when needed, review media in `artifacts/`, and reports in `.yingya/reports/`. Use relative paths so immutable source snapshots can render independently. Register produced media in the existing `assets.json` shape before linking its ID to a scene. Preserve existing IDs and fields.
 
 Stable scene IDs connect `scenes.json`, HTML scene elements, assets, and feedback. Write scene-local animation times and assemble from the shared timeline. Do not maintain unrelated hand-written timing copies in captions and HTML. Check local media and fonts load and that the first and last frames contain the intended content.
@@ -50,7 +109,20 @@ Independent media preparation can run concurrently when tools support it; integr
 
 The unified `hyperframes check --snapshots --json` is the final technical gate. Invoke it through `python3 "$YINGYA_PRODUCTION_TASK" check` with the current request ID and report path (see `runtime-tools.md`); use the same runner's `render` command for draft rendering. It preserves command status and separates JSON from stderr. Use installed CLI help for supported flags. Where default sampling misses a short scene or critical transition, use explicit timestamps / transition sampling. Review the opening, scene midpoints, important transitions, caption-dense frames, and ending; use additional snapshots only to close a specific coverage gap.
 
-Technical success is not narrative approval. Review frames for hierarchy, safe areas, continuity, and legibility. Listen to narration and inspect caption sync; check music does not mask words. Probe the rendered draft for actual duration, dimensions, fps, and expected audio streams. Keep specific evidence and limitations with the draft. Do not add a numeric aesthetic score or iterate without a concrete defect. If the same failure persists after two targeted repairs, stop repeating the operation, preserve failed evidence, and report the blocker and reusable work without registering a passing draft.
+Apply [visual-review.md](visual-review.md) to the representative passage and the
+complete draft. Inspect composition, asset consistency, motion, editing and sound
+against the approved treatment. Repair observed defects and retain the compact
+review with this draft's source/output identity. Probe actual duration,
+dimensions, fps and expected audio streams as separate technical evidence.
+
+The render runner also records verification tied to the current source and MP4.
+Read that report and open the extracted MP4 frames. A browser can correctly play
+a dynamically inserted video while the offline compiler discovers zero media;
+check snapshots alone cannot validate the export. For footage scenes, verify
+both the original source identity/in-out and the resulting rendered action and
+result. Missing extraction, stale bindings or a readable MP4 containing the
+wrong source are failures, not successful drafts. No numeric visual score is
+needed; report concrete content, legibility and timing defects.
 
 Check each gate's enabled state and actual samples, not only top-level `ok`. For animation, repair invalid motion assertions using the installed CLI schema; deleting the assertion file is not a repair. Preserve scene, asset, style, font and audio dependencies inside the immutable version.
 

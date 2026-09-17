@@ -30,6 +30,8 @@ pub struct AgentProjectStore {
 pub struct CreateAgentProjectRequest {
     pub prompt: String,
     #[serde(default)]
+    pub requirements: crate::editorial::Requirements,
+    #[serde(default)]
     pub client_request_id: Option<String>,
     pub title: Option<String>,
     #[serde(default = "default_aspect")]
@@ -75,6 +77,8 @@ pub struct AgentMessage {
     pub client_request_id: Option<String>,
     pub role: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_version_id: Option<String>,
     #[serde(default)]
     pub attachments: Vec<String>,
     #[serde(default)]
@@ -99,6 +103,8 @@ pub struct AppendAgentMessage {
 pub struct AgentTurnRequest {
     pub text: String,
     #[serde(default)]
+    pub base_version_id: Option<String>,
+    #[serde(default)]
     pub client_request_id: Option<String>,
     #[serde(default)]
     pub attachments: Vec<String>,
@@ -121,6 +127,8 @@ pub struct QueuedTurn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_request_id: Option<String>,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_version_id: Option<String>,
     pub attachments: Vec<String>,
     pub context: Vec<String>,
     #[serde(default)]
@@ -458,6 +466,7 @@ impl AgentProjectStore {
         if !matches!(request.aspect_ratio.as_str(), "9:16" | "16:9" | "1:1") {
             return Err("aspectRatio must be 9:16, 16:9, or 1:1".to_owned());
         }
+        request.requirements.validate()?;
         let _creation_guard = self.creation_gate.lock().await;
         if let Some(client_request_id) = request.client_request_id.as_deref()
             && let Some(project) =
@@ -512,13 +521,18 @@ impl AgentProjectStore {
             phase: "briefing".to_owned(),
             dirty: false,
             checkpoint: None,
-            output_spec: serde_json::json!({"aspectRatio": request.aspect_ratio}),
+            output_spec: serde_json::json!({"aspectRatio": request.aspect_ratio, "requirements": request.requirements}),
             artifacts: vec![],
             versions: vec![],
             current_draft: None,
             studio_entry: default_studio_entry(),
         };
         write_json(&directory.join("project.json"), &project).await?;
+        write_json(
+            &directory.join(".yingya/requirements.json"),
+            &request.requirements,
+        )
+        .await?;
         write_json(
             &directory.join(".yingya/voice.json"),
             &serde_json::json!({
@@ -672,6 +686,7 @@ impl AgentProjectStore {
             client_request_id: None,
             role: input.role,
             text: input.text.trim().to_owned(),
+            base_version_id: None,
             attachments: input.attachments,
             context: input.context,
             feedback: vec![],
@@ -720,6 +735,7 @@ impl AgentProjectStore {
                     client_request_id: pending.client_request_id.clone(),
                     role: "user".into(),
                     text: pending.text.clone(),
+                    base_version_id: pending.base_version_id.clone(),
                     attachments: pending.attachments.clone(),
                     context: pending.context.clone(),
                     feedback: pending.feedback.clone(),
@@ -751,6 +767,7 @@ impl AgentProjectStore {
                     id: turn_id.to_owned(),
                     client_request_id: Some(client_request_id.to_owned()),
                     text: existing.text.clone(),
+                    base_version_id: existing.base_version_id.clone(),
                     attachments: existing.attachments.clone(),
                     context: existing.context.clone(),
                     feedback: existing.feedback.clone(),
@@ -765,10 +782,15 @@ impl AgentProjectStore {
                 deduplicated: true,
             });
         }
+        let mut manifest: AgentManifest =
+            read_json(&directory.join(".yingya/manifest.json")).await?;
+        sanitize_manifest(&mut manifest);
+        crate::editorial::validate_base_version(request.base_version_id.as_deref(), &manifest)?;
         let turn = QueuedTurn {
             id: Uuid::new_v4().to_string(),
             client_request_id: request.client_request_id,
             text: request.text.trim().to_owned(),
+            base_version_id: request.base_version_id,
             attachments: request.attachments,
             context: request.context,
             feedback: request.feedback,
@@ -784,6 +806,7 @@ impl AgentProjectStore {
             client_request_id: turn.client_request_id.clone(),
             role: "user".to_owned(),
             text: turn.text.clone(),
+            base_version_id: turn.base_version_id.clone(),
             attachments: turn.attachments.clone(),
             context: turn.context.clone(),
             feedback: turn.feedback.clone(),
@@ -1943,6 +1966,7 @@ mod tests {
     fn request() -> CreateAgentProjectRequest {
         CreateAgentProjectRequest {
             prompt: "测试删除项目".to_owned(),
+            requirements: crate::editorial::Requirements::default(),
             client_request_id: None,
             title: None,
             aspect_ratio: "16:9".to_owned(),
@@ -1955,6 +1979,7 @@ mod tests {
     fn turn(text: &str) -> AgentTurnRequest {
         AgentTurnRequest {
             text: text.to_owned(),
+            base_version_id: None,
             client_request_id: None,
             attachments: vec![],
             context: vec![],
@@ -1963,6 +1988,76 @@ mod tests {
             reasoning_effort: None,
             interrupt: false,
         }
+    }
+
+    #[tokio::test]
+    async fn editorial_requirements_and_turn_baseline_survive_restart_and_deduplication() {
+        let root = std::env::temp_dir().join(format!("yingya-editorial-store-{}", Uuid::new_v4()));
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let mut input = request();
+        input.requirements = serde_json::from_value(serde_json::json!({"targetDurationSeconds":30,"durationMode":"max","audioMode":"preserve","subtitles":"none","presentation":{"capabilityId":"flow-path","variant":"four-steps"}})).unwrap();
+        let project = store.create(&input).await.unwrap();
+        let directory = store.project_dir(&project.id).unwrap();
+        let saved: Value = read_json(&directory.join(".yingya/requirements.json"))
+            .await
+            .unwrap();
+        let mut manifest = store.manifest(&project.id).await.unwrap();
+        assert_eq!(manifest.output_spec["requirements"], saved);
+        assert_eq!(saved["targetDurationSeconds"], 30.0);
+        assert_eq!(saved["presentation"]["variant"], "four-steps");
+        manifest.versions = vec![
+            DraftVersion {
+                id: "draft-1".into(),
+                source_path: ".yingya/versions/draft-1".into(),
+                video_path: ".yingya/versions/draft-1/preview.mp4".into(),
+                ..Default::default()
+            },
+            DraftVersion {
+                id: "draft-2".into(),
+                source_path: ".yingya/versions/draft-2".into(),
+                video_path: ".yingya/versions/draft-2/preview.mp4".into(),
+                ..Default::default()
+            },
+        ];
+        manifest.current_draft = Some("draft-1".into());
+        store.write_manifest(&project.id, &manifest).await.unwrap();
+        let mut queued = turn("只调整标题");
+        queued.base_version_id = Some("draft-1".into());
+        queued.client_request_id = Some(Uuid::new_v4().to_string());
+        let accepted = store
+            .submit_turn(&project.id, queued.clone(), false)
+            .await
+            .unwrap();
+        drop(store);
+        let store = AgentProjectStore::new(root.clone()).await.unwrap();
+        let detail = store.get(&project.id).await.unwrap();
+        assert_eq!(
+            detail.manifest.output_spec["requirements"]["presentation"],
+            saved["presentation"]
+        );
+        assert_eq!(detail.queue[0].base_version_id.as_deref(), Some("draft-1"));
+        assert_eq!(
+            detail.messages[0].base_version_id.as_deref(),
+            Some("draft-1")
+        );
+        let mut manifest = store.manifest(&project.id).await.unwrap();
+        manifest.current_draft = Some("draft-2".into());
+        store.write_manifest(&project.id, &manifest).await.unwrap();
+        let duplicate = store
+            .submit_turn(&project.id, queued.clone(), false)
+            .await
+            .unwrap();
+        assert!(duplicate.deduplicated);
+        assert_eq!(duplicate.turn.id, accepted.turn.id);
+        queued.client_request_id = Some(Uuid::new_v4().to_string());
+        assert!(
+            store
+                .submit_turn(&project.id, queued, false)
+                .await
+                .unwrap_err()
+                .contains("当前编辑版本")
+        );
+        fs::remove_dir_all(root).await.unwrap();
     }
 
     #[tokio::test]

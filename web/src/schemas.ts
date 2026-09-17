@@ -1,3 +1,4 @@
+import { presentationSchema } from "./presentation";
 import { z } from "zod";
 
 const optionalString = z.string().nullish().transform(value => value ?? undefined);
@@ -42,7 +43,7 @@ export const artifactSchema = z.object({
 export const draftVersionSchema = z.object({ id: z.string(), label: z.string(), sourcePath: z.string(), videoPath: z.string(), reportPath: optionalString, createdAt: z.number() });
 export const renderJobSchema = z.object({
   id: z.string(), versionId: z.string(), status: z.enum(["queued", "running", "completed", "failed", "interrupted"]),
-  quality: z.string(), resolution: z.string(), fps: z.union([z.literal(30), z.literal(60)]), progress: z.number(), message: z.string(),
+  quality: z.string(), resolution: z.string(), fps: z.number().int().min(1).max(120), progress: z.number(), message: z.string(),
   outputPath: optionalString, error: optionalString, startedAt: z.number(), updatedAt: z.number(), endedAt: z.number().optional(),
 });
 export const agentManifestSchema = z.object({
@@ -51,7 +52,7 @@ export const agentManifestSchema = z.object({
 });
 export const projectDetailSchema = projectRecordSchema.extend({ manifest: agentManifestSchema, messages: z.array(agentMessageSchema), queue: z.array(queuedTurnSchema), eventCursor: z.number(), renderJobs: z.array(renderJobSchema).default([]) });
 export const turnAcceptedSchema = z.object({ turnId: z.string(), status: z.string(), queueDepth: z.number() });
-export const renderVideoResultSchema = z.object({ jobId: z.string(), status: z.literal("rendering"), resolution: z.string(), fps: z.union([z.literal(30), z.literal(60)]) });
+export const renderVideoResultSchema = z.object({ jobId: z.string(), status: z.literal("rendering"), resolution: z.string(), fps: z.number().int().min(1).max(120) });
 export const eventPageSchema = z.object({ items: z.array(agentEventSchema), nextBefore: z.number().nullish().transform(value => value ?? undefined), latestSeq: z.number(), hasMore: z.boolean() });
 export const uploadedVoiceSchema = z.object({
   name: z.string(), consent: z.string().default(""), created_at: z.number().default(0), file_size: z.number().default(0), mime_type: z.string().default(""),
@@ -75,6 +76,33 @@ export const mediaAssetSchema = z.object({
   id: z.string(), name: z.string(), url: z.string(), hyperframesPath: z.string(), kind: z.string(), source: z.string(),
   mediaType: optionalString, durationSeconds: z.number().optional(), providerId: optionalString, description: optionalString, createdAt: z.number(),
 });
+export const assetRoleSchema = z.enum(["auto", "source", "required", "supplement", "brand", "reference"]);
+export const requirementsSchema = z.object({
+  presentation: presentationSchema.optional(),
+  targetDurationSeconds: z.number().min(1).max(3600).optional(), durationMode: z.enum(["target", "exact", "max"]).default("target"),
+  audience: z.string().max(300).optional(), styleNotes: z.string().max(500).optional(),
+  subtitles: z.enum(["auto", "zh", "zh-en", "none"]).default("auto"), music: z.enum(["auto", "on", "off"]).default("auto"),
+  audioMode: z.enum(["auto", "preserve", "narration", "replace", "mute"]).default("auto"),
+});
+export const sourceBindingSchema = z.object({ id: z.string(), mediaSrc: z.string().optional(), sourceIn: z.number(), sourceOut: z.number(), startSeconds: z.number(), durationSeconds: z.number(), audioMode: z.string().optional() }).passthrough();
+export const sourceBindingsSchema = z.object({ scenes: z.array(sourceBindingSchema) }).passthrough().nullish();
+export const recipeSchema = z.object({ id: z.string(), name: z.string(), description: z.string().default(""), requiresFocus: z.boolean(), focusShapes: z.array(z.string()) }).passthrough();
+export const workbenchSchema = z.object({
+  versionId: optionalString, currentVersionId: optionalString, sourcePath: z.string(), scenesRevision: z.string().nullable(),
+  scenes: z.array(mediaSceneSchema), assets: z.array(mediaAssetSchema).default([]), sourceBindings: sourceBindingsSchema,
+  requirements: requirementsSchema.default({ durationMode: "target", subtitles: "auto", music: "auto", audioMode: "auto" }),
+  assetRoles: z.array(z.object({ path: z.string(), role: assetRoleSchema })).default([]), recipeCatalog: z.object({ schemaVersion: z.number(), recipes: z.array(recipeSchema) }),
+  editable: z.boolean(), editReason: optionalString,
+  workspace: z.object({ sourcePath: z.string().default("."), scenesRevision: z.string().nullable(), scenes: z.array(mediaSceneSchema), assets: z.array(mediaAssetSchema).default([]), sourceBindings: sourceBindingsSchema }),
+  dirty: z.boolean().default(false), warnings: z.array(z.string()).default([]),
+  contentIndex: z.unknown().optional(), contentIndexValidation: z.object({ sourceHashesVerified: z.boolean(), semanticClaimsVerified: z.boolean() }).optional(),
+});
+export const sceneEditResultSchema = z.object({ ok: z.boolean(), changedSceneIds: z.array(z.string()), summary: z.string(), scenesRevision: z.string().nullable(), dirty: z.boolean() });
+export type AssetRole = z.infer<typeof assetRoleSchema>;
+export type CreationRequirements = z.infer<typeof requirementsSchema>;
+export type SourceBinding = z.infer<typeof sourceBindingSchema>;
+export type Workbench = z.infer<typeof workbenchSchema>;
+export type EditorialRecipe = z.infer<typeof recipeSchema>;
 export const agentMediaSchema = z.object({ scenes: z.array(mediaSceneSchema), assets: z.array(mediaAssetSchema) });
 export const imageTurnSchema = z.object({
   threadId: z.string(), turnId: z.string(), status: z.string(), text: z.string(),

@@ -1,0 +1,46 @@
+/* Video component palette and typography come from the composition DESIGN.md. */
+.ygc-beam-network {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  color: var(--ygc-foreground, var(--film-ink, currentColor));
+  font-family: var(--ygc-font, var(--film-font, inherit));
+  container-type: size;
+}
+.ygc-beam-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  pointer-events: none;
+}
+.ygc-beam-track,
+.ygc-beam-light {
+  stroke-width: var(--ygc-beam-width, 3px);
+}
+.ygc-beam-track {
+  stroke: var(--ygc-line, var(--film-line, currentColor));
+  stroke-opacity: var(--ygc-track-opacity, .3);
+}
+.ygc-beam-start { stop-color: var(--ygc-gradient-start, var(--ygc-accent, var(--film-accent, currentColor))); }
+.ygc-beam-stop { stop-color: var(--ygc-gradient-stop, var(--ygc-accent, var(--film-accent, currentColor))); }
+.ygc-beam-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  max-width: var(--ygc-node-width, 27cqw);
+  min-width: var(--ygc-node-min-width, 12cqw);
+  padding: var(--ygc-node-padding, 2cqmin 2.5cqmin);
+  border: var(--ygc-node-border-width, 1px) solid var(--ygc-line, var(--film-line, currentColor));
+  border-radius: var(--ygc-radius, var(--film-radius, 1cqmin));
+  background: var(--ygc-surface, var(--film-surface, white));
+  font-size: var(--ygc-node-font-size, 3.6cqmin);
+  font-weight: var(--ygc-node-font-weight, 600);
+  line-height: 1.4;
+  text-align: center;
+  overflow-wrap: anywhere;
+}

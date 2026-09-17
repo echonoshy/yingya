@@ -3,13 +3,14 @@ import { useEffect, useId, useRef, useState } from "react";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { VoiceSelector } from "./VoiceSelector";
 
-export function ComposerMoreMenu({ onUpload, onSelectAssets, selectedCount, voiceId, onVoice, running }: {
+export function ComposerMoreMenu({ onUpload, onSelectAssets, selectedCount, voiceId, onVoice, running, narration = false }: {
   onUpload: () => void;
   onSelectAssets: () => void;
   selectedCount: number;
   voiceId: string;
   onVoice: (value: string) => void | Promise<void>;
   running: boolean;
+  narration?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -51,8 +52,8 @@ export function ComposerMoreMenu({ onUpload, onSelectAssets, selectedCount, voic
     {open ? <div className="composer-more-menu" id={menuId} role="menu" aria-label="素材与旁白设置" style={{ ...position, width: "min(280px, calc(100vw - 32px))" }}>
       <button type="button" role="menuitem" onClick={() => { close(); onUpload(); }}><UploadSimple aria-hidden="true"/><span>上传素材</span></button>
       <button type="button" role="menuitem" onClick={() => { close(); onSelectAssets(); }}><Images aria-hidden="true"/><span>选择素材</span>{selectedCount ? <small>已选 {selectedCount} 项</small> : null}</button>
-      <div className="composer-more-divider" role="separator"/>
-      <button type="button" role="menuitem" aria-haspopup="dialog" disabled={running} title={running ? "当前任务完成后可更换音色" : `旁白音色：${voiceName}`} onClick={() => { close(); setVoiceOpen(true); }}><Waveform aria-hidden="true"/><span>旁白音色</span><small>{running ? "制作中，暂不可更换" : voiceName}</small></button>
+      {narration ? <><div className="composer-more-divider" role="separator"/>
+      <button type="button" role="menuitem" aria-haspopup="dialog" disabled={running} title={running ? "当前任务完成后可更换音色" : `旁白音色：${voiceName}`} onClick={() => { close(); setVoiceOpen(true); }}><Waveform aria-hidden="true"/><span>旁白音色</span><small>{running ? "制作中，暂不可更换" : voiceName}</small></button></> : <p className="composer-audio-note">需要新增配音时，可在对话中说明音色要求。</p>}
     </div> : null}
     <VoiceSelector value={voiceId} onChange={onVoice} disabled={running} hideTrigger open={voiceOpen} onOpenChange={next => { setVoiceOpen(next); if (!next) trigger.current?.focus({ preventScroll: true }); }}/>
   </div>;

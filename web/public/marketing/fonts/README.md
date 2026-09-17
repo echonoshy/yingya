@@ -12,12 +12,7 @@
 - 修改：fontTools 裁切标题字符并转换为 WOFF2；名称表的字体家族、完整名称、PostScript 名称和唯一标识改为 Yingya WenKai，保留原始版权与许可信息；未改变字形。
 - 修改标题时需更新子集；缺失字形会回退到正文中文字体。
 
-## 历史字体
+## 资源清理
 
-保留寒蝉半圆体文件及许可，以兼容仍引用旧样式的页面缓存；当前标题不再使用。
-
-- 原始项目：https://github.com/Warren2060/ChillRound
-- 原始版本：https://github.com/Warren2060/ChillRound/releases/tag/v1.805
-- 原始文件：ChillRoundM_v1.805.zip 中的 ChillRoundM.ttf。
-- 字体许可：ChillRound-OFL.txt（SIL OFL 1.1）。
-- 修改：fontTools 裁切标题字符，并将名称表的字体家族、完整名称、PostScript 名称和唯一标识改为 Yingya Rounded，遵守原字体保留名称要求；未改变字形。
+2026-09-17 删除了当前页面和构建流程均不再引用的寒蝉半圆体子集及其许可副本。
+历史发布快照保持不变；当前部署仅保留实际使用的霞鹜文楷子集及许可。

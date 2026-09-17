@@ -2287,3 +2287,63 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 .composer-more-divider { margin: 4px 8px; border-top: 1px solid var(--line); }
 
 .composer-more-trigger:focus-visible, .composer-more-menu > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Existing-footage controls stay within the current composer and canvas. */
+.asset-role-select { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--text-caption); min-width: 0; }
+.asset-role-select select { min-height: 40px; max-width: 150px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font: inherit; }
+.attachment-row > span { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 100%; overflow-wrap: anywhere; }
+.selected-asset-chips { max-height: 112px; }
+.selected-asset-chips--empty { max-height: 0; }
+.selected-asset-chips > span { width: 210px; }
+.selected-asset-chips > span > .asset-role-select { grid-column: 1 / -1; justify-content: space-between; }
+.selected-material-roles { display: grid; gap: 8px; margin-top: 12px; }
+.selected-material-roles > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; font-size: var(--text-control); }
+.selected-material-roles > div > span { min-width: 0; overflow-wrap: anywhere; }
+.composer-audio-note { padding: 8px 10px; margin: 0; color: var(--muted); font-size: var(--text-caption); }
+.version-edit-notice, .source-edit-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); font-size: var(--text-control); color: var(--muted); }
+.version-edit-notice button, .source-edit-notice button { min-height: 40px; padding: 6px 10px; color: var(--accent-text); background: var(--canvas); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.preview-stage-shell[hidden] { display: none; }
+.scene-workbench { margin-top: 16px; border-top: 1px solid var(--line); font-size: var(--text-control); min-width: 0; }
+.scene-workbench > header { display: flex; justify-content: space-between; gap: 12px; padding: 16px 0 10px; }
+.scene-workbench > header span, .scene-workbench p { color: var(--muted); }
+.scene-workbench p { line-height: var(--leading-ui); overflow-wrap: anywhere; }
+.scene-list { display: grid; max-height: 260px; overflow-y: auto; }
+.scene-list > button { min-width: 0; min-height: 52px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 1px solid transparent; border-bottom-color: var(--line); background: var(--canvas); color: var(--text); text-align: left; font-size: var(--text-control); }
+.scene-list > button:hover { background: var(--surface); }
+.scene-list > button.selected { border-color: var(--selection-line); background: var(--selection); }
+.scene-list b, .scene-list small { display: block; overflow-wrap: anywhere; }
+.scene-list b { font-weight: var(--weight-medium); }
+.scene-list small { color: var(--muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.scene-detail { padding: 12px 0; }
+.scene-uncertainty { display: flex; align-items: flex-start; gap: 6px; }
+.scene-uncertainty svg { flex-shrink: 0; color: var(--warning); margin-top: 3px; }
+.scene-source summary, .scene-focus-controls summary { padding: 10px 0; cursor: pointer; min-height: 40px; }
+.scene-source video { display: block; width: 100%; max-height: 280px; background: var(--surface-inset); }
+.scene-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 1fr); gap: 10px; margin-top: 12px; }
+.scene-editor label { display: grid; gap: 6px; min-width: 0; font-size: var(--text-caption); color: var(--muted); }
+.scene-editor input, .scene-editor select { min-height: 40px; width: 100%; min-width: 0; padding: 8px 10px; font-size: var(--text-field); color: var(--text); background: var(--canvas); border: 1px solid var(--line); border-radius: var(--radius-control); }
+.scene-editor > p, .scene-editor > details { grid-column: 1 / -1; margin: 0; }
+.scene-editor > button, .scene-source-preview { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; width: fit-content; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); font-size: var(--text-control); color: var(--text); }
+.scene-editor > button { background: var(--primary); color: var(--canvas); }
+.scene-source-preview { margin-top: 10px; }
+.scene-focus-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.scene-focus-controls .scene-focus-enabled { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.scene-focus-enabled input { width: 18px; min-height: 18px; }
+.scene-evidence { padding: 12px 0; border-top: 1px solid var(--line); }
+.scene-evidence article { display: grid; gap: 6px; padding: 8px 0; }
+.scene-evidence strong { font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.scene-evidence article > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.scene-evidence img { width: 100px; max-height: 72px; object-fit: contain; background: var(--surface-inset); }
+.inspector-source { display: flex; gap: 8px; min-width: 0; }
+.inspector-source svg { flex-shrink: 0; }
+.inspector-source div { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.inspector-source small, .inspector-source a { font-size: var(--text-caption); }
+.inspector-source a { color: var(--accent-text); }
+@media (max-width: 800px) {
+  .asset-role-select select, .scene-editor input, .scene-editor select { font-size: var(--text-input); }
+  .scene-editor { grid-template-columns: minmax(0, 1fr); }
+  .scene-focus-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scene-list > button { grid-template-columns: 24px minmax(0, 1fr); }
+  .scene-list > button > small { grid-column: 2; }
+  .selected-material-roles > div { flex-wrap: wrap; }
+}

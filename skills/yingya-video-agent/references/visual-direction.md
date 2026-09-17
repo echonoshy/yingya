@@ -2,10 +2,11 @@
 
 Use this guide when a new film needs a visual approach, when explaining
 relationships or data, or when the user asks for PPT/slide-inspired styling.
-Existing footage, brand references and approved project design remain the
-starting point. A minor correction needs only the affected scene's design.
+User intent, brand references and approved project design guide the treatment.
+Supplied footage is one possible material. A minor correction needs only the
+affected scene's design.
 
-When there are no usable visuals or the brief leaves the concept unresolved,
+When an idea or manuscript has no established visual treatment,
 use [creative-brief.md](creative-brief.md) to develop the idea and asset routes.
 User-supplied reference images are helpful but not required for visual direction.
 
@@ -24,6 +25,20 @@ load every file or combine conflicting style rules merely for variety.
 
 ## Make a coherent choice
 
+Define a concrete art direction: the principal subject's look, materials or
+image treatment, palette, light/depth, type hierarchy, framing and motion
+character. Describe what makes this film recognizable and suitable for its
+content. Terms such as "premium" or "cinematic" need visible decisions behind
+them. A bold, playful or richly textured film can be appropriate; the product
+UI's restrained surfaces are not a default video aesthetic.
+
+For generated assets, keep a shared subject description and visual treatment,
+reuse reference imagery when supported, and specify crops/layers needed for
+motion. Inspect actual outputs for subject consistency and composition before
+ordering the rest. Keep critical words and data outside generated bitmaps.
+For procedural scenes, give objects and spaces the same deliberate treatment;
+repeated cards and generic icons are not a substitute for designing the subject.
+
 Choose a visual idea that carries across scenes: for example, one annotated
 path connecting successive discoveries, a split composition showing a change,
 or an exploded diagram revealing how parts work together. Keep common type,
@@ -34,9 +49,10 @@ show a change; changing a palette alone is not a new storytelling approach.
 Offer alternatives when requested or when materially different treatments need
 a user decision. Otherwise recommend one direction in the existing production
 plan with a brief reason. Do not add a style questionnaire or generate preview
-images before production authorization. After authorization, test uncertain
-directions using [representative-scene.md](representative-scene.md), including
-short text-only work whose visual treatment is not yet established.
+images before production authorization. After authorization, test each new
+treatment using [representative-scene.md](representative-scene.md), then apply
+[visual-review.md](visual-review.md) to the actual result. Reuse valid evidence
+for an established treatment rather than repeating its exploration.
 
 ## Preserve the workflow and user's content
 

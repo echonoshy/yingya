@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "recipes": [
+    {"id":"screen-overview","name":"完整画面","description":"保留完整录屏，持续展示操作上下文。","requiresFocus":false,"focusShapes":[]},
+    {"id":"screen-focus","name":"聚焦操作","description":"从全景放大操作区域，最后回到结果画面。","requiresFocus":true,"focusShapes":["rect","anchor"]},
+    {"id":"screen-highlight","name":"区域高亮","description":"保持全景，压暗外围并描边重点区域。","requiresFocus":true,"focusShapes":["rect"]},
+    {"id":"screen-callout","name":"操作标注","description":"保持完整画面，用引线与指示圈标出操作位置。","requiresFocus":true,"focusShapes":["rect","anchor"]},
+    {"id":"screen-result","name":"结果聚焦","description":"先展示操作过程，最后放大结果区域并停留。","requiresFocus":true,"focusShapes":["rect","anchor"]}
+  ]
+}

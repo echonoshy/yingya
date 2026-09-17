@@ -509,7 +509,11 @@ impl CodexClient {
             }));
         }
         let prompt = if let Some(sandbox) = &self.config.sandbox {
-            format!("{prompt}{}", sandbox.tool_instructions())
+            format!(
+                "{prompt}{}{}",
+                sandbox.tool_instructions(),
+                crate::component_library::TOOL_INSTRUCTIONS
+            )
         } else {
             prompt.to_owned()
         };
@@ -986,7 +990,10 @@ fn spawn_app_server(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    if config.sandbox.is_some() {
+    if let Some(sandbox) = &config.sandbox {
+        command
+            .arg("-c")
+            .arg(sandbox.component_library_mcp_override());
         // Keep the OpenAI capability name, but use HTTP/SSE through the host
         // relay so no provider bearer token enters the sandbox.
         for setting in [
@@ -1099,6 +1106,89 @@ mod tests {
         evidence.observe(&json!({"method":"item/tool/requestUserInput","params":{}}));
         evidence.observe(&json!({"method":"serverRequest/resolved","params":{}}));
         assert!(evidence.requested_input);
+    }
+
+    #[tokio::test]
+    async fn tenant_mcp_configuration_survives_app_server_restart_without_host_config() {
+        use std::os::unix::fs::PermissionsExt;
+        let parent =
+            std::env::temp_dir().join(format!("yingya-mcp-tenants-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::write(parent.join("private-sentinel"), "not mounted").unwrap();
+        for tenant in ["first", "second"] {
+            let root = parent.join(tenant);
+            let home = root.join("runtime/codex-home");
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::create_dir_all(root.join("runtime/home")).unwrap();
+            std::fs::write(home.join("auth.json"), "{}").unwrap();
+            let old_config = "[mcp_servers.shadcn]\nurl = \"https://stale.invalid\"\n";
+            std::fs::write(home.join("config.toml"), old_config).unwrap();
+            let script = root.join("mock-codex.py");
+            std::fs::write(&script, r#"#!/usr/bin/python3
+import json,sys,pathlib,os
+assert not (pathlib.Path.cwd().parent/'private-sentinel').exists()
+assert os.environ['HTTPS_PROXY']=='http://127.0.0.1:18888'
+assert os.environ['NODE_USE_ENV_PROXY']=='1'
+assert 'features.apps=false' in sys.argv
+assert any(x.startswith('mcp_servers.yingya_shadcn={') for x in sys.argv)
+for line in sys.stdin:
+ request=json.loads(line)
+ if 'id' not in request:continue
+ if request.get('method')=='initialize':
+  with pathlib.Path('launches.jsonl').open('a') as out:
+   out.write(json.dumps({'args':sys.argv,'home':os.environ['CODEX_HOME'],'cwd':os.getcwd(),'helper':os.environ['YINGYA_COMPONENT_LIBRARY']})+'\n')
+ print(json.dumps({'id':request['id'],'result':{}}),flush=True)
+"#).unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let sandbox = crate::sandbox::Sandbox::new(
+                root.clone(),
+                resources.clone(),
+                None,
+                "test-only",
+                "http://127.0.0.1:8797",
+            )
+            .await
+            .unwrap();
+            let setting = sandbox.component_library_mcp_override();
+            let client = CodexClient::spawn(CodexConfig {
+                sandbox: Some(sandbox),
+                accounting: None,
+                binary: script,
+                home: home.clone(),
+                workspace: root.clone(),
+                model: "test".into(),
+                network_access: true,
+                hyperframes_browser: None,
+                video_agent_skill: None,
+                turn_timeout: Duration::from_secs(10),
+            })
+            .await
+            .unwrap();
+            client.restart().await.unwrap();
+            let launches: Vec<Value> = std::fs::read_to_string(root.join("launches.jsonl"))
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            assert_eq!(launches.len(), 2);
+            for launch in launches {
+                assert!(launch["args"].as_array().unwrap().contains(&json!(setting)));
+                assert_eq!(launch["home"], json!(home));
+                assert_eq!(launch["cwd"], json!(root));
+                assert_eq!(
+                    launch["helper"],
+                    json!(resources.join("runtime/component-library.mjs"))
+                );
+            }
+            assert_eq!(
+                std::fs::read_to_string(home.join("config.toml")).unwrap(),
+                old_config
+            );
+            client._child.lock().await.kill().await.unwrap();
+            drop(client);
+        }
+        std::fs::remove_dir_all(parent).unwrap();
     }
 
     #[tokio::test]

@@ -4,8 +4,7 @@
   "private": true,
   "description": "映芽 · Yingya，对话式动画视频制作工作台，把内容做成会动的视频。",
   "scripts": {
-    "test:design": "node --test tests/design-references.test.mjs",
-    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:delivery && npm run test:production && npm run test:services && npm run test:design && npm run web:build && npm run test:hyperframes && npm run test:ui",
+    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:delivery && npm run test:production && npm run test:editorial && npm run test:services && npm run test:design && npm run test:components && npm run test:anime && npm run web:build && npm run test:hyperframes && npm run test:ui",
     "format:check": "cargo fmt --all -- --check",
     "lint:rust": "cargo clippy --all-targets -- -D warnings",
     "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
@@ -18,6 +17,7 @@
     "test:heygen": "node --test tests/heygen-audio.test.mjs",
     "test:delivery": "python3 tests/video-delivery.test.py",
     "test:production": "python3 tests/production-task.test.py",
+    "test:editorial": "python3 tests/media-analysis.test.py && node --test tests/editorial-composition.test.mjs",
     "test:tts": "node --test tests/voxcpm2-client.test.mjs",
     "test:rust": "cargo test --all-targets",
     "test:hyperframes": "npm --prefix tests/fixtures/hyperframes-smoke run check",
@@ -51,18 +51,29 @@
     "release:build": "python3 scripts/release.py build",
     "release:activate": "python3 scripts/release.py activate",
     "release:status": "python3 scripts/release.py status",
-    "test:rolling": "cargo build --locked && python3 tests/rolling-runtime.test.py"
+    "test:rolling": "cargo build --locked && python3 tests/rolling-runtime.test.py",
+    "test:components": "node --test tests/component-library.test.mjs tests/component-packs.test.mjs tests/magic-beam.test.mjs tests/three-model.test.mjs",
+    "test:components:showcase": "node tests/unified-showcase.mjs",
+    "test:components:live": "node tests/component-video-live.mjs",
+    "test:anime": "node --test tests/anime-components.test.mjs tests/anime-preview.test.mjs",
+    "test:design": "node --test tests/design-references.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-sc": "^5.3.0",
     "@fontsource/fragment-mono": "^5.3.0",
     "@openai/codex": "0.154.0",
     "@phosphor-icons/react": "2.1.10",
+    "@tailwindcss/postcss": "4.3.3",
+    "esbuild": "0.28.2",
     "hyperframes": "0.8.30",
+    "postcss": "8.5.28",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "shadcn": "4.21.0",
+    "tailwindcss": "4.3.3",
+    "three": "0.186.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ import { ArrowClockwise, ArrowsOut, Pause, Play, Check, CircleNotch, Code, Downl
 import { ShareDialog, type ShareSource } from "../sharing/ShareDialog";
 import { ShareNetwork } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { defaultExportFps } from "../workbench";
 import { api } from "../api";
 import type { DraftVersion, ProjectDetail, RenderJob } from "../types";
 
@@ -19,18 +20,18 @@ const resolutionLabels: Record<RenderResolution, string> = {
 };
 
 function defaultResolution(aspectRatio: string): RenderResolution {
-  if (aspectRatio === "9:16") return "portrait-4k";
-  if (aspectRatio === "1:1") return "square-4k";
-  return "landscape-4k";
+  if (aspectRatio === "9:16") return "portrait";
+  if (aspectRatio === "1:1") return "square";
+  return "landscape";
 }
 
 function resolutionOptions(aspectRatio: string): RenderResolution[] {
-  if (aspectRatio === "9:16") return ["portrait-4k", "portrait"];
-  if (aspectRatio === "1:1") return ["square-4k", "square"];
-  return ["landscape-4k", "landscape"];
+  if (aspectRatio === "9:16") return ["portrait", "portrait-4k"];
+  if (aspectRatio === "1:1") return ["square", "square-4k"];
+  return ["landscape", "landscape-4k"];
 }
 
-export function LiveHyperFramesPreview({ project, active, available }: { project: ProjectDetail; active: boolean; available: boolean }) {
+export function LiveHyperFramesPreview({ project, active, available, onTimeChange, seek }: { project: ProjectDetail; active: boolean; available: boolean; onTimeChange?: (time: number) => void; seek?: { time: number; nonce: number } }) {
   const [session, setSession] = useState<StudioSession | null>(null);
   const [state, setState] = useState<StudioState>("idle");
   const [shouldConnect, setShouldConnect] = useState(true);
@@ -41,11 +42,20 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
   const playbackTime = useRef(0);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source === previewRef.current?.contentWindow && event.data?.type === "yingya-preview-position" && Number.isFinite(event.data.time)) playbackTime.current = Math.max(0, event.data.time);
+      if (event.source !== previewRef.current?.contentWindow) return;
+      if (event.data?.type === "yingya-preview-position" && Number.isFinite(event.data.time)) { playbackTime.current = Math.max(0, event.data.time); onTimeChange?.(playbackTime.current); }
+      if (event.data?.type === "yingya-preview-error" && typeof event.data.message === "string") {
+        setError(event.data.message);
+        setPlaying(false);
+        setSession(null);
+        setShouldConnect(false);
+        setState("disconnected");
+      }
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, []);
+  }, [onTimeChange]);
+  useEffect(() => { if (seek) { playbackTime.current = seek.time; setPlaying(false); previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: false, time: seek.time }, "*"); } }, [seek]);
   useEffect(() => { previewRef.current?.contentWindow?.postMessage({ type: "yingya-preview-playback", playing: playing && active }, "*"); }, [playing, active]);
 
   useEffect(() => {
@@ -120,10 +130,12 @@ export function LiveHyperFramesPreview({ project, active, available }: { project
   </section>;
 }
 
-export function RenderPanel({ project, version, videoPath, exportRequest = 0, onRefresh }: { project: ProjectDetail; version?: DraftVersion; videoPath?: string; exportRequest?: number; onRefresh: () => Promise<void> }) {
+export function RenderPanel({ project, version, videoPath, exportRequest = 0, onRefresh, onGeneratePreview, generationDisabled = false }: { project: ProjectDetail; version?: DraftVersion; videoPath?: string; exportRequest?: number; onRefresh: () => Promise<void>; onGeneratePreview?: () => void; generationDisabled?: boolean }) {
   const [sharing, setSharing] = useState<ShareSource | null>(null);
   const [resolution, setResolution] = useState<RenderResolution>(() => defaultResolution(project.aspectRatio));
-  const [fps, setFps] = useState<30 | 60>(60);
+  const [fps, setFps] = useState(() => defaultExportFps(project));
+  const projectFps = defaultExportFps(project);
+  useEffect(() => setFps(projectFps), [project.id, projectFps]);
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState("");
   const activeJob = project.renderJobs.find(job => job.status === "queued" || job.status === "running");
@@ -143,7 +155,7 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
   const downloadSpec = ["MP4", typeof recordedResolution === "string" ? recordedResolution : null, typeof recordedFps === "number" ? `${recordedFps} FPS` : null].filter(Boolean).join(" · ");
   useEffect(() => setResolution(defaultResolution(project.aspectRatio)), [project.aspectRatio]);
 
-  async function render(input: { versionId: string; resolution: RenderResolution; fps: 30 | 60 }) {
+  async function render(input: { versionId: string; resolution: RenderResolution; fps: number }) {
     if (rendering) return;
     setRequested(true);
     setError("");
@@ -163,6 +175,7 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
   }
 
   return <section className="render-panel" aria-label="视频分享与导出">
+    {project.manifest.dirty && version ? <div className="source-edit-notice" role="status"><span>源文件有未渲染修改；本次导出仍是「{version.label}」，不包含这些修改。</span>{onGeneratePreview ? <button type="button" disabled={generationDisabled || Boolean(project.activeTurnId) || project.queueDepth > 0 || version.id !== project.manifest.currentDraft} onClick={onGeneratePreview}>生成新版预览</button> : null}{version.id !== project.manifest.currentDraft ? <span>请切到当前版本后生成新版预览。</span> : <span>生成新版预览后，再导出含修改的版本。</span>}</div> : null}
     {source ? <div className="current-video-actions">
       <p className="render-existing-spec">{downloadSpec}</p>
       <div className="current-video-buttons">
@@ -172,14 +185,14 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
     </div> : null}
     <details className="export-settings" open={exportOpen} onToggle={event => setExportOpen(event.currentTarget.open)}>
       <summary>导出其他规格{rendering ? <span><CircleNotch className="spin"/>导出中</span> : null}<CaretDown className="export-chevron"/></summary>
-      <p className="render-hint">按所选分辨率和帧率生成新的 MP4。</p>
+      <p className="render-hint">{project.manifest.dirty ? "按所选分辨率和帧率导出已有版本，不包含未渲染的源文件修改。" : "按所选分辨率和帧率生成新的 MP4。"}</p>
       {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.status === "queued" ? "等待导出" : `已完成 ${Math.round(activeJob.progress)}%`}</p></div> : null}
     <div className="render-options">
       <label><span>分辨率</span><select value={resolution} disabled={rendering} onChange={event => setResolution(event.target.value as RenderResolution)}>{options.map(value => <option value={value} key={value}>{resolutionLabels[value]}</option>)}</select></label>
-      <label><span>帧率</span><select value={fps} disabled={rendering} onChange={event => setFps(Number(event.target.value) as 30 | 60)}><option value={60}>60 FPS</option><option value={30}>30 FPS</option></select></label>
+      <label><span>帧率</span><select value={fps} disabled={rendering} onChange={event => setFps(Number(event.target.value))}>{[...new Set([projectFps, 30, 60])].map(value => <option value={value} key={value}>{value} FPS{value === projectFps ? " · 项目帧率" : ""}</option>)}</select></label>
     </div>
     <div className="render-actions">
-      <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution, fps })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在导出 MP4…" : "开始导出"}</button>
+      <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution, fps })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在导出 MP4…" : project.manifest.dirty ? "导出已有版本" : "开始导出"}</button>
     </div>
     {project.activeTurnId ? <p className="render-hint">当前修改完成后可导出。</p> : null}
     {error ? <p className="render-error" role="alert"><Warning/>{error}</p> : null}

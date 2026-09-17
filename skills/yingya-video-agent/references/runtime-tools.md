@@ -22,8 +22,9 @@ tools; a dedicated Browser plugin is not provided.
 Read static web pages with Python requests + BeautifulSoup or Node.js fetch.
 Check HTTP status and content before treating the result as usable source data.
 The current host relay does not implement standalone web search or Apps MCP;
-those built-in tools are disabled. Use known official pages or user-supplied
-sources. Direct HTTP retrieval is not a search engine: disclose missing discovery
+those built-in tools are disabled. The separately configured shadcn MCP can
+search its component registries; it is not general web search. Use known official
+pages or user-supplied sources. Direct HTTP retrieval is not a search engine: disclose missing discovery
 capabilities when needed and never invent source content.
 
 When HYPERFRAMES_BROWSER_PATH is configured, pass it explicitly to Playwright:
@@ -60,6 +61,41 @@ error, inspect the first page error and generated source, then make a targeted
 fix; repeating check/render with the same source does not repair it. Plain
 Playwright can help distinguish a source error from HyperFrames bundling behavior.
 
+## Unified component library
+
+`$YINGYA_COMPONENT_LIBRARY` is the installed entrypoint for local scene discovery
+and installation, React Bits / Magic UI registry search/import/diagnostics, and
+browser bundle builds. Use `node "$YINGYA_COMPONENT_LIBRARY" catalog` as needed; local
+`catalog` / `list` needs no project and can inform planning. Read
+[reusable-motion.md](reusable-motion.md) for installed packs or
+[third-party-components.md](third-party-components.md) for registry components.
+Those references contain the commands and timing contract; the catalog and
+installed pack README are the source of truth for available components and APIs.
+
+The host owns the pinned shadcn CLI and each user's shadcn MCP. Project writes
+require an explicit `--project` destination. The legacy
+`$YINGYA_ANIME_COMPONENTS` installer remains available for existing Anime.js
+projects; new discovery uses the unified entrypoint. Do not run
+`npx ...@latest`, initialize a replacement app, or install a shared CLI inside a
+video task. Import success is not proof of a verified video.
+
+## Existing video analysis and assembly
+
+Two installed project tools are available without installing dependencies:
+
+```sh
+python3 "$YINGYA_MEDIA_ANALYSIS" --project . --source assets/inbox/recording.mp4 --json
+node "$YINGYA_EDITORIAL_ASSEMBLER" --project . --scenes scenes.json --width 1920 --height 1080 --fps 30
+```
+
+Read [existing-footage.md](existing-footage.md) for source selection, exact scene
+fields, original audio, supported timing and overwrite protection. Analysis
+caches validated keyframes and metadata by content/analysis version inside the
+project; it does not provide semantic recognition or transcription. Assembly
+uses the existing `scenes.json`, static media and an installed camera adapter.
+Inspect the actual source before choosing intervals. Analysis is allowed during
+intake; composition creation still follows the existing plan authorization.
+
 ## Audio and command results
 
 For every shell tool, preserve the full result: `text(await tools.exec_command(...))`,
@@ -83,6 +119,11 @@ atomically. Poll the original shell session; if its handle was lost, query `stat
 `busy` means wait for the recorded job. A passed check is reusable only when source,
 dependencies, options, and output hashes match. The runner refuses to overwrite an
 unrelated existing output: retain it and choose a new report/video filename.
+Successful rendering also returns `renderVerification` and
+`renderVerificationSha256`. Read that output-bound report and open its decoded
+MP4 frames before registering the draft. It verifies extraction and produces
+review evidence; `requiresVisualReview` means the model must still check the
+actual source content, framing and result, not merely quote a passing flag.
 Never redirect stderr into the report or use `; echo` to replace a failure exit code.
 Use `--continue-workflow` only when the user authorized completing production;
 omit it for diagnosis, explanation, or a check-only request. It permits bounded

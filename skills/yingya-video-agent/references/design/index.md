@@ -19,7 +19,7 @@ example dimensions, colors, fonts and density are not compulsory templates.
 The full Baoyu / Frontend Slides skill workflows are not installed by this
 pack. Comic production and new executable scene recipes are not bundled here.
 
-For an executable effect, inspect tools actually available in the current task
-and follow [runtime-tools.md](../runtime-tools.md). A design reference is not an
-installed component. Preserve source and attribution when adapting an available
-implementation; do not assume that a reference installs its own runtime.
+For an executable effect, inspect the actual installed component catalog and
+[component guide](../reusable-motion.md). A design reference is not an installed
+component. Preserve original code when adapting a discovered implementation;
+see [third-party components](../third-party-components.md).
