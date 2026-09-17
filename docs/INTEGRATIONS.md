@@ -115,6 +115,33 @@ npm run hyperframes:upgrade
 
 Normal app-server runs disable automatic HyperFrames CLI and skill updates.
 
+## Video design references
+
+The bundled `yingya-video-agent` progressively loads a pinned design reference
+pack through [`visual-direction.md`](../skills/yingya-video-agent/references/visual-direction.md).
+Baoyu contributes selected information layouts, diagram structure and slide
+style references; Frontend Slides contributes a motion reference. Original
+files, hashes, exact commits and MIT notices are retained in
+[`design/PROVENANCE.json`](../skills/yingya-video-agent/references/design/PROVENANCE.json).
+Yingya's adaptation guides translate these references into editable HTML/SVG
+scenes and the existing video clock. Upstream skill workflows, scripts, fonts
+and image-generation backends are not installed by this integration.
+
+The Agent selects structure and treatment from the content, records the choice
+in the existing plan and scene fields, and preserves approved decisions and
+selected reference copies with each draft. The pack adds no style picker,
+manifest phase, schema migration or extra approval checkpoint. Runtime helpers
+and real footage retain their existing contracts. Customer films are not
+restricted to the included examples.
+
+The current tenant initializer recursively copies the complete video skill
+bundle from release resources. Publish changes through the normal release
+workflow and verify the active worker's reference files; a developer's local
+skill installation does not update website tasks. Run `npm run test:design` for
+offline provenance and reference-link integrity, plus the skill validator and
+actual controlled video tasks for behavioral validation. See the
+[integration plan](VIDEO_DESIGN_SKILLS_INTEGRATION.md) for scope and acceptance.
+
 ## VoxCPM2 speech service
 
 VoxCPM2 is installed as an isolated vLLM-Omni service under `.runtime/` and
