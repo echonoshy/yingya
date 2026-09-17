@@ -2,11 +2,16 @@
 
 ## Intake before expensive work
 
+For sparse text, absent usable visuals or an unresolved concept, first read
+[creative-brief.md](creative-brief.md). Develop the creative direction and asset
+strategy rather than jumping from a topic to composition code. Separate missing
+facts from reversible creative defaults; an absent attachment is not a blocker.
+
 Extract what is already known from existing inputs: purpose, audience, channel, aspect ratio, target duration, frame rate, brand, script, selected voice, and required outputs. Project settings and explicit user choices override defaults. Preserve locked wording, shot order, timing, and assets. Record uncertain facts as assumptions; do not invent statistics, endorsements, or product capabilities.
 
 Check only capabilities needed by the proposed route: installed HyperFrames executable, local browser availability, readable input media, and available voice/image/music tools. Use local help and read-only health checks; do not download or generate media as a planning probe. A missing optional music service is not a blocker for a video that does not need music. If required speech or footage cannot be produced, disclose that before plan approval. Recheck affected capabilities before use if availability may have changed.
 
-Prefer supplied assets, then suitable existing local assets, then generation where it adds meaning. Typography, diagrams, and data animation often communicate explanatory concepts more directly than generated pictures. Do not promise an unverified template or a capability found only in another application's documentation.
+Prefer suitable supplied and existing assets when available. With text-only inputs, generated imagery may be the main visual material; choose it deliberately alongside editable typography, diagrams and data animation according to the story. Do not promise an unverified template or a capability found only in another application's documentation.
 
 ## One reviewable plan
 
@@ -16,6 +21,16 @@ existing video. Retired bundled examples are not design references; existing
 style files may still be rendering dependencies of an authored composition.
 Describe the chosen direction in the same production plan, without a separate
 style approval gate.
+
+When choosing a new direction, use [visual-direction.md](visual-direction.md)
+and its relevant references. Explain the relationship viewers need to see
+(sequence, comparison, hierarchy, mechanism or another structure), then the
+visual treatment and why it suits these materials. In each scene's existing
+`visualDirection` and `motion`, describe what appears first, what changes with
+the explanation, and the final readable state. Save selected reference paths
+and provenance versions in the plan so production can use the same sources.
+Keep this text-only until production is authorized. Do not insert style names
+into the footage assembler's `recipe` field or create a parallel scene schema.
 
 Write `.yingya/plan.md` with:
 
@@ -27,6 +42,7 @@ Write `.yingya/plan.md` with:
 - **Production route and outputs:** asset sources, available capabilities and limitations, aspect ratio, resolution, fps, editable source, review draft, and final MP4.
 - **Composition approach:** identify which content stays editable as text, diagrams, charts, or interface overlays, which scenes use supplied media, and any missing footage. For website work, verify access before promising a capture; request screenshots or copy if access fails. Data stories retain source, units, and scope; missing values remain unresolved rather than invented.
 - **Assumptions / unresolved decisions:** distinguish user facts from recommendations; ask about material conflicts together.
+- **Representative scene, when needed:** which scene/passage will test an unresolved visual direction after authorization, and what it must demonstrate before expanding the film. Record the observed outcome here during production; this is not an extra review gate.
 
 Avoid five overlapping planning documents. The plan owns decisions; `scenes.json` owns scene structure. Preserve existing `SCRIPT.md` or `STORYBOARD.md` when supplied, and keep dependent scene fields consistent with user edits. Create additional artifacts only when the requested deliverable needs them.
 

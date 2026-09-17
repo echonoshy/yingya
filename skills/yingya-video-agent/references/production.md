@@ -4,7 +4,23 @@
 
 Reuse the app-provided `index.html` scaffold after plan confirmation; inspect it before editing. Do not reinitialize the project or overwrite a working entry. Create `DESIGN.md` from the approved plan with shared typography, colors, scene layout rules, motion timing, transitions, caption safe areas, and audio levels. Centralize these choices in composition styles / shared source.
 
-For complex work, choose one representative difficult scene for early internal inspection. Resolve text readability, image treatment, and motion rhythm before expanding it across the film. Small/simple videos can proceed directly to the assembled draft. This does not require another user approval or a separate rendered video.
+If the plan used bundled design references, follow the applicable adaptation in
+[design/index.md](design/index.md). Carry its chosen structure into actual
+editable elements and semantic motion, not just a color change. Record the
+resolved design and selected source commits in `DESIGN.md`; retain copies of
+the used reference files, their licenses and provenance under project-local
+`assets/design-reference/` for the draft snapshot. Upstream demo fonts, imagery,
+fixed dimensions and web animation triggers are not runtime dependencies.
+Use installed local fonts and the project's output dimensions. On revisions,
+reuse these saved decisions and reference copies rather than rereading a newer
+shared reference pack. New choices belong only to the affected scope.
+
+For an unresolved text-only direction, a rejected overall look, a new uncertain
+treatment or complex work, follow [representative-scene.md](representative-scene.md).
+Resolve the sample's required assets and inspect actual composition and motion
+before producing the remaining scenes. A known, well-specified simple treatment
+or focused edit may reuse valid design evidence. Keep the existing authorization
+and draft workflow; no extra approval is required.
 
 Keep each scene's purpose distinct and its dominant visual clear. Hold key text long enough to read, leave pauses between dense ideas, and motivate movement by entrance, emphasis, cause, or transition. Do not use identical scene lengths, arbitrary camera motion, or repeated transitions merely to fill time. Respect locked timing and the requested visual style. Keep characters, products, lighting, and typography consistent across shots.
 

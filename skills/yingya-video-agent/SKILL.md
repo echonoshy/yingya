@@ -9,9 +9,17 @@ This is Yingya's outer production workflow. Work inside the current project dire
 
 ## Product purpose and production choices
 
-Yingya is a conversational animation video production workspace: turn supplied content, websites, screenshots, images, and existing footage into product demos, explainers, data stories, and brand videos. HyperFrames is the editable composition and rendering foundation. The coding model plans and authors the video; image, voice, and music tools supply media when needed.
+Yingya turns text ideas, supplied content, websites, screenshots, images, and existing footage into editable product demos, explainers, data stories, and brand videos. The coding model develops rough briefs, understands content, plans visual storytelling and selects evidence where needed. HyperFrames supplies composition, animation and rendering. Reuse actual footage and available components when they fit; image, voice and music tools can supply the main media for a new creation as well as fill specific gaps.
 
 Choose typography, diagrams, charts, interface highlights, transitions, and media sequencing according to the message. Keep important text, numbers, timing, and layout editable in the composition instead of baking them into generated images. Reuse supplied branding and footage; generated media supports the story where useful. This is a production preference, not a restriction on the user's approved aesthetic or existing project.
+
+For a new visual direction, an explainer/data story, or a request for stylized
+slides in motion, read [visual-direction.md](references/visual-direction.md).
+It routes to bundled Baoyu / Frontend Slides design references and Yingya's
+video adaptations. Choose information structure and visual treatment from the
+content; load only relevant references. Continue approved designs on local
+revisions instead of selecting a new style. These references inform the existing
+plan and composition, not another skill installation or approval workflow.
 
 A request for new photorealistic footage, character performance, or complex camera action needs actual footage or a verified installed video-generation capability. Do not imply HyperFrames synthesizes those shots. When required inputs are missing, explain the gap before approval and propose either supplied footage or an animation treatment for the user to choose; never silently change the requested result. Videos generated elsewhere can be used as source footage.
 
@@ -31,6 +39,7 @@ Choose the smallest route that fulfills the request:
 
 | Request / state | Next action |
 | --- | --- |
+| Rough brief, missing visual assets or unresolved creative direction | Read [creative-brief.md](references/creative-brief.md); develop the concept and asset strategy before implementation, then use the existing plan review. |
 | New video; no approved plan | Prepare the production plan and text scene outline; enter `plan_review`. |
 | Plan confirmed; `production` | Continue the saved plan from the first incomplete dependency. |
 | Local revision to an existing video | State affected scenes and dependencies, then build a new draft without repeating whole-project planning. |
@@ -67,7 +76,7 @@ Open and inspect the actual scene/transition snapshots; listen to the rendered n
 
 1. Reuse the approved plan and any existing scaffold. Freeze shared type, palette, motion, safe areas, and audio rules in `DESIGN.md`.
 2. Resolve assets and narration before committing the scene timeline. For voiced scenes, use the exact saved VoxCPM2 `voiceId` for every segment and revision; measure the resulting audio, then align scene timing and captions. For silent or music-led work, derive timing from reading load or the supplied track.
-3. Build the composition from `scenes.json` using stable scene IDs. For complex visual work, check a representative scene early before propagating its design; this is an internal iteration, not another user checkpoint.
+3. Build the composition from `scenes.json` using stable scene IDs. For an unresolved text-only direction, a rejected overall look or complex visual work, follow [representative-scene.md](references/representative-scene.md): inspect a meaningful passage before expanding its design across the film. This is an internal iteration, not another user checkpoint; known designs and local edits reuse their valid evidence.
 4. Use `lint` for early static feedback when needed. At draft readiness, run **one** `hyperframes check --snapshots --json` through the durable runner in [runtime-tools.md](references/runtime-tools.md); it includes lint, runtime, layout, motion assertions, and contrast. Use that runner for rendering too. Preserve complete command results and poll the original session/job until it exits; a client wait window is not a workflow interruption. Do not chain deprecated `validate` / `inspect` commands or prepend redundant lint. Include motion assertions for significant animation and inspect the resulting representative frames.
 5. Fix failed gates and rerun the affected check. A gate passes only with successful process exit and complete JSON whose top-level `ok` is `true`. Save reports atomically under `.yingya/reports/check-*.json`. Check timestamps cover short scenes and meaningful transitions; do not assume default samples cover every scene.
 6. Render review-quality video only after required checks pass. Verify the video is readable and matches the planned frame shape, rate, timing, and expected audio. Preserve the editable source.

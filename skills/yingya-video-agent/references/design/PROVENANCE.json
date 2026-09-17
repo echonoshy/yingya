@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.1",
+  "retrievedOn": "2026-09-17",
+  "usage": "Selected upstream design references only. Yingya video adaptations live outside references/. Original skill workflows, scripts, fonts and images are not installed.",
+  "sources": [
+    {
+      "repository": "https://github.com/JimLiu/baoyu-skills",
+      "commit": "1567581c26ec29f4216c6e6835415bf30343b0e3",
+      "license": "MIT",
+      "licensePath": "references/baoyu/LICENSE",
+      "files": [
+        {
+          "upstreamPath": "LICENSE",
+          "localPath": "references/baoyu/LICENSE",
+          "sha256": "601839401f6ce68b7a8aec0f7ba247ab8ef0848113378220bec4b2615cc84ee7",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-diagram/references/architecture.md",
+          "localPath": "references/baoyu/diagrams/architecture.md",
+          "sha256": "0a6f09566c9c9673e0f6493ab4081263ffe5a2bc59ae6103f3c6dd0059a4f1ce",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-infographic/references/layouts/binary-comparison.md",
+          "localPath": "references/baoyu/layouts/binary-comparison.md",
+          "sha256": "6740c77e89b4cd120e2da9c96feb447fb707e40ef42ee1774794337c8079c8ee",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-infographic/references/layouts/hierarchical-layers.md",
+          "localPath": "references/baoyu/layouts/hierarchical-layers.md",
+          "sha256": "5fdacc7c543788a32d9e73b4cc26465e54adec498dd4975cdcff85ca2f2d1da9",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-infographic/references/layouts/linear-progression.md",
+          "localPath": "references/baoyu/layouts/linear-progression.md",
+          "sha256": "65dea6f3fc3c131c7d3fc32050e541b3f60e5896699adc0e8624d1c5cc469757",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-infographic/references/layouts/structural-breakdown.md",
+          "localPath": "references/baoyu/layouts/structural-breakdown.md",
+          "sha256": "eff60da27c0603113a283488824312e1078140872ff204935bf2c3cfe712c1fc",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-slide-deck/references/styles/blueprint.md",
+          "localPath": "references/baoyu/styles/blueprint.md",
+          "sha256": "c29ebd7a994cc1f77fc36698979e03f60510b6c05944b7061bb6431e4dcf441a",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-slide-deck/references/styles/bold-editorial.md",
+          "localPath": "references/baoyu/styles/bold-editorial.md",
+          "sha256": "e32911cfa650ddbd0df349e7bfd2a77707430df57769c89e4d85a178af833e3f",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "skills/baoyu-slide-deck/references/styles/sketch-notes.md",
+          "localPath": "references/baoyu/styles/sketch-notes.md",
+          "sha256": "5433f589f41629522261f9692b295629b6e15027a375644cac876f777d3f06e0",
+          "modifications": "none"
+        }
+      ]
+    },
+    {
+      "repository": "https://github.com/zarazhangrui/frontend-slides",
+      "commit": "9906a34d640d2111f724544cbc50f7f130569ae1",
+      "license": "MIT",
+      "licensePath": "references/frontend-slides/LICENSE",
+      "files": [
+        {
+          "upstreamPath": "LICENSE",
+          "localPath": "references/frontend-slides/LICENSE",
+          "sha256": "62928eb197fe4662d1efc3af0735b3ba5df3c0308badd9a2baf2b619009f5366",
+          "modifications": "none"
+        },
+        {
+          "upstreamPath": "animation-patterns.md",
+          "localPath": "references/frontend-slides/animation-patterns.md",
+          "sha256": "1b7b7409893b68c09effb04f20a4603a5168e4956d76c3999c2ba8f86c4bbc8f",
+          "modifications": "none"
+        }
+      ]
+    }
+  ]
+}
