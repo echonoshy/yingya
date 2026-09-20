@@ -1,0 +1,57 @@
+.home-layout--product .home-header, .home-layout--product .home-create, .home-layout--product .home-projects { max-width: 1040px; margin-inline: auto; }
+.home-layout--product .home-header { text-align: left; }
+.home-layout--product .home-scroll { padding-top: 44px; }
+.home-layout--product .creation-settings { margin-top: 12px; background: var(--surface); }
+.home-layout--product .creation-settings > summary { width: 100%; font-size: var(--text-control); }
+.home-layout--product .creation-settings-preview { white-space: normal; flex: 1; }
+.product-storyboard { min-width: 0; border-top: 1px solid var(--line); padding-top: 18px; margin-top: 18px; text-align: left; }
+
+/* Inspect real keyframes without losing the place in the plan. */
+.knowledge-plan .plan-keyframe-open { position: relative; display: block; width: 100%; padding: 0; overflow: hidden; background: var(--surface); cursor: zoom-in; }
+.plan-keyframe-open img { width: 100%; border: 0; border-radius: 0; }
+.plan-keyframe-open > span { position: absolute; right: 10px; top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font-size: var(--text-caption); transition: background var(--motion-quick), transform var(--motion-standard) var(--ease-sprout); }
+.plan-keyframe-open:is(:hover, :focus-visible) > span { background: var(--surface); transform: translateY(-2px); }
+.plan-keyframe-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.action-dialog.plan-frame-dialog { width: min(1120px, calc(100vw - 28px)); }
+.plan-frame-dialog .asset-zoom-controls { margin-top: 16px; }
+.plan-frame-dialog .asset-zoom-controls button { min-height: 40px; min-width: 40px; padding-inline: 10px; font: var(--text-control) var(--font-ui); }
+.plan-frame-image { max-height: calc(var(--app-height, 100dvh) - 250px); overflow: auto; overscroll-behavior: contain; border-radius: var(--radius-control); background: var(--surface); }
+.plan-frame-image:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plan-frame-image > img { display: block; max-width: none; height: auto; }
+.plan-frame-dialog > p { margin-bottom: 0; color: var(--muted); }
+.composer-more-trigger svg { transition: transform var(--motion-standard) var(--ease-sprout); }
+.composer-more-trigger[aria-expanded="true"] svg { transform: rotate(45deg); }
+.composer-more-trigger[aria-expanded="true"] { background: var(--surface-hover); color: var(--text); }
+.composer-more-action { transition: background var(--motion-quick), color var(--motion-quick); }
+@keyframes workspace-pane-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 1023px) and (prefers-reduced-motion: no-preference) {
+  .knowledge-workspace.workspace-mobile--thread .thread,
+  .knowledge-workspace.workspace-mobile--canvas .artifact-canvas { animation: workspace-pane-enter var(--motion-standard) var(--ease-sprout); }
+}
+@media (max-width: 1023px) {
+  .knowledge-workspace .project-back { min-width: 40px; min-height: 40px; }
+  .knowledge-workspace .project-back svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .workspace.knowledge-workspace .artifact-canvas > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 16px; }
+  .workspace.knowledge-workspace .artifact-canvas > header > div:last-child { grid-column: auto; }
+  .knowledge-workspace .artifact-canvas > header > div { min-width: 0; }
+  .knowledge-workspace .artifact-canvas > header > div:first-child { flex: 1; }
+  .knowledge-workspace .artifact-canvas > header h2 { margin: 0; font-size: var(--text-section); }
+  .knowledge-workspace .mobile-production-details { align-items: center; justify-content: center; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--muted); font: var(--text-control)/1.5 var(--font-ui); cursor: pointer; transition: background var(--motion-quick); }
+  .knowledge-workspace .mobile-production-details:hover { background: var(--surface); color: var(--text); }
+  .knowledge-workspace .mobile-production-details:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .plan-confirm .primary-button { width: 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace.knowledge-workspace, .knowledge-workspace .artifact-canvas,
+  .knowledge-workspace .thread, .knowledge-workspace .thread-header { animation: none; }
+  .composer-more-trigger svg, .plan-keyframe-open > span { transition: none; transform: none; }
+  .plan-keyframe-open:is(:hover, :focus-visible) > span { transform: none; }
+}
+@media (max-width: 799px) {
+  .home-layout--product .home-scroll { padding: 28px 16px; }
+  .home-layout--product .creation-settings > summary { flex-wrap: wrap; }
+  .home-layout--product .creation-settings-preview { flex-basis: calc(100% - 32px); }
+}

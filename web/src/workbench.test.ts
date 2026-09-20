@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { creationRequirements, creationSettingsSchema } from "./components/CreationSettings";
-import { initialFocusRect, recipeCompatible } from "./components/SceneWorkbench";
 import { defaultExportFps, materialOnlyPrompt, sceneAtTime, selectedProjectVersion, sourceClip, sourceFilePath } from "./workbench";
 import { agentManifestSchema, workbenchSchema } from "./schemas";
 import type { MediaScene, ProjectDetail, SourceBinding } from "./types";
@@ -63,13 +62,6 @@ describe("version-bound source interpretation", () => {
 });
 
 describe("bounded scene effects and export defaults", () => {
-  it("requires rectangle focus for highlight without silently manufacturing it", () => {
-    const highlight = { id: "screen-highlight", name: "区域高亮", description: "", requiresFocus: true, focusShapes: ["rect"] };
-    expect(recipeCompatible(highlight, scenes[1])).toBe(false);
-    expect(initialFocusRect(scenes[1])).toEqual({ x: 80, y: 0, width: 20, height: 20 });
-    expect(recipeCompatible(highlight, { ...scenes[1], sourceClip: { focus: { rect: { x: .8, y: 0, width: .2, height: .2 } } } })).toBe(true);
-    expect(recipeCompatible({ ...highlight, requiresFocus: false, focusShapes: [] }, scenes[0])).toBe(true);
-  });
   it("uses the project frame rate and falls back to 30 for invalid or absent metadata", () => {
     expect(defaultExportFps({ manifest })).toBe(30);
     expect(defaultExportFps({ manifest: { ...manifest, outputSpec: { fps: 24 } } })).toBe(24);

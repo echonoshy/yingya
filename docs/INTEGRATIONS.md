@@ -267,7 +267,7 @@ workflow and verify the active worker's reference files; a developer's local
 skill installation does not update website tasks. Run `npm run test:design` for
 offline provenance and reference-link integrity, plus the skill validator and
 actual controlled video tasks for behavioral validation. See the
-[integration plan](VIDEO_DESIGN_SKILLS_INTEGRATION.md) for scope and acceptance.
+[historical integration record](archive/VIDEO_DESIGN_SKILLS_INTEGRATION.md) for the original scope and acceptance. Current plan review includes real keyframes before approval, as specified in the [current product contract](YINGYA_NEXT_PRODUCT_DIRECTION.md).
 
 ## VoxCPM2 speech service
 

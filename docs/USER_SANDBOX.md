@@ -119,15 +119,15 @@ VoxCPM2 只应监听 `127.0.0.1:8791`。自定义音色在服务端加用户命�
 用户运行环境按账号分别初始化，同一账号的并发请求共用初始化结果；失败或请求取消后撤销临时内部令牌，后续请求可以重试。任务完成和启动时的状态检查保留队列暂停，只有明确恢复或新提交才解除暂停。事件日志写入完成后才发布游标；实时事件缓冲区溢出会通知页面重新同步。项目文件按块传输，支持 Range、HEAD 和不可满足范围的 416 响应；路径检查针对访问的文件，不扫描整个用户目录。
 
 ```bash
-npm run backend:service:restart   # yingya-backend，8797
+npm run backend:service:status    # 检查已有隔离开发会话与实际端口
 npm run web:service:status        # yingya-frontend，8798
 cargo test --all-targets -- --test-threads=1
 npm run typecheck
 npm run test:web
 npm run web:build
-YINGYA_UI_QA_URL=http://127.0.0.1:8797 npm run test:ui
+YINGYA_UI_QA_URL=http://127.0.0.1:8798 npm run test:ui
 cargo build
 npm run test:admin              # 独立临时数据库，yingya-admin-qa，8800；结束时关闭
 ```
 
-服务均通过命名 tmux 会话管理。浏览器检查可复用上述现有服务，不需要额外启动开发进程。
+服务均通过命名 tmux 会话管理。变更服务前检查 `data/deployment/active.json`、`npm run release:status` 和现有会话；滚动部署入口占用 8797，隔离开发后端须使用空闲端口及独立数据目录。重启时保留该实例的环境配置，具体步骤见[开发服务](DEVELOPMENT.md#development-services)。浏览器检查复用现有前端及隔离 API 模拟，不作为真实生产后端验收。

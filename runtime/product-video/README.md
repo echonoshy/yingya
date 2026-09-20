@@ -1,4 +1,4 @@
-# 产品视频样片与制作起点
+# 内部图文视频构建器与测试样例
 
 三个样片均使用映芽真实 React 界面的浏览器截图，文字和动画为本仓库制作。
 `create/intro/launch.png` 来自已登录开发页面；`plan/choose/edit.png` 来自同一
@@ -9,7 +9,9 @@
 - `feature-launch`：25 秒，镜头选择与局部修改。
 - `walkthrough`：35 秒，添加资料、确认方案、预览修改、导出。
 
-首页展示的 MP4 和封面位于 `web/public/product-examples/`。Agent 读取本目录的
+这些是内部构建器的测试样例，不再作为首页案例或制作模式。当前首页使用
+`web/src/knowledgeExamples.json` 中的知识讲解作品。浏览器测试所需的旧样片
+保留在 `tests/fixtures/media/`，不随产品发布。Agent 读取本目录的
 `DESIGN.md`、`examples/*.json` 和 `build.mjs`，按客户资料复用结构与动效。
 不将映芽的文案、域名或界面自动插入客户影片。
 

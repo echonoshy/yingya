@@ -14,7 +14,7 @@ runtime dependencies.
 | `skills/` | Project Codex integrations | Product source | Track |
 | `scripts/` | Developer tooling | Product source | Track |
 | `deploy/` | Local service operations | Product source | Track |
-| `examples/` | Editable sources for current homepage films | Product source | Track |
+| `examples/` | Composition examples used by runtime tooling/tests | Product source | Track |
 | `tests/fixtures/` | Automated test inputs | Test source | Track |
 | `data/` | Yingya and its users | Mutable runtime data | Ignore |
 | `.runtime/` | Codex, HyperFrames, models, caches | Machine-local state | Ignore |
@@ -99,8 +99,8 @@ directory; do not add generated media to the repository unless a visual
 regression test explicitly defines it as a reviewed baseline.
 
 One-off QA scripts, screenshots, logs, and exploratory design exports belong in
-temporary directories. Keep current product guidance in `docs/`; do not retain
-superseded audit reports or design iterations there. Current brand assets live in `web/public/brand/`: `yingya-ghost.png` is
+temporary directories. Keep current product guidance in `docs/`; archive superseded decisions under
+`docs/archive/`, clearly marked as historical rather than current instructions. Current brand assets live in `web/public/brand/`: `yingya-ghost.png` is
 the product logo; `yingya-favicon.svg` is the theme-aware browser icon.
 
 ## Cleanup policy
@@ -124,3 +124,21 @@ Review before removing:
 - `.runtime/codex-home/`, because it contains credentials and task state
 - `.runtime/models/` and `.runtime/voxcpm2-vllm/`, because rebuilding them is
   expensive and is not yet fully automated by this repository
+
+## Current sample and test media
+
+`web/src/knowledgeExamples.json` is the app sample manifest. Only its content-hashed
+media belong in `web/public/knowledge-examples/`. Browser test inputs belong in
+`tests/fixtures/media/`; they are not shipped as product examples. Internal
+`runtime/editor/` and `runtime/product-video/` remain production authoring tools,
+not user-facing editor or template-picker interfaces.
+
+## Preventing unused product code
+
+`npm run test:source` checks TypeScript imports, re-exports and literal dynamic
+imports from `web/src/main.tsx`. Test-only imports do not make a product module
+reachable. Runtime-loaded assets and backend tools require a separate reference
+audit; this check is not a general-purpose file deletion tool.
+
+Release snapshots follow the bounded, reference-aware retention policy in
+[ROLLING_UPDATES.md](ROLLING_UPDATES.md); use `npm run release:prune` for a dry run.

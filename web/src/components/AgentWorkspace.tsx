@@ -127,9 +127,8 @@ import {
 } from "../storage";
 import type { AgentConnectionState } from "../hooks/useAgentEvents";
 import {
-  LiveHyperFramesPreview as ManagedLiveHyperFramesPreview,
   RenderPanel as PersistentRenderPanel,
-} from "./HyperFramesWorkspace";
+} from "./RenderPanel";
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 type ConversationEntry =
@@ -2573,7 +2572,6 @@ function ArtifactCanvas({
   const completedFeedback = timeFeedback.filter((item) =>
     item.description.trim(),
   );
-  const liveAvailable = false;
   const playbackKey = `yingya-video-time:${project.id}:${version?.id ?? "current"}`;
   useLayoutEffect(() => {
     const video = videoRef.current;
@@ -2751,28 +2749,7 @@ function ArtifactCanvas({
         ) : (
           <>
             {activeTab === "plan" ? <PlanDocument project={project} onCompose={onCompose} onConfirm={onConfirm} confirming={confirming}/> : null}
-            {activeTab === "preview" &&
-            !videoPath &&
-            liveAvailable &&
-            exportRequest ? (
-              <div
-                ref={exportRef}
-                className="export-destination"
-                role="group"
-                tabIndex={-1}
-                aria-label="导出设置"
-              >
-                <p role="status">
-                  当前还没有可导出的视频。制作完成后可在这里导出视频。
-                </p>
-              </div>
-            ) : null}
-            <ManagedLiveHyperFramesPreview
-              project={project}
-              active={activeTab === "preview" && !videoPath && liveAvailable}
-              available={liveAvailable}
-            />
-            {activeTab === "preview" && (videoPath || !liveAvailable) ? (
+            {activeTab === "preview" ? (
               <section className="preview-panel preview-panel--with-inspector">
                 <div className="preview-main">
                   <div className="section-heading">

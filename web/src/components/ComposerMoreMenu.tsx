@@ -2,6 +2,7 @@ import { Images, Plus, UploadSimple, Waveform } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { VoiceSelector } from "./VoiceSelector";
+import { useMotionPresence } from "../hooks/useMotionPresence";
 
 export function ComposerMoreMenu({
   onUpload,
@@ -23,6 +24,7 @@ export function ComposerMoreMenu({
   settings?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const presence = useMotionPresence(open ? "menu" : null);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -105,8 +107,11 @@ export function ComposerMoreMenu({
       >
         <Plus aria-hidden="true" />
       </button>
-      {open ? (
+      {presence.value ? (
         <div
+          ref={presence.ref}
+          inert={presence.exiting}
+          aria-hidden={presence.exiting || undefined}
           className="composer-more-menu"
           id={menuId}
           role={settings ? "dialog" : "menu"}

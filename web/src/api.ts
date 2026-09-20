@@ -53,10 +53,6 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
 
 const modelListSchema = z.object({ data: z.array(codexModelSchema) });
 const uploadSchema = z.object({ path: z.string(), name: z.string() });
-const studioSchema = z.object({
-  sourceRevision: z.string().optional(),
-  storyboardUrl: z.string(), previewUrl: z.string(), state: z.string(), host: z.string(), port: z.number(), projectName: z.string(), lastSeenAt: z.number(),
-});
 const imageUploadSchema = z.object({ url: z.string(), hyperframesPath: z.string() });
 const threadStartedSchema = z.object({ threadId: z.string() });
 
@@ -90,10 +86,6 @@ export const api = {
   setAssetRole: (id: string, path: string, role: import("./types").AssetRole) => request(`/api/agent-projects/${id}/asset-roles`, z.object({ assetRoles: z.array(z.object({ path: z.string(), role: assetRoleSchema })) }), { method: "PATCH", body: JSON.stringify({ path, role }) }),
   editScene: (id: string, sceneId: string, input: { baseVersionId: string; expectedScenesRevision: string; patch: { title?: string; recipe?: string; focus?: { rect: { x: number; y: number; width: number; height: number } } } }) => request(`/api/agent-projects/${id}/editorial/scenes/${encodeURIComponent(sceneId)}`, sceneEditResultSchema, { method: "PATCH", body: JSON.stringify(input) }),
   getProjectMedia: (id: string) => request(`/api/agent-projects/${id}/media`, agentMediaSchema),
-  studio: (id: string) => request(`/api/agent-projects/${id}/studio`, studioSchema, { method: "POST", body: "{}" }),
-  heartbeatStudio: (id: string) => request(`/api/agent-projects/${id}/studio/heartbeat`, studioSchema, { method: "POST", body: "{}" }),
-  stopStudio: (id: string) => requestVoid(`/api/agent-projects/${id}/studio`, { method: "DELETE" }),
-  markStudioDirty: (id: string) => requestVoid(`/api/agent-projects/${id}/studio/dirty`, { method: "POST", body: "{}" }),
   eventLog: (id: string, before?: number, limit = 500) => request(`/api/agent-projects/${id}/event-log?${new URLSearchParams({ ...(before ? { before: String(before) } : {}), limit: String(limit) })}`, eventPageSchema),
   readProjectFile: (id: string, path: string) => requestText(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),
   fileUrl: (id: string, path: string) => scopedUrl(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),

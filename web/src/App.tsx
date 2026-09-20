@@ -3,20 +3,14 @@ import { KnowledgeExamples } from "./components/KnowledgeExamples";
 
 import { ComposerMoreMenu } from "./components/ComposerMoreMenu";
 
-
-
-
-import { productWorkflow, productWorkflowSchema, type ProductWorkflowId } from "./productWorkflows";
 import { CreationLibraryDialog } from "./components/CreationLibraryDialog";
-import { capabilityInputHints, presentationLabel } from "./capabilities";
-import { presentationSchema } from "./presentation";
 import { ComposerForm } from "./components/ComposerForm";
 import { AssetRoleSelect } from "./components/AssetRoleSelect";
 import { assetRoleSchema } from "./schemas";
 import { fileRoleKey, materialOnlyPrompt } from "./workbench";
 import { SelectionIndicator } from "./components/SelectionIndicator";
 import { useMotionPresence } from "./hooks/useMotionPresence";
-import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, MagnifyingGlass, Cube, Trash, X } from "@phosphor-icons/react";
+import { ArrowRight, ArrowUp, CheckCircle, CircleNotch, CloudSlash, DotsThree, FilmSlate, MagnifyingGlass, Trash, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useDraftFiles } from "./hooks/useDraftFiles";
 import { CreationSettings, creationRequirements, creationSettingsSchema, defaultCreationSettings } from "./components/CreationSettings";
@@ -96,25 +90,19 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
   if (offline && !active) return <div className="state-screen"><CloudSlash/><h1>本地服务未连接</h1><p>项目仍保存在电脑上。服务恢复后可继续。</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
   const showCreate = () => { navigate({ section: "create" }); void refreshProjects(); };
   const showAssets = () => navigate({ section: "assets" });
+  const showProjects = () => { navigate({ section: "create", homeSection: "projects" }); void refreshProjects(); };
   const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
-    : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showCreate}/>
+    : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showProjects}/>
     : route.section === "assets" ? <AssetStudio key={route.assetTool ?? "library"} initialTool={route.assetTool} accountPanel={accountPanel} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
-    : <StartScreen homeSection={route.homeSection} accountPanel={accountPanel} openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
+    : <StartScreen onCreate={showCreate} homeSection={route.homeSection} accountPanel={accountPanel} openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
   return <>{surface}<TaskCenter projects={projects} offline={offline} onOpen={open}/></>;
 
 }
 
-function StartScreen({ homeSection, accountPanel, openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { homeSection?: "styles" | "projects"; accountPanel?: ReactNode; openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
+function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onAssets, onCreated }: { onCreate: () => void; homeSection?: "styles" | "projects"; accountPanel?: ReactNode; openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
   const [prompt, setPrompt, promptSaved] = useSavedState("yingya-home-prompt", z.string(), ""); const [aspectRatio, setAspectRatio] = useSavedState("yingya-knowledge-aspect", z.enum(["9:16", "16:9", "1:1"]), "16:9"); const [files, setFiles, fileDraftStatus] = useDraftFiles("home");
-  const [presentation, setPresentation, presentationSaved] = useSavedState("yingya-home-presentation", presentationSchema.nullable(), null);
-  const [workflow, setWorkflow] = useSavedState("yingya-knowledge-workflow", productWorkflowSchema.nullable(), null);
-  const [referenceExample, setReferenceExample] = useSavedState("yingya-product-example", productWorkflowSchema.nullable(), null);
 
-  const [styleId, setStyleId] = useSavedState("yingya-creation-style", z.enum(["minimal-product", "editorial", "kinetic-type", "data-story", "field-notes", "map-story"]).nullable(), null);
   const [aspectAuto, setAspectAuto] = useSavedState("yingya-knowledge-aspect-auto", z.boolean(), false);
-
-  const selectedWorkflow = productWorkflow(workflow);
-  function chooseWorkflow(id: ProductWorkflowId | null) { setWorkflow(id); setReferenceExample(null); setError(""); }
 
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settings, setSettings] = useSavedState("yingya-knowledge-settings", creationSettingsSchema, { ...defaultCreationSettings, duration: "120", subtitles: "中文字幕", audioMode: "narration" });
@@ -151,7 +139,7 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
   async function submit(event: FormEvent) {
     event.preventDefault(); if ((!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || fileDraftStatus === "loading") return;
     const normalizedPrompt = prompt.trim() || materialOnlyPrompt;
-    const requirements = { ...creationRequirements(settings), creationMode: "motion" as const, ...(styleId ? { styleId } : {}), reviewMode: "review" as const, aspectMode: aspectAuto ? "auto" as const : "fixed" as const, workflow: "knowledge-explainer" as const, ...(referenceExample === workflow && workflow ? { referenceExample: workflow } : {}), ...(presentation ? { presentation } : {}) };
+    const requirements = { ...creationRequirements(settings), creationMode: "motion" as const, reviewMode: "review" as const, aspectMode: aspectAuto ? "auto" as const : "fixed" as const, workflow: "knowledge-explainer" as const };
     const effectiveVoiceId = settings.audioMode === "narration" || settings.audioMode === "replace" ? voiceId : "default";
     const fileKeys = files.map((file, index) => `${index}:${file.name}:${file.size}:${file.lastModified}:${file.type}`);
     const signature = JSON.stringify({ prompt: normalizedPrompt, aspectRatio, voiceId: effectiveVoiceId, selection, fileKeys, libraryIds, assetRoles, requirements });
@@ -162,12 +150,6 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
     }
     setCreationStage("creating"); setBusy(true); setError("");
     try {
-      if (!attempt.accepted && presentation?.capabilityId === "model-stage" && !files.some(file => /\.(glb|gltf)$/i.test(file.name))) {
-        const library = libraryIds.length ? await api.listAssetLibrary() : { assets: [] };
-        if (!library.assets.some(asset => libraryIds.includes(asset.id) && /\.(glb|gltf)$/i.test(asset.sourceName ?? ""))) {
-          throw new Error("3D 展示需要已有模型，请上传 GLB 文件或从素材库选择模型，也可以移除表现方式后继续。");
-        }
-      }
       // Save before the first request, including when a response may be lost on reload.
       saveCreationAttempt(attemptKey, attempt);
       if (!attempt.projectId) {
@@ -204,7 +186,7 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
       setCreationStage("opening");
       const detail = await api.getProject(projectId);
       if (!mounted.current) return;
-      if (signature === attempt.signature) { setPrompt(""); setFiles([]); setLibraryIds([]); setAssetRoles({}); setPresentation(null); setReferenceExample(null); }
+      if (signature === attempt.signature) { setPrompt(""); setFiles([]); setLibraryIds([]); setAssetRoles({}); }
       saveCreationAttempt(attemptKey, null);
       creationAttemptRef.current = null;
       onCreated(detail);
@@ -217,7 +199,8 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
     return () => cancelAnimationFrame(frame);
   }, [homeSection]);
   function startCreating() {
-    promptRef.current?.focus();
+    onCreate();
+    promptRef.current?.focus({ preventScroll: true });
     promptRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" });
   }
   async function removeProject(project: ProjectRecord) {
@@ -238,12 +221,8 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
         <section className="home-create">
           <h2 id="create-prompt-label" className="sr-only">想把什么内容做成视频？</h2>{prompt && !promptSaved ? <p className="form-error" role="status">草稿保存失败，请勿关闭页面</p> : null}
           <ComposerForm className="composer composer--hero" onSubmit={submit} filesDisabled={busy || fileDraftStatus === "loading" || acceptedCreation} onFiles={added => setFiles(current => [...current, ...added])}>
-          <div className="home-pinned-settings">{!aspectAuto ? <button type="button" aria-label="取消画幅设置" onClick={() => setAspectAuto(true)}>画幅 {aspectRatio}<X/></button> : null}{styleId ? <button type="button" aria-label="取消风格设置" onClick={() => setStyleId(null)}>已指定风格<X/></button> : null}{settings.duration ? <button type="button" aria-label="取消时长设置" onClick={() => setSettings({ ...settings, duration: "", durationMode: "target" })}>{settings.durationMode === "exact" ? "时长" : settings.durationMode === "max" ? "不超过" : "约"} {Number.parseFloat(settings.duration)} 秒<X/></button> : null}{settings.audioMode !== "auto" ? <button type="button" aria-label="取消声音设置" onClick={() => setSettings({ ...settings, audioMode: "auto" })}>{{preserve:"保留原声",narration:"旁白讲解",replace:"替换原声",mute:"静音"}[settings.audioMode]}<X/></button> : null}</div>
-          {referenceExample === workflow && selectedWorkflow ? <div className="cap-method-chip"><FilmSlate/><span>参考样片：{selectedWorkflow.sampleTitle}</span><button type="button" aria-label="移除参考样片" onClick={() => setReferenceExample(null)}><X/></button></div> : null}
-          {presentation ? <div className="cap-method-chip"><Cube/><span>表现方式：{presentationLabel(presentation)}</span><button type="button" aria-label="移除表现方式" onClick={() => { setPresentation(null); setError(""); }}><X/></button></div> : null}
-          {presentation ? <p className="cap-composer-help">接下来：{capabilityInputHints[presentation.capabilityId]}</p> : null}
-          {presentation && !presentationSaved ? <p className="form-error" role="status">表现方式未能保存，关闭前请重试。</p> : null}
-          <textarea aria-labelledby="create-prompt-label" aria-describedby="creation-workflow" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={presentation ? capabilityInputHints[presentation.capabilityId] : selectedWorkflow?.input ?? "描述你的视频想法，或粘贴文案、网页链接…"}/>
+          <div className="home-pinned-settings">{!aspectAuto ? <button type="button" aria-label="取消画幅设置" onClick={() => setAspectAuto(true)}>画幅 {aspectRatio}<X/></button> : null}{settings.duration ? <button type="button" aria-label="取消时长设置" onClick={() => setSettings({ ...settings, duration: "", durationMode: "target" })}>{settings.durationMode === "exact" ? "时长" : settings.durationMode === "max" ? "不超过" : "约"} {Number.parseFloat(settings.duration)} 秒<X/></button> : null}{settings.audioMode !== "auto" ? <button type="button" aria-label="取消声音设置" onClick={() => setSettings({ ...settings, audioMode: "auto" })}>{{preserve:"保留原声",narration:"旁白讲解",replace:"替换原声",mute:"静音"}[settings.audioMode]}<X/></button> : null}</div>
+          <textarea aria-labelledby="create-prompt-label" aria-describedby="creation-workflow" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="描述你的视频想法，或粘贴文案、网页链接…"/>
           <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<AssetRoleSelect name={file.name} value={assetRoles[fileRoleKey(file)]} onChange={role => setAssetRoles(current => ({ ...current, [fileRoleKey(file)]: role }))}/><button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
           <div className="composer-tools"><div className="home-creation-options"><input ref={fileRef} hidden multiple type="file" onChange={event => { setFiles(current => [...current, ...Array.from(event.target.files ?? [])]); event.target.value = ""; }}/><ComposerMoreMenu onUpload={() => fileRef.current?.click()} onSelectAssets={() => setLibraryOpen(true)} selectedCount={libraryIds.length} voiceId={voiceId} onVoice={onVoice} running={busy} narration={settings.audioMode === "narration" || settings.audioMode === "replace"} settings={<><label className="composer-setting-field">画幅<select aria-label="视频画幅" value={aspectAuto ? "auto" : aspectRatio} onChange={event => { setAspectAuto(event.target.value === "auto"); if (event.target.value !== "auto") setAspectRatio(event.target.value as typeof aspectRatio); }}><option value="auto">自动选择</option><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select></label><CreationSettings includeLibrary={false} value={settings} onChange={setSettings} selectedIds={libraryIds} onSelect={setLibraryIds} roles={assetRoles} onRole={(id, role) => setAssetRoles(current => ({ ...current, [id]: role }))}/></>}/><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={(!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || fileDraftStatus === "loading"} aria-label={acceptedCreation ? "继续打开任务" : "生成方案"}><span>{acceptedCreation ? "继续打开任务" : "生成方案"}</span><ArrowUp weight="bold"/></button></div>
           </ComposerForm>
@@ -253,7 +232,7 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
             ["解释一个概念", "面向初学者，用一个生活例子解释这个概念："],
             ["讲清一组数据", "请根据我提供的数据，先给出主要发现，再用图表讲清变化和原因。"],
             ["结合素材做讲解", "请查看我上传的素材，整理关键步骤，配合画面和旁白讲清楚。"],
-          ].map(([label, example]) => <button key={label} type="button" onClick={() => { setPrompt(example); chooseWorkflow(null); setPresentation(null); requestAnimationFrame(() => promptRef.current?.focus()); }}>{label}<ArrowRight/></button>)}</div>
+          ].map(([label, example]) => <button key={label} type="button" onClick={() => { setPrompt(example); setError(""); requestAnimationFrame(() => promptRef.current?.focus()); }}>{label}<ArrowRight/></button>)}</div>
           <ol className="home-workflow" id="creation-workflow" aria-label="视频制作流程">
             <li><span aria-hidden="true">1</span><b>确认方案</b><ArrowRight aria-hidden="true"/></li>
             <li><span aria-hidden="true">2</span><b>预览与修改</b><ArrowRight aria-hidden="true"/></li>
@@ -290,8 +269,6 @@ function StartScreen({ homeSection, accountPanel, openingProjectId, projects, lo
     {libraryOpen ? <CreationLibraryDialog selectedIds={libraryIds} onSelect={setLibraryIds} roles={assetRoles} onRole={(id, role) => setAssetRoles(current => ({ ...current, [id]: role }))} onClose={() => setLibraryOpen(false)}/> : null}
   </div>;
 }
-
-
 
 type ProjectFilter = "all" | "active" | "review" | "ready" | "completed" | "failed";
 

@@ -40,6 +40,9 @@
 .home-layout--studio .home-workflow b { color: var(--muted); font-size: var(--text-caption); white-space: nowrap; }
 .home-layout--studio .home-workflow li > svg { width: 14px; height: 14px; margin-left: 6px; color: var(--dim); }
 .home-layout--studio .home-projects { max-width: 1200px; padding-top: 24px; border-top: 1px solid var(--line); }
+.home-projects { scroll-margin-top: 24px; }
+.home-layout--studio .home-starters button svg { transition: transform var(--motion-standard) var(--ease-sprout); }
+.home-layout--studio .home-starters button:is(:hover, :focus-visible) svg { transform: translateX(3px); }
 .home-layout--studio .home-project-search { width: 220px; background: var(--canvas); }
 .home-layout--studio .project-filters { margin-top: 12px; padding-bottom: 0; border-bottom: 0; gap: 6px; }
 .home-layout--studio .home-project-list { gap: 24px; padding-top: 18px; }
@@ -61,6 +64,9 @@
   .home-layout--studio .home-scroll { padding-top: 48px; }
 }
 @media (max-width: 800px) {
+  .home-layout .home-nav.app-navigation > .home-new-button { display: flex; width: 40px; min-height: 40px; padding: 0; margin: 0 0 0 8px; flex-shrink: 0; }
+  .home-layout .home-nav.app-navigation > .home-new-button > span { display: none; }
+  .home-projects { scroll-margin-top: 74px; }
   .home-layout--studio { display: block; }
   .home-layout--studio .home-nav { padding: 0 12px; }
   .home-layout--studio .home-nav:has(.account-panel) { padding-right: 96px; }
@@ -94,7 +100,6 @@
 @media (max-width: 360px) {
   .home-layout--studio .home-scroll { padding-inline: 14px; }
   .home-layout--studio .home-header h1 { font-size: 28px; }
-  .home-layout--studio .composer-tools .model-selector { flex-basis: 100%; }
   .home-layout--studio .home-starters button { padding-inline: 10px; }
   .home-layout--studio .home-workflow { gap: 6px; }
   .home-layout--studio .home-workflow li { gap: 4px; }
@@ -102,4 +107,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .home-layout--studio .creation-settings-chevron { transition: none; }
+  .home-layout--studio .home-starters button svg { transition: none; transform: none; }
 }

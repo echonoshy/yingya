@@ -63,12 +63,11 @@ usage accounting, and the handling of existing shared data.
 Authenticated users get their own projects, assets, voices, and Agent runtime.
 The default admin example in `.env.example` is `admin@yingya.local`.
 
-The homepage includes six playable examples, category filters, copyable creation
-briefs, a conversation workflow demo, and FAQs. Original Chinese brand/type films
-are authored in `examples/marketing-film/` and `examples/marketing-type/`;
-[media sources](../web/public/marketing/SOURCES.md) identify the HyperFrames examples.
-Gallery videos load when opened. The hero pauses offscreen and does not autoplay
-when reduced motion is enabled.
+The homepage initially shows six motion references and expands to twelve, with
+copyable creation briefs, a workflow demo, and a 66-second product introduction.
+[Media sources](../web/public/marketing/SOURCES.md) identify the current assets.
+Gallery videos load when opened; reduced motion uses static gallery posters.
+The retired homepage prototype is no longer shipped.
 
 ## Production runtime
 
@@ -93,24 +92,51 @@ project model.
 
 ## Development services
 
-For day-to-day development, run both services in named tmux sessions:
+Before starting or restarting services, inspect the deployment and existing sessions:
 
 ```bash
-npm run backend:service:start   # yingya-backend, port 8797
-npm run web:service:start       # yingya-frontend, port 8798
+cat data/deployment/active.json  # When this installation has an active release.
+npm run release:status         # For an initialized rolling deployment.
+tmux list-sessions
 npm run backend:service:status
 npm run web:service:status
-tmux capture-pane -pt yingya-backend -S -100
-tmux capture-pane -pt yingya-frontend -S -100
 ```
 
-Open `http://127.0.0.1:8798/`. Vite listens on `0.0.0.0`, proxies API and asset
-requests to the Rust server, and applies React and CSS changes through HMR.
-After a backend change, run `npm run backend:service:restart`. Use
-`npm run web:service:reload` to restart Vite when its configuration changes.
-The start commands reuse an existing named session and forward the invoking
-shell's environment, including proxy variables. Stop with
-`npm run backend:service:stop` and `npm run web:service:stop`.
+On a fresh installation without rolling deployment, the standalone backend uses
+8797 and Vite uses 8798. With an active release, the deployed entry owns 8797;
+its API listens on a dynamically assigned port. Keep that entry running. A
+separate development backend needs an available port and isolated app data,
+runtime and cache directories. For example, after confirming that 8810 is free
+and that `yingya-backend` is not already running:
+
+```bash
+export YINGYA_ADDR=127.0.0.1:8810
+export YINGYA_APP_DATA_DIR="$PWD/.runtime/dev-backend/data"
+export YINGYA_RUNTIME_DIR="$PWD/.runtime/dev-backend/runtime"
+export YINGYA_CACHE_DIR="$PWD/.runtime/dev-backend/cache"
+export YINGYA_CODEX_HOME="$PWD/.runtime/dev-backend/runtime/codex-home"
+npm run backend:service:start   # yingya-backend, port 8810
+npm run web:service:start       # yingya-frontend, port 8798
+```
+
+Initialize credentials and test accounts separately for this isolated instance.
+Reuse or deliberately replace the existing named session; do not start another
+backend against the live database. Keep the same environment overrides when
+using `npm run backend:service:restart`; the launcher forwards the invoking
+shell's environment, including proxy variables.
+
+Open `http://127.0.0.1:8798/`. Vite applies React and CSS changes through HMR.
+Its checked-in proxy targets 8797, so it uses the deployed API when rolling
+releases are active; it does not automatically switch to an isolated backend.
+For isolated API integration, configure both proxy targets in
+`web/vite.config.ts` for that instance and reload Vite. Frontend-only UI checks
+may instead use the existing API mocks. Restart Vite with
+`npm run web:service:reload` only for configuration/dependency changes or stale HMR.
+
+Inspect output with `tmux capture-pane -pt yingya-backend -S -100` and
+`tmux capture-pane -pt yingya-frontend -S -100`. Development builds and HMR do
+not publish the website; use [rolling releases](ROLLING_UPDATES.md) and verify
+the public assets after activation.
 
 ## Runtime configuration
 

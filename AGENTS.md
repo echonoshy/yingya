@@ -81,7 +81,11 @@
   worker has already upgraded. Do not kill running video tasks to force an
   update. Release services run from their immutable snapshot directories
   under the existing tmux release manager.
-- Retain previous releases and their static assets. For a compatible rollback,
+- During the current pre-user rapid iteration phase, use `npm run release:prune`
+  (dry run) then `npm run release:prune -- --apply` for obsolete snapshots. Retain
+  the active/previous releases, registered worker and process references, shared
+  dependency snapshots, and the latest 3 complete releases by default. Keep public
+  hashed static assets. Never manually remove a live snapshot. For a compatible rollback,
   reactivate the previous release ID with `npm run release:activate -- ID`;
   first check data/schema compatibility if the update changed persistence.
 

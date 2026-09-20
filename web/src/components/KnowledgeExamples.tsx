@@ -7,7 +7,11 @@ const examples = [
 ] as const;
 
 export function KnowledgeExamples() {
-  return <section className="knowledge-examples" aria-labelledby="knowledge-examples-title">
+  return <section className="knowledge-examples" aria-labelledby="knowledge-examples-title" onPlayCapture={event => {
+    const playing = event.target;
+    if (!(playing instanceof HTMLVideoElement)) return;
+    event.currentTarget.querySelectorAll("video").forEach(video => { if (video !== playing) video.pause(); });
+  }}>
     <header><h2 id="knowledge-examples-title">看看内容可以怎样讲</h2><p>播放真实作品，感受不同内容的讲解方式。</p></header>
     <div className="knowledge-example-grid">{examples.map(item => <article key={item.id}>
       <video controls playsInline preload="none" poster={media[item.id].poster} src={media[item.id].video} aria-label={`${item.title}示例`}/>

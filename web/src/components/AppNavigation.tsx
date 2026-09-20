@@ -24,9 +24,9 @@ export function AppNavigation({
         <img src="/brand/yingya-ghost.png" alt="" />
         <b>映芽</b>
       </div>
-      <button className="home-new-button" onClick={onCreate}>
-        <Plus weight="bold" />
-        新建视频
+      <button className="home-new-button" aria-label="新建视频" title="新建视频" onClick={onCreate}>
+        <Plus weight="bold" aria-hidden="true" />
+        <span>新建视频</span>
       </button>
       <nav className="app-primary-navigation" aria-label="映芽功能">
         <button

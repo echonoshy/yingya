@@ -10,7 +10,7 @@ try {
   await page.setContent('<html><body style="margin:0;background:#f8f3e9;color:#172e45;font-family:sans-serif"><main id="stage" style="width:1920px;height:1080px;container-type:inline-size;--explain-accent:#a4422b"></main></body></html>');
   await page.addStyleTag({path:'runtime/components/explanation/explanation.css'});
   for(const path of ['runtime/editorial/vendor/gsap-3.14.2.min.js','runtime/components/clock.js','runtime/components/explanation/explanation.js'])await page.addScriptTag({path});
-  const image=kind==='footage'?'data:image/jpeg;base64,'+(await readFile('web/public/product-examples/product-intro.jpg')).toString('base64'):undefined;
+  const image=kind==='footage'?'data:image/jpeg;base64,'+(await readFile('tests/fixtures/media/explainer.jpg')).toString('base64'):undefined;
   await page.evaluate(async({kind,image})=>{window.scene=YingyaComponents.createScene(document.querySelector('#stage'),{component:'explain-'+kind,startSeconds:0,durationSeconds:8,title:'讲清一个概念',items:[{label:'观察现象',detail:'先找到问题',value:20},{label:'解释关系',detail:'保持相同尺度',value:40},{label:'总结结论',detail:'回到实际例子',value:80}],note:'演示数据，非真实统计',unit:'%',mediaSrc:image});await scene.ready;},{kind,image});
   const frame=async(time)=>{await page.evaluate(t=>YingyaComponents.renderAt(t),time);return page.screenshot();};
   const early=await frame(.8);await frame(6);assert.deepEqual(await frame(.8),early,`${kind}: reverse seek`);await frame(3);await page.screenshot({path:`/tmp/yingya-explanation-components/${kind}.png`});

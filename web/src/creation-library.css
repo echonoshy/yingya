@@ -1,0 +1,20 @@
+.cap-icon{display:grid;place-items:center;padding:7px;min-height:36px;width:36px;background:transparent;border-radius:8px}.cap-icon:hover:not(:disabled){background:var(--surface-hover)}.cap-error{margin:10px 0;color:var(--danger);font-size:var(--text-control)}.cap-error button{color:var(--danger);background:transparent;text-decoration:underline;margin-left:8px}.cap-modal{color:var(--text);width:min(620px,calc(100vw - 32px));max-height:calc(100dvh - 40px);padding:0;border:1px solid var(--line);border-radius:var(--radius-panel);background:var(--canvas);box-shadow:var(--shadow-popover)}.cap-modal::backdrop{background:color-mix(in srgb,var(--primary) 28%,transparent)}.cap-modal>header{padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.cap-modal h2{font-size:var(--text-section);font-weight:var(--weight-emphasis)}.cap-modal-body{padding:24px}.cap-modal-body>p{color:var(--muted)}.cap-modal-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:24px}.cap-modal-actions>button:not(.cap-primary){background:var(--surface);padding:10px 16px;border:1px solid var(--line);border-radius:var(--radius-control)}
+.cap-modal { font-size:var(--text-control); line-height:var(--leading-ui); }
+.cap-modal :is(h1,h2,h3,p) { margin:0; }
+.cap-modal button { font:inherit; cursor:pointer; border:0; color:inherit; }
+.cap-modal button:disabled { opacity:.45; cursor:not-allowed; }
+.cap-modal button svg { width:18px; height:18px; flex-shrink:0; }
+.cap-modal :is(button,input,summary):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.cap-modal .cap-primary { background:var(--primary); color:var(--canvas); }
+.cap-modal .reference-picker-grid { max-height:38vh; overflow:auto; }
+.cap-modal .cap-modal-body { padding:20px; }
+.cap-modal .cap-modal-actions { position:sticky; bottom:0; background:var(--canvas); padding-top:8px; }
+@media(max-width:800px) {
+ .cap-modal :is(input,select) { font-size:var(--text-input); min-width:0; }
+ .cap-modal>header { padding:16px; }
+}
+@media(prefers-reduced-motion:reduce) {
+ .cap-modal * { transition:none!important; animation:none!important; }
+}
+@media(max-width:480px) { .cap-modal .reference-picker-tools { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; } }
+.creation-settings-preview { color:var(--dim); font-size:var(--text-caption); font-weight:var(--weight-regular); }

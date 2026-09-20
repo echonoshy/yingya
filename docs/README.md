@@ -19,3 +19,6 @@
 
 - [VoxCPM2 运维说明](../deploy/voxcpm2/README.md)：语音服务生命周期、音色与请求示例。
 - [首页媒体来源](../web/public/marketing/SOURCES.md)：介绍视频与演示案例的素材出处。
+
+- [内部合成 API 与 MCP](EDITOR_API.md)：制作系统的工程命令，不提供用户编辑器。
+- [历史记录](archive/README.md)：已结束迭代的设计与核查证据。

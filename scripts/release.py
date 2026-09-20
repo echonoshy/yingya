@@ -95,8 +95,11 @@ def build(args):
     run(['npm', 'ci'], cwd=root)
     run(['npm', 'run', 'typecheck'], cwd=root)
     run(['npm', 'run', 'web:build'], cwd=root)
-    run(['cargo', 'build', '--locked', '--release'], cwd=root)
-    shutil.copy2(root / 'target/release/yingya-server', root / 'yingya-server')
+    # Compile from the immutable sources, but share rebuildable Cargo intermediates
+    # across releases. Each snapshot still owns an independent executable.
+    target = args.runtime / 'release-build'
+    run(['cargo', 'build', '--locked', '--release', '--target-dir', target], cwd=root)
+    shutil.copy2(target / 'release/yingya-server', root / 'yingya-server')
     # Browser binaries are machine-local tooling, not mutable release source.
     (root / '.runtime').mkdir(exist_ok=True)
     (root / '.runtime/hyperframes-home').symlink_to(args.runtime / 'hyperframes-home', target_is_directory=True)
@@ -293,22 +296,133 @@ def status(args):
         print(f'tmux={session} exists={has_session(session)}')
 
 
+def release_references(text, releases):
+    return set(re.findall(re.escape(str(releases) + '/') + r'([a-zA-Z0-9][a-zA-Z0-9_-]*)', text))
+
+
+def release_dependencies(directory, releases):
+    """Retained snapshots can share runtime dependencies through symlinks."""
+    dependencies = set()
+    for root, directories, files in os.walk(directory, followlinks=False):
+        for name in directories + files:
+            item = Path(root) / name
+            if item.is_symlink():
+                dependencies.update(release_references(str(item.resolve()), releases))
+    return dependencies
+
+
+def process_release_references(releases):
+    """Protect independently launched previews/tools, including open file handles."""
+    protected = set()
+    for process in Path('/proc').iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            if os.geteuid() != 0 and process.stat().st_uid != os.getuid():
+                continue
+            # The user-session PAM helper is intentionally non-dumpable. It is an
+            # OS authentication helper, not a Yingya service. Check its parent too;
+            # any other inaccessible same-user process still aborts the cleanup.
+            if (process / 'cmdline').read_bytes() == b'(sd-pam)\0':
+                parent = re.search(r'^PPid:\s+(\d+)', (process / 'status').read_text(), re.M)
+                if parent and Path(f'/proc/{parent[1]}/cmdline').read_bytes() in (
+                    b'/lib/systemd/systemd\0--user\0', b'/usr/lib/systemd/systemd\0--user\0'):
+                    continue
+            # Privilege-separated sshd sessions also prohibit ptrace. Their child
+            # shells/tools are scanned independently below. Verify a root sshd parent.
+            if (process / 'comm').read_text().strip() == 'sshd':
+                parent = re.search(r'^PPid:\s+(\d+)', (process / 'status').read_text(), re.M)
+                if parent:
+                    owner = Path('/proc') / parent[1]
+                    if owner.stat().st_uid == 0 and (owner / 'comm').read_text().strip() == 'sshd':
+                        continue
+            for name in ['cwd', 'exe']:
+                protected.update(release_references(str((process / name).resolve()), releases))
+            for name in ['cmdline', 'environ', 'maps']:
+                protected.update(release_references((process / name).read_bytes().decode(errors='replace'), releases))
+            for descriptor in (process / 'fd').iterdir():
+                protected.update(release_references(str(descriptor.resolve()), releases))
+        except (FileNotFoundError, ProcessLookupError):
+            continue  # A process may exit during the scan.
+        except PermissionError as error:
+            raise RuntimeError(f'cannot inspect process {process.name}; no releases removed') from error
+    return protected
+
+
+def prune_plan(args):
+    state = json.loads((args.data / 'deployment/active.json').read_text())
+    release = json.loads((args.releases / state['release'] / 'release.json').read_text())
+    # Fail closed if the runtime registry cannot be read. Even stale worker records
+    # protect their release; pruning snapshots never edits account/task state.
+    registry = json.loads(subprocess.check_output([release['binary'], 'runtime-status'],
+        cwd=release['resources'], env=environment(args, release), text=True))
+    protected = {state['release'], state.get('previous')}
+    protected.update(worker['release'] for worker in registry['workers'])
+    protected.add(registry['target']['id'])
+    directories = sorted(p for p in args.releases.iterdir()
+        if p.is_dir() and not p.is_symlink()
+        and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', p.name))
+    complete = [p for p in directories if (p / 'release.json').is_file()]
+    protected.update(p.name for p in complete[-args.keep:])
+    protected.update(process_release_references(args.releases))
+    pending = list(protected - {None})
+    visited = set()
+    while pending:
+        name = pending.pop()
+        if name in visited:
+            continue
+        visited.add(name)
+        for dependency in release_dependencies(args.releases / name, args.releases):
+            protected.add(dependency)
+            if dependency not in visited:
+                pending.append(dependency)
+    return {'protected': sorted(protected - {None}),
+            'remove': [p.name for p in directories if p.name not in protected]}
+
+
+def prune(args):
+    plan = prune_plan(args)
+    print(json.dumps(plan, ensure_ascii=False, indent=2), flush=True)
+    if not args.apply:
+        print('Dry run; pass --apply to remove only the listed inactive snapshots.')
+        return
+    # The publish lock is held throughout planning/deletion. Never modify a retained
+    # snapshot in place; public hashed assets, user data, models and voices stay intact.
+    receipt = args.data / 'deployment' / f'cleanup-{time.time_ns()}.json'
+    plan.update(completed=[], freeBytesBefore=shutil.disk_usage(args.releases).free)
+    atomic_json(receipt, plan)
+    for name in plan['remove']:
+        directory = args.releases / name
+        if directory.is_symlink() or directory.parent.resolve() != args.releases:
+            raise RuntimeError('release path changed during pruning')
+        shutil.rmtree(directory)
+        plan['completed'].append(name)
+        atomic_json(receipt, plan)
+    plan['freeBytesAfter'] = shutil.disk_usage(args.releases).free
+    atomic_json(receipt, plan)
+    print(f"Removed {len(plan['completed'])} inactive releases; receipt: {receipt}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['build', 'activate', 'status', 'retire'])
+    parser.add_argument('action', choices=['build', 'activate', 'status', 'retire', 'prune'])
     parser.add_argument('release', nargs='?')
     parser.add_argument('--data', type=Path, default=REPO / 'data')
     parser.add_argument('--runtime', type=Path, default=REPO / '.runtime')
     parser.add_argument('--releases', type=Path, default=REPO / '.runtime/releases')
     parser.add_argument('--env-file', type=Path, default=REPO / '.env')
     parser.add_argument('--port', type=int, default=8797)
+    parser.add_argument('--keep', type=int, default=3, help='minimum recent complete releases to retain')
+    parser.add_argument('--apply', action='store_true', help='apply the inactive-release cleanup plan')
     args = parser.parse_args()
     for name in ['data', 'runtime', 'releases', 'env_file']:
         value = getattr(args, name).resolve()
         if any(c in str(value) for c in ['"', '\n', '\r', '$', ';']):
             parser.error('deployment paths contain unsupported configuration characters')
         setattr(args, name, value)
-    if args.action != 'status' and not args.release:
+    if args.keep < 2:
+        parser.error('--keep must be at least 2')
+    if args.action not in ('status', 'prune') and not args.release:
         parser.error('release ID is required')
     if args.release and not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', args.release):
         parser.error('invalid release ID')
@@ -319,7 +433,7 @@ def main():
     with (args.data / 'deployment/publish.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
-            {'build': build, 'activate': activate, 'status': status}[args.action](args)
+            {'build': build, 'activate': activate, 'status': status, 'prune': prune}[args.action](args)
         except Exception:
             session = getattr(args, 'candidate_session', None)
             if session and has_session(session):

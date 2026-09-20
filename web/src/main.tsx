@@ -6,8 +6,8 @@ import { WebsiteRouter } from "./marketing/WebsiteRouter";
 import "./styles.css";
 import "./dropdowns.css";
 import "./home.css";
-import "./product-video.css";
-import "./capabilities.css";
+import "./knowledge-layout.css";
+import "./creation-library.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

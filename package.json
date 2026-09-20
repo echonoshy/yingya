@@ -2,9 +2,9 @@
   "name": "yingya",
   "version": "0.1.0",
   "private": true,
-  "description": "映芽 · Yingya，对话式动画视频制作工作台，把内容做成会动的视频。",
+  "description": "映芽 · Yingya，把资料、想法和已有素材制作成能独立讲解、直接分享的视频。",
   "scripts": {
-    "test": "npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:delivery && npm run test:production && npm run test:editorial && npm run test:product-video && npm run test:services && npm run test:design && npm run test:components && npm run test:anime && npm run web:build && npm run test:hyperframes && npm run test:product-video:visual && npm run test:ui",
+    "test": "npm run test:source && npm run test:release && npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:delivery && npm run test:production && npm run test:editorial && npm run test:product-video && npm run test:services && npm run test:design && npm run test:components && npm run test:anime && npm run web:build && npm run test:hyperframes && npm run test:product-video:visual && npm run test:knowledge:components && npm run test:ui",
     "format:check": "cargo fmt --all -- --check",
     "lint:rust": "cargo clippy --all-targets -- -D warnings",
     "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
@@ -61,7 +61,10 @@
     "test:product-video": "node --test tests/product-video.test.mjs",
     "test:product-video:visual": "node tests/product-video-browser.mjs",
     "test:knowledge:ui": "node tests/knowledge-browser.mjs",
-    "test:knowledge:components": "node tests/explanation-components.mjs"
+    "test:knowledge:components": "node tests/explanation-components.mjs",
+    "test:source": "node scripts/check-source-usage.mjs",
+    "release:prune": "python3 scripts/release.py prune",
+    "test:release": "python3 tests/release-prune.test.py"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans-sc": "^5.3.0",
