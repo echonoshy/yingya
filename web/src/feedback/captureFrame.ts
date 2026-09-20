@@ -55,7 +55,7 @@ export async function captureFeedbackFrame(url: string, time: number): Promise<C
     await wait("loadeddata", () => { video.src = url; video.load(); });
     if (!Number.isFinite(time) || !Number.isFinite(video.duration) || time < 0 || time > video.duration) throw new Error("反馈时间超出原视频时长");
     if (Math.abs(video.currentTime - time) > .001) await wait("seeked", () => { video.currentTime = time; });
-    if (Math.abs(video.currentTime - time) > .05) throw new Error("无法定位到这条意见的时间点，请稍后重试");
+    if (Math.abs(video.currentTime - time) > .001) throw new Error("无法定位到这条意见的时间点，请稍后重试");
     return await captureFrame(video);
   } finally { video.removeAttribute("src"); video.load(); }
 }

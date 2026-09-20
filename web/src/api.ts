@@ -1,3 +1,4 @@
+import { explanationPlanSchema, type PlanReceipt } from "./explanationPlan";
 import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
 import { assetRoleSchema, workbenchSchema, sceneEditResultSchema, feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
@@ -17,7 +18,8 @@ async function parseError(response: Response) {
 }
 
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
-  const response = await sessionFetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
+  const signal = !init?.method || init.method === "GET" ? (init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000)) : init.signal;
+  const response = await sessionFetch(scopedUrl(path), { ...init, signal, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new ApiError(await parseError(response), response.status);
   return schema.parse(await response.json());
 }
@@ -31,18 +33,20 @@ async function requestWithNetworkRetry<T>(path: string, schema: z.ZodType<T>, in
 }
 
 async function requestVoid(path: string, init?: RequestInit): Promise<void> {
-  const response = await sessionFetch(scopedUrl(path), { ...init, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
+  const signal = !init?.method || init.method === "GET" ? (init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000)) : init.signal;
+  const response = await sessionFetch(scopedUrl(path), { ...init, signal, headers: init?.body instanceof FormData ? { ...sessionHeaders(), ...init.headers } : { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new ApiError(await parseError(response), response.status);
 }
 
 async function requestText(path: string): Promise<string> {
-  const response = await sessionFetch(scopedUrl(path), { headers: sessionHeaders() });
+  const response = await sessionFetch(scopedUrl(path), { signal: AbortSignal.timeout(30000), headers: sessionHeaders() });
   if (!response.ok) throw new ApiError((await response.text()) || response.statusText || "文件读取失败", response.status);
   return response.text();
 }
 
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
-  const response = await sessionFetch(scopedUrl(path), { ...init, headers: { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
+  const signal = !init?.method || init.method === "GET" ? (init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000)) : init.signal;
+  const response = await sessionFetch(scopedUrl(path), { ...init, signal, headers: { ...sessionHeaders(), "Content-Type": "application/json", ...init?.headers } });
   if (!response.ok) throw new ApiError(await parseError(response), response.status);
   return response.blob();
 }
@@ -76,7 +80,8 @@ export const api = {
   resume: (id: string) => requestVoid(`/api/agent-projects/${id}/resume`, { method: "POST", body: "{}" }),
   removeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}`, { method: "DELETE" }),
   executeQueued: (id: string, turnId: string) => requestVoid(`/api/agent-projects/${id}/queue/${turnId}/execute`, { method: "POST", body: "{}" }),
-  confirmCheckpoint: (id: string) => request(`/api/agent-projects/${id}/checkpoint`, turnAcceptedSchema, { method: "POST", body: "{}" }),
+  getPlan: (id: string, signal?: AbortSignal) => request(`/api/agent-projects/${id}/plan`, explanationPlanSchema, { signal }),
+  confirmCheckpoint: (id: string, input: PlanReceipt & { clientRequestId: string; model?: string; reasoningEffort?: string }) => requestWithNetworkRetry(`/api/agent-projects/${id}/checkpoint`, turnAcceptedSchema, { method: "POST", body: JSON.stringify(input) }),
   renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k" | "square" | "square-4k"; fps: number }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
   respondToRequest: (id: string, requestId: unknown, result: unknown) => requestVoid(`/api/agent-projects/${id}/requests/respond`, { method: "POST", body: JSON.stringify({ id: requestId, result }) }),
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),

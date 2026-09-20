@@ -17,6 +17,37 @@ use uuid::Uuid;
 
 use crate::render_jobs::RenderJob;
 
+fn validate_editor_targets(state: &Value, contexts: &[String]) -> Result<(), String> {
+    for value in contexts
+        .iter()
+        .filter_map(|value| value.strip_prefix("editor-target:"))
+    {
+        let target: Value =
+            serde_json::from_str(value).map_err(|_| "选中对象信息无效".to_owned())?;
+        if target["revision"].as_u64().is_none() || target["revision"] != state["revision"] {
+            return Err("画布已有新修改，请重新选择要修改的对象后发送".into());
+        }
+        let scene = state["document"]["scenes"]
+            .as_array()
+            .and_then(|scenes| {
+                scenes.iter().find(|scene| {
+                    scene["id"].as_str().is_some() && scene["id"] == target["sceneId"]
+                })
+            })
+            .ok_or_else(|| "选中的镜头已不存在，请重新选择".to_owned())?;
+        if !target["elementId"].is_null()
+            && !scene["elements"].as_array().is_some_and(|elements| {
+                elements
+                    .iter()
+                    .any(|element| element["id"] == target["elementId"])
+            })
+        {
+            return Err("选中的元素已不存在，请重新选择".into());
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct AgentProjectStore {
     root: Arc<PathBuf>,
@@ -655,7 +686,7 @@ impl AgentProjectStore {
 
     pub async fn manifest(&self, id: &str) -> Result<AgentManifest, String> {
         let mut manifest: AgentManifest =
-            read_json_or_default(&self.project_dir(id)?.join(".yingya/manifest.json")).await?;
+            read_manifest(&self.project_dir(id)?.join(".yingya/manifest.json")).await?;
         sanitize_manifest(&mut manifest);
         Ok(manifest)
     }
@@ -783,9 +814,28 @@ impl AgentProjectStore {
             });
         }
         let mut manifest: AgentManifest =
-            read_json(&directory.join(".yingya/manifest.json")).await?;
+            read_manifest(&directory.join(".yingya/manifest.json")).await?;
         sanitize_manifest(&mut manifest);
-        crate::editorial::validate_base_version(request.base_version_id.as_deref(), &manifest)?;
+        if request.feedback.is_empty() {
+            crate::editorial::validate_base_version(request.base_version_id.as_deref(), &manifest)?;
+        }
+        if request
+            .context
+            .iter()
+            .any(|value| value.starts_with("editor-target:"))
+        {
+            let editor_state: Value =
+                read_json(&directory.join(".yingya/editor/state.json")).await?;
+            validate_editor_targets(&editor_state, &request.context)?;
+        }
+        crate::scene_revision::prepare(
+            &directory,
+            &manifest,
+            request.base_version_id.as_deref(),
+            &request.context,
+            &request.attachments,
+        )
+        .await?;
         let turn = QueuedTurn {
             id: Uuid::new_v4().to_string(),
             client_request_id: request.client_request_id,
@@ -1818,6 +1868,21 @@ pub(crate) fn reject_symlink_components(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// The agent edits this document. A patch can append a newer checkpoint while
+// leaving the earlier key in place. Match JSON object update semantics (last
+// value wins), then still validate every typed field. Keep other stores strict.
+async fn read_manifest(path: &Path) -> Result<AgentManifest, String> {
+    reject_symlink_components(path)?;
+    match fs::read(path).await {
+        Ok(bytes) => {
+            let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            serde_json::from_value(value).map_err(|e| e.to_string())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(AgentManifest::default()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 async fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
     reject_symlink_components(path)?;
     let bytes = fs::read(path).await.map_err(|error| error.to_string())?;
@@ -1861,6 +1926,28 @@ async fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn agent_manifest_accepts_updated_duplicate_key_without_losing_validation() {
+        let root = std::env::temp_dir().join(format!("yingya-manifest-update-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).await.unwrap();
+        let path = root.join("manifest.json");
+        let mut value = serde_json::to_string(&AgentManifest::default()).unwrap();
+        value.pop();
+        value.push_str(r#", "checkpoint":{"id":"plan-1","kind":"plan","title":"确认方案","summary":"三个镜头","artifactIds":[]}}"#);
+        fs::write(&path, value).await.unwrap();
+        assert_eq!(
+            read_manifest(&path).await.unwrap().checkpoint.unwrap().id,
+            "plan-1"
+        );
+        fs::write(&path, r#"{"checkpoint": "invalid"}"#)
+            .await
+            .unwrap();
+        assert!(read_manifest(&path).await.is_err());
+        fs::write(&path, "{unfinished").await.unwrap();
+        assert!(read_manifest(&path).await.is_err());
+        fs::remove_dir_all(root).await.unwrap();
+    }
 
     #[tokio::test]
     async fn claim_journal_recovers_payload_once_at_both_dequeue_crash_boundaries() {
@@ -2057,6 +2144,15 @@ mod tests {
                 .unwrap_err()
                 .contains("当前编辑版本")
         );
+        let mut historical = turn("这一处仍需修改，按原版本定位");
+        historical.base_version_id = Some("draft-1".into());
+        historical.feedback = vec![serde_json::from_value(serde_json::json!({"id":Uuid::new_v4().to_string(),"kind":"video-time","versionId":"draft-1","videoPath":".yingya/versions/draft-1/preview.mp4","timeSeconds":2,"note":"修改标题","createdAt":1})).unwrap()];
+        let accepted = store
+            .submit_turn(&project.id, historical, false)
+            .await
+            .unwrap();
+        assert_eq!(accepted.turn.feedback[0].version_id, "draft-1");
+        assert_eq!(accepted.turn.base_version_id.as_deref(), Some("draft-1"));
         fs::remove_dir_all(root).await.unwrap();
     }
 
@@ -2884,5 +2980,23 @@ mod tests {
             "斜面摩擦受力分析视频"
         );
         fs::remove_dir_all(root).await.expect("clean test store");
+    }
+}
+
+#[cfg(test)]
+mod editor_target_tests {
+    use super::*;
+    #[test]
+    fn editor_selection_requires_current_revision_and_existing_objects() {
+        let state = serde_json::json!({"revision":3,"document":{"scenes":[{"id":"scene","elements":[{"id":"title"}]}]}});
+        let context = |revision, element| {
+            vec![format!(
+                "editor-target:{}",
+                serde_json::json!({"revision":revision,"sceneId":"scene","elementId":element})
+            )]
+        };
+        assert!(validate_editor_targets(&state, &context(3, "title")).is_ok());
+        assert!(validate_editor_targets(&state, &context(2, "title")).is_err());
+        assert!(validate_editor_targets(&state, &context(3, "missing")).is_err());
     }
 }

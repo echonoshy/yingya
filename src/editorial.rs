@@ -44,6 +44,18 @@ impl PresentationChoice {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Requirements {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub creation_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_example: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub presentation: Option<PresentationChoice>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_duration_seconds: Option<f64>,
@@ -64,6 +76,12 @@ pub struct Requirements {
 impl Default for Requirements {
     fn default() -> Self {
         Self {
+            creation_mode: None,
+            style_id: None,
+            review_mode: None,
+            aspect_mode: None,
+            workflow: None,
+            reference_example: None,
             presentation: None,
             target_duration_seconds: None,
             duration_mode: target(),
@@ -78,6 +96,50 @@ impl Default for Requirements {
 
 impl Requirements {
     pub fn validate(&self) -> Result<(), String> {
+        for (value, allowed) in [
+            (
+                &self.creation_mode,
+                &["motion", "single", "edit", "ai-video"][..],
+            ),
+            (
+                &self.style_id,
+                &[
+                    "minimal-product",
+                    "editorial",
+                    "kinetic-type",
+                    "data-story",
+                    "field-notes",
+                    "map-story",
+                ][..],
+            ),
+            (&self.review_mode, &["auto", "review"][..]),
+            (&self.aspect_mode, &["auto", "fixed"][..]),
+        ] {
+            if value
+                .as_ref()
+                .is_some_and(|value| !allowed.contains(&value.as_str()))
+            {
+                return Err("不支持的制作方式或风格设置".into());
+            }
+        }
+        for value in [&self.workflow, &self.reference_example]
+            .into_iter()
+            .flatten()
+        {
+            if ![
+                "product-intro",
+                "feature-launch",
+                "walkthrough",
+                "knowledge-explainer",
+            ]
+            .contains(&value.as_str())
+            {
+                return Err("不支持的视频用途或样片，请重新选择".into());
+            }
+        }
+        if self.reference_example.is_some() && self.reference_example != self.workflow {
+            return Err("样片与视频用途不匹配，请重新选择".into());
+        }
         if let Some(choice) = &self.presentation {
             choice.validate()?;
         }
@@ -410,6 +472,24 @@ mod tests {
                 .get("presentation")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn product_workflow_suggestions_do_not_replace_explicit_requirements() {
+        let value = json!({"workflow":"feature-launch","referenceExample":"feature-launch","targetDurationSeconds":60,"durationMode":"max","audioMode":"preserve","subtitles":"none"});
+        let requirements: Requirements = serde_json::from_value(value).unwrap();
+        assert!(requirements.validate().is_ok());
+        assert_eq!(requirements.target_duration_seconds, Some(60.0));
+        assert_eq!(requirements.audio_mode, "preserve");
+        assert_eq!(requirements.subtitles, "none");
+        for invalid in [
+            json!({"workflow":"unknown"}),
+            json!({"referenceExample":"product-intro"}),
+            json!({"workflow":"walkthrough","referenceExample":"product-intro"}),
+        ] {
+            let requirements: Requirements = serde_json::from_value(invalid).unwrap();
+            assert!(requirements.validate().is_err());
+        }
     }
 
     #[test]

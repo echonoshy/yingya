@@ -1,3 +1,7 @@
+# Current product contract
+
+Read [knowledge-video.md](knowledge-video.md). Reuse approved keyframe source and record per-feedback evidence. No video-generation provider calls.
+
 # Production dependencies
 
 ## Establish one scene language
@@ -102,6 +106,11 @@ the common measured scene schedule.
 Keep narration and generated media in `assets/`, scene sources in `compositions/` when needed, review media in `artifacts/`, and reports in `.yingya/reports/`. Use relative paths so immutable source snapshots can render independently. Register produced media in the existing `assets.json` shape before linking its ID to a scene. Preserve existing IDs and fields.
 
 Stable scene IDs connect `scenes.json`, HTML scene elements, assets, and feedback. Write scene-local animation times and assemble from the shared timeline. Do not maintain unrelated hand-written timing copies in captions and HTML. Check local media and fonts load and that the first and last frames contain the intended content.
+
+For GSAP API details or text/SVG/path effects, use [GSAP for video](gsap/index.md).
+Its offline plugin bundle and video adaptation supplement the installed
+HyperFrames references. Keep required scripts inside the project snapshot;
+verify direct, backward and repeated seeks as well as the exported MP4.
 
 Independent media preparation can run concurrently when tools support it; integration waits for required inputs. Keep one writer for shared scene timing and the root manifest. Do not start duplicate TTS, checks, or renders for an already-running operation.
 

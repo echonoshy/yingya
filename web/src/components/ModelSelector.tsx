@@ -26,7 +26,7 @@ export function ModelSelector({ models, value, onChange }: {
   const [open, setOpen] = useState(false);
   const presence = useMotionPresence(open ? true : null);
   const root = useRef<HTMLDivElement>(null);
-  const position = usePopoverPosition(Boolean(presence.value), root);
+  const position = usePopoverPosition(open, root);
   useEffect(() => { if (presence.value && !presence.exiting) root.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')?.focus({ preventScroll: true }); }, [presence.value, presence.exiting]);
   const matchingModel = models.find(model => model.model === value.model);
   const selectedModel = matchingModel ?? models[0];

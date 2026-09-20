@@ -1,0 +1,78 @@
+[
+  {
+    "id": "scene-1",
+    "order": 1,
+    "narrativeRole": "新功能发布",
+    "onScreenText": "选择镜头，准确修改",
+    "narration": "",
+    "supportingText": "文字、截图、时长与旁白，找到要改的那一处。",
+    "visualDirection": "真实映芽界面，hero布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "intro"
+    ],
+    "startSeconds": 0,
+    "durationSeconds": 5,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "hero",
+    "status": "ready"
+  },
+  {
+    "id": "scene-2",
+    "order": 2,
+    "narrativeRole": "先找到修改对象",
+    "onScreenText": "选择一个镜头",
+    "narration": "",
+    "supportingText": "沿着视频内容，定位需要调整的画面。",
+    "visualDirection": "真实映芽界面，focus布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "choose"
+    ],
+    "startSeconds": 5,
+    "durationSeconds": 7,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "focus",
+    "status": "ready"
+  },
+  {
+    "id": "scene-3",
+    "order": 3,
+    "narrativeRole": "再描述新的要求",
+    "onScreenText": "改这一处，保留其他",
+    "narration": "",
+    "supportingText": "修改与当前版本绑定，继续完善已有作品。",
+    "visualDirection": "聚焦真实镜头修改区域，展示修改表单与提交按钮",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "edit"
+    ],
+    "startSeconds": 12,
+    "durationSeconds": 7,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "focus",
+    "status": "ready"
+  },
+  {
+    "id": "scene-4",
+    "order": 4,
+    "narrativeRole": "更新你的作品",
+    "onScreenText": "从第一版，到满意的一版",
+    "narration": "",
+    "supportingText": "打开映芽，在视频预览中选择镜头继续调整。",
+    "visualDirection": "真实映芽界面，closing布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "intro"
+    ],
+    "startSeconds": 19,
+    "durationSeconds": 6,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "closing",
+    "status": "ready"
+  }
+]

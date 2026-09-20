@@ -13,7 +13,17 @@ export function ComposerForm({ onFiles, filesDisabled = false, className = "", c
   const isFileDrag = (event: DragEvent) => Array.from(event.dataTransfer.types).includes("Files");
   function resetDrag() { depth.current = 0; setDragging(false); }
 
-  return <form {...props} className={`${className} composer-file-drop`} onChange={event => { setNotice(""); props.onChange?.(event); }} onSubmit={event => { setNotice(""); props.onSubmit?.(event); }} onDragEnter={event => {
+  return <form {...props} className={`${className} composer-file-drop`} onPaste={event => {
+    props.onPaste?.(event);
+    if (event.defaultPrevented) return;
+    const images = Array.from(event.clipboardData.files).filter(file => file.type.startsWith("image/"));
+    if (!images.length) return;
+    // Keep the browser's normal text insertion when the clipboard includes both.
+    if (!event.clipboardData.getData("text/plain")) event.preventDefault();
+    if (filesDisabled) { setNotice("请等待当前操作完成后再添加附件"); return; }
+    onFiles(images);
+    setNotice(`已添加 ${images.length} 个附件，发送时上传`);
+  }} onChange={event => { setNotice(""); props.onChange?.(event); }} onSubmit={event => { setNotice(""); props.onSubmit?.(event); }} onDragEnter={event => {
     if (!isFileDrag(event)) return;
     event.preventDefault();
     depth.current += 1;

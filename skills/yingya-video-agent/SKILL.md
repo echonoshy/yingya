@@ -1,11 +1,13 @@
 ---
 name: yingya-video-agent
-description: Turn ideas, manuscripts and supplied media into visually directed animated videos; plan, create assets, refine motion, review aesthetics, revise and deliver editable HyperFrames projects.
+description: Turn ideas, source material and supplied media into clear, narrated knowledge videos for sharing; show an outline and real keyframes before production, then revise through version-bound text, timestamp and screenshot feedback.
 ---
 
 # Yingya Video Agent
 
 This is Yingya's outer production workflow. Work inside the current project directory. Conversation carries decisions; `.yingya/manifest.json` is the only UI workflow manifest. Keep the user informed in concise Chinese about the current production step, usable result, and any blocker.
+
+Read [knowledge-video.md](references/knowledge-video.md) for the current product contract: shareable knowledge videos, real keyframes before approval, no user editor or video-generation service, and version-bound feedback outcomes. Its planning rules supersede older text-only/direct-editor guidance.
 
 ## Product purpose and production choices
 
@@ -35,7 +37,12 @@ implementation can reuse existing work without searching again. Catalog lookup,
 registry search and custom authoring are available routes, not a mandatory tool
 sequence.
 
-A request for new photorealistic footage, character performance, or complex camera action needs actual footage or a verified installed video-generation capability. Do not imply HyperFrames synthesizes those shots. When required inputs are missing, explain the gap before approval and propose either supplied footage or an animation treatment for the user to choose; never silently change the requested result. Videos generated elsewhere can be used as source footage.
+For GSAP choreography, animated Chinese typography, SVG drawing/morphing or
+path-following motion, read [GSAP for video](references/gsap/index.md). It routes
+to pinned official references and installs only the needed offline plugins.
+Use it within this production workflow; HyperFrames owns the video clock.
+
+A request for new photorealistic footage, character performance, or complex camera action needs supplied or reliably sourced existing footage. Video-generation services are not available in this product; never discover or call them. Do not imply HyperFrames synthesizes those shots. When required inputs are missing, explain the gap before approval and propose either supplied footage or an animation treatment for the user to choose; never silently change the requested result. Videos generated elsewhere can be used as source footage.
 
 ## Communicate in the product's language
 
@@ -44,6 +51,11 @@ User-facing progress and final replies should lead with the usable result, the c
 Keep manifest fields, shell commands, raw validation JSON, and detailed logs in the registered report artifacts. Summarize whether checks passed and disclose actual limitations or failures; never hide a failed check behind a simplified success message. Include technical details in the reply when the user asks for them or needs them to resolve a blocker. Do not repeat a draft confirmation card in prose after the UI already presents the decision.
 
 ## Start from the actual project
+
+For product-intro, feature-launch or walkthrough in requirements.workflow, or
+YINGYA_SCENE_REVISION turn context, read [product-video.md](references/product-video.md).
+Use its real-material planning and single-scene preservation contracts within
+the existing production workflow.
 
 Read the request, supplied context and attachments, root manifest, `.yingya/plan.md`, `scenes.json`, `assets.json`, `DESIGN.md`, and `.yingya/voice.json` when present. Read other existing planning files only when relevant; missing legacy `BRIEF.md`, `SCRIPT.md`, `STORYBOARD.md`, or `frame.md` is not a blocker. Preserve user edits, scene IDs, asset links, and unrelated files.
 
@@ -62,7 +74,7 @@ Choose the smallest route that fulfills the request:
 | Request / state | Next action |
 | --- | --- |
 | New idea or manuscript without an established visual treatment; rejected overall look | Read [creative-brief.md](references/creative-brief.md); develop a film concept, shot actions and asset strategy before implementation, then use the existing plan review. |
-| New video; no approved plan | Prepare the production plan and text scene outline; enter `plan_review`. |
+| New video; no approved plan | Prepare the production plan, stable scene outline and real keyframes; enter `plan_review`. |
 | Plan confirmed; `production` | Continue the saved plan from the first incomplete dependency. |
 | Local revision to an existing video | State affected scenes and dependencies, then build a new draft without repeating whole-project planning. |
 | New narrative, visual direction, format, or delivery scope | Update only affected plan decisions and return to `plan_review` before production. |
@@ -87,7 +99,9 @@ Read [planning.md](references/planning.md) for intake checks, scene fields, and 
 
 Infer reversible defaults from the topic, audience, references, and existing project. Put the chosen visual direction and assumptions into the plan for one combined review. Ask only about unresolved conflicts or missing information that materially changes the result; do not separately ask for mood or canvas brightness when a coherent recommendation is possible.
 
-Before promising a production route, verify that its inputs and installed capabilities are available. Keep `.yingya/plan.md` concise but concrete: the user should be able to judge the story, approximate timing, visual direction, audio approach, and output before production begins. A text scene outline in `scenes.json` is a planning artifact; generated storyboard imagery, composition HTML, snapshots, and video belong after plan approval. Do not present estimated timing as measured audio timing.
+For historical projects with `.yingya/editor/state.json`, reuse their internal command API when needed to preserve existing source; never expose the editor or parameter controls to users. New projects follow knowledge-video.md.
+
+Before promising a production route, verify that its inputs and installed capabilities are available. Keep `.yingya/plan.md` concise but concrete: the user should be able to judge the story, approximate timing, visual direction, audio approach, and output before production begins. The scene outline and limited composition source for three real keyframes belong to planning; full narration and full-film rendering follow plan approval. Do not present estimated timing as measured audio timing.
 
 Register the plan and scene outline as manifest artifacts, set `phase: "plan_review"`, and add a `plan` checkpoint referencing them. Write complete artifacts before atomically replacing the manifest. Stop for plan review unless the user's existing instructions explicitly authorize continuing.
 

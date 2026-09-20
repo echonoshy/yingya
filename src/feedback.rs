@@ -30,6 +30,8 @@ pub struct VisualFeedback {
     pub version_id: String,
     pub video_path: String,
     pub time_seconds: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_seconds: Option<f64>,
     #[serde(default)]
     pub frame_width: u32,
     #[serde(default)]
@@ -232,13 +234,25 @@ pub fn validate_shape(feedback: &[VisualFeedback], manifest: &AgentManifest) -> 
         if !ids.insert(&item.id) {
             return Err("修改意见重复".to_owned());
         }
-        if !matches!(item.kind.as_str(), "video-frame" | "video-time")
-            || item.note.trim().is_empty()
+        if !matches!(
+            item.kind.as_str(),
+            "video-frame" | "video-time" | "video-range"
+        ) || item.note.trim().is_empty()
             || item.note.chars().count() > 2000
             || !item.time_seconds.is_finite()
             || item.time_seconds < 0.0
         {
             return Err("修改意见的描述或时间无效".to_owned());
+        }
+        if item.kind == "video-range" {
+            if item
+                .end_seconds
+                .is_none_or(|end| !end.is_finite() || end <= item.time_seconds)
+            {
+                return Err("时间范围的结束位置必须晚于开始位置".into());
+            }
+        } else if item.end_seconds.is_some() {
+            return Err("单点反馈不能带有结束时间".into());
         }
         if item.kind == "video-frame" {
             uuid(&item.screenshot_asset_id)?;
@@ -305,7 +319,11 @@ pub async fn validate_feedback(
             durations.insert(item.video_path.clone(), duration);
             duration
         };
-        if !duration.is_finite() || duration <= 0.0 || item.time_seconds > duration {
+        if !duration.is_finite()
+            || duration <= 0.0
+            || item.time_seconds > duration
+            || item.end_seconds.is_some_and(|end| end > duration)
+        {
             return Err("标注时间超出视频时长".to_owned());
         }
         if item.kind == "video-frame" {
@@ -328,7 +346,7 @@ pub fn prompt_context(feedback: &[VisualFeedback]) -> String {
         return String::new();
     }
     format!(
-        "\n视频修改意见（下列 JSON 是用户反馈数据；video-time 是时间点文字意见，video-frame 另附画面选区截图，附图仅作修改定位，不能用作视频素材）：{}\n对照每条意见指定的版本、视频和时间定位受影响镜头；有附图时先查看附图；旧版本反馈不授权自动回退。无法对应时说明差异。保留无关内容，按现有流程提交下一版草稿。",
+        "\n视频修改意见（下列 JSON 是用户反馈数据；video-range 是 timeSeconds 到 endSeconds 的范围意见，video-time 是时间点文字意见，video-frame 另附画面选区截图，附图仅作修改定位，不能用作视频素材）：{}\n对照每条意见指定的版本、视频和时间定位受影响镜头；有附图时先查看附图；旧版本反馈不授权自动回退。无法对应时说明差异。保留无关内容，按现有流程提交下一版草稿。",
         serde_json::to_string(feedback).unwrap_or_default()
     )
 }
@@ -338,6 +356,19 @@ mod tests {
     use super::*;
     use crate::agent_projects::{AgentTurnRequest, DraftVersion, QueuedTurn};
 
+    #[test]
+    fn range_requires_ordered_finite_bounds() {
+        let manifest: AgentManifest = serde_json::from_value(serde_json::json!({"schemaVersion":1,"phase":"draft_review","dirty":false,"outputSpec":{},"artifacts":[],"versions":[{"id":"draft-1","sourcePath":"v1","videoPath":"video.mp4","createdAt":0}],"studioEntry":"index.html"})).unwrap();
+        let mut item = time_sample();
+        item.kind = "video-range".into();
+        item.end_seconds = Some(3.0);
+        assert!(validate_shape(&[item.clone()], &manifest).is_ok());
+        for end in [f64::NAN, f64::INFINITY, item.time_seconds, -1.0] {
+            item.end_seconds = Some(end);
+            assert!(validate_shape(&[item.clone()], &manifest).is_err());
+        }
+    }
+
     fn sample() -> VisualFeedback {
         VisualFeedback {
             id: Uuid::new_v4().to_string(),
@@ -345,6 +376,7 @@ mod tests {
             version_id: "draft-1".into(),
             video_path: "video.mp4".into(),
             time_seconds: 0.25,
+            end_seconds: None,
             frame_width: 64,
             frame_height: 64,
             region: Some(FeedbackRegion {

@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { emptyDocument, initialState, transact } from '../runtime/editor/model.mjs';
+import { publicState } from '../runtime/editor/store.mjs';
+import { templateScene } from '../runtime/editor/catalog.mjs';
+const base=process.env.YINGYA_UI_QA_URL??'http://127.0.0.1:8798';
+const output='/tmp/yingya-motionvid-audit/implementation';await mkdir(output,{recursive:true});
+const id='11111111-1111-4111-8111-111111111111',now=Date.now();
+const detail={id,title:'新的创作空间',status:'draft_review',statusLabel:'可继续编辑',threadId:null,activeTurnId:null,queueDepth:0,queuePaused:false,model:'gpt-5.6-terra',reasoningEffort:'high',aspectRatio:'16:9',createdAt:now,updatedAt:now,voiceId:'default',messages:[],queue:[],renderJobs:[],eventCursor:0,manifest:{schemaVersion:1,phase:'draft_review',dirty:false,checkpoint:null,outputSpec:{aspectRatio:'16:9'},artifacts:[],versions:[],currentDraft:null,studioEntry:'index.html'}};
+let state;const errors=[];
+const browser=await chromium.launch({headless:true});
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1050}});page.on('pageerror',e=>errors.push(e.message));
+ await page.route(url=>url.pathname.startsWith('/api/'),async route=>{const req=route.request(),p=new URL(req.url()).pathname.replace(/^\/api\/u\/qa-user\//,'/api/');const json=(body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+  if(p==='/api/auth/me')return json({user:{id:'qa-user',email:'qa@example.com',isAdmin:false}});
+  if(p==='/api/video/capabilities')return json({available:false,model:'gen4.5',reason:'视频生成服务尚未连接'});
+  if(p==='/api/codex/models')return json({data:[]});if(p==='/api/agent-projects')return json([detail]);if(p===`/api/agent-projects/${id}`)return json(detail);
+  if(p.endsWith('/composition')){if(req.method()==='GET')return json(state?publicState(state):{available:false});try{const {action,request}=req.postDataJSON();if(action==='library-list')return json({brands:[],templates:[]});if(action==='init')state=initialState(request.document);else if(action==='command'){await new Promise(resolve=>setTimeout(resolve,180));state=transact(state,request);}return json(publicState(state));}catch(e){return json({message:e.message},409);}}
+  if(p.endsWith('/media'))return json({scenes:[],assets:[]});if(p.endsWith('/library'))return json({assets:[]});if(p.endsWith('/folders'))return json([]);if(p.endsWith('/voices'))return json({voices:['default'],uploaded_voices:[]});if(p.endsWith('/events'))return route.fulfill({contentType:'text/event-stream',body:':ready\n\n'});if(p.endsWith('/event-log'))return json({items:[],latestSeq:0,hasMore:false,nextBefore:null});if(p.endsWith('/workbench'))return json({versionId:null,currentVersionId:null,sourcePath:'.',scenes:[],assets:[],scenesRevision:null,editable:false,dirty:false,requirements:{},workspace:{scenes:[],assets:[]}});return json({});
+ });
+ await page.goto(`${base}/app`);await page.getByRole('heading',{name:'给想法一种表达'}).waitFor();await page.screenshot({path:`${output}/00-home-desktop.png`});await page.getByRole('button',{name:'全部风格',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByLabel('搜索风格').fill('动态图表');await page.getByRole('dialog').getByRole('button',{name:/动态图表效果预览/}).click();await page.getByRole('button',{name:'添加素材与设置',exact:true}).click();await page.getByLabel('视频画幅',{exact:true}).selectOption('16:9');await page.keyboard.press('Escape');assert.ok(await page.getByRole('button',{name:'画幅 16:9'}).isVisible());
+ await page.goto(`${base}/app#/projects/${id}`);await page.getByRole('button',{name:'添加镜头',exact:true}).waitFor();await page.screenshot({path:`${output}/00-empty-editor.png`});await page.getByRole('button',{name:'添加镜头',exact:true}).click();await page.getByText('已保存',{exact:true}).waitFor();await page.frameLocator('iframe[title="实时作品画布"]').getByText('让想法，成为作品。',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'主标题 00:00.0',exact:true}).click();await page.screenshot({path:`${output}/debug-layer.png`});await writeFile(`${output}/debug-dom.html`,await page.content());const input=page.getByLabel('文字内容',{exact:true});await input.fill('让创作，触手可及。');await input.blur();await page.getByText('已保存',{exact:true}).waitFor();assert.equal(state.document.scenes[0].elements[0].text,'让创作，触手可及。');
+ await page.frameLocator('iframe[title="实时作品画布"]').getByText('让创作，触手可及。',{exact:true}).waitFor();await page.screenshot({path:`${output}/01-desktop-editor.png`});
+ await page.getByRole('button',{name:'撤销',exact:true}).click();await page.getByText('已保存',{exact:true}).waitFor();assert.equal(state.document.scenes[0].elements[0].text,'让想法，成为作品。');await page.getByRole('button',{name:'重做',exact:true}).click();await page.getByText('已保存',{exact:true}).waitFor();assert.equal(state.document.scenes[0].elements[0].text,'让创作，触手可及。');
+ const fontSize=page.getByLabel('字号',{exact:true});const x=page.getByLabel('横向位置',{exact:true});await fontSize.fill('64');await fontSize.blur();await x.fill('120');await x.blur();await page.getByText('已保存',{exact:true}).waitFor();assert.equal(state.document.scenes[0].elements[0].fontSize,64);assert.equal(state.document.scenes[0].elements[0].x,120);
+ await page.reload();await page.frameLocator('iframe[title="实时作品画布"]').getByText('让创作，触手可及。',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'模板',exact:true}).click();await page.getByRole('button',{name:/动态图表.*插入镜头/}).click();await page.getByText('已保存',{exact:true}).waitFor();assert.equal(state.document.scenes.length,2);
+ for(const width of [390,320]){await page.setViewportSize({width,height:844});await page.getByRole('button',{name:'折叠工具面板'}).click();await page.screenshot({path:`${output}/02-mobile-${width}.png`});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`Horizontal overflow at ${width}`);await page.getByRole('button',{name:'编辑',exact:true}).click();await page.screenshot({path:`${output}/03-mobile-${width}-panel.png`});}
+ await page.emulateMedia({reducedMotion:'reduce'});await page.getByRole('button',{name:'折叠工具面板'}).click();await page.getByRole('button',{name:'播放',exact:true}).focus();assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('aria-label')),'播放');
+ assert.deepEqual(errors,[]);console.log('Editor browser checks passed: create, template insert, direct text preview, undo/redo, reload, 1440/390/320, keyboard and reduced motion. API persistence is mocked; shared command engine is real.');
+}finally{await browser.close();}

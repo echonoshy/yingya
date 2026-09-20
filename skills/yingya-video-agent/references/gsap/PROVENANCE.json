@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "repository": "https://github.com/greensock/gsap-skills",
+  "commit": "aed9cfd3277740755f6bfc1155c7aa645403b760",
+  "licensePath": "upstream/LICENSE",
+  "modifications": "None; original reference bytes. Yingya instructions are in index.md.",
+  "files": [
+    {
+      "upstreamPath": "skills/gsap-core/SKILL.md",
+      "localPath": "upstream/gsap-core.md",
+      "sha256": "3887b47e050ab5afbe2a9a820f23d39fa02ab785e06a343be44c6f91d84d12b3"
+    },
+    {
+      "upstreamPath": "skills/gsap-timeline/SKILL.md",
+      "localPath": "upstream/gsap-timeline.md",
+      "sha256": "1a8b0f39cc4be3ed3d834b89672e4ae2f151b901dc3450bebf10bbc45379fe02"
+    },
+    {
+      "upstreamPath": "skills/gsap-plugins/SKILL.md",
+      "localPath": "upstream/gsap-plugins.md",
+      "sha256": "5838b856c74c07fbc9fa99b6dfd1eee34ea554c3e530c30e0d58014b707d70a4"
+    },
+    {
+      "upstreamPath": "skills/gsap-utils/SKILL.md",
+      "localPath": "upstream/gsap-utils.md",
+      "sha256": "1927bcc4ea95b38203404ad5ea1d060b15c4a886c65ae53e885ff1793aabe0ba"
+    },
+    {
+      "upstreamPath": "skills/gsap-performance/SKILL.md",
+      "localPath": "upstream/gsap-performance.md",
+      "sha256": "cb5408d6fba707aabcbfe3320317a14c1f8fca6070074e5261047930f50d441e"
+    },
+    {
+      "upstreamPath": "LICENSE",
+      "localPath": "upstream/LICENSE",
+      "sha256": "51b04b06556662dd817e8f4aa6d06bc7139dc73739e1319a7233cfde3e147b90"
+    }
+  ]
+}

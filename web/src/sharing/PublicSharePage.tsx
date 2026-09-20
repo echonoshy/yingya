@@ -10,11 +10,11 @@ export function PublicSharePage() {
     const controller = new AbortController(); setLoading(true); setVideo(null); setError(''); setPlayError(false);
     void (async () => {
       if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('分享不存在或已失效');
-      const response = await fetch(`/api/public/shares/${token}`, { signal: controller.signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+      const response = await fetch(`/api/public/shares/${token}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]), cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
       const body = await response.json();
       if (!response.ok) throw new Error(body.message || '暂时无法打开分享，请稍后重试');
       const value = publicSchema.parse(body); if (!controller.signal.aborted) { setVideo(value); document.title = `${value.title} · 映芽`; }
-    })().catch(error => { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : '暂时无法打开分享'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    })().catch(error => { if (!controller.signal.aborted) setError(error instanceof DOMException && error.name === "TimeoutError" ? "分享读取超时，请重试" : error instanceof Error ? error.message : '暂时无法打开分享'); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [token, retry]);
   return <div className="public-share"><header><a href="/" className="share-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></a><span>视频分享</span></header><main>

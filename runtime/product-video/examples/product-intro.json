@@ -1,0 +1,78 @@
+[
+  {
+    "id": "scene-1",
+    "order": 1,
+    "narrativeRole": "产品介绍",
+    "onScreenText": "把内容，做成视频",
+    "narration": "",
+    "supportingText": "从产品资料出发，用对话完成制作。",
+    "visualDirection": "真实映芽界面，hero布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "intro"
+    ],
+    "startSeconds": 0,
+    "durationSeconds": 6,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "hero",
+    "status": "ready"
+  },
+  {
+    "id": "scene-2",
+    "order": 2,
+    "narrativeRole": "从素材开始",
+    "onScreenText": "你的内容，就是起点",
+    "narration": "",
+    "supportingText": "添加链接、截图或录屏，整理要讲的产品价值。",
+    "visualDirection": "真实映芽界面，split布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "create"
+    ],
+    "startSeconds": 6,
+    "durationSeconds": 8,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "split",
+    "status": "ready"
+  },
+  {
+    "id": "scene-3",
+    "order": 3,
+    "narrativeRole": "一起把方向定下来",
+    "onScreenText": "先看方案，再制作",
+    "narration": "",
+    "supportingText": "逐镜查看内容、素材和呈现方式。",
+    "visualDirection": "真实映芽界面，focus布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "plan"
+    ],
+    "startSeconds": 14,
+    "durationSeconds": 8,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "focus",
+    "status": "ready"
+  },
+  {
+    "id": "scene-4",
+    "order": 4,
+    "narrativeRole": "预览 · 修改 · 导出",
+    "onScreenText": "让好产品，被看懂",
+    "narration": "",
+    "supportingText": "在映芽，开始你的第一条产品介绍视频。",
+    "visualDirection": "真实映芽界面，closing布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "intro"
+    ],
+    "startSeconds": 22,
+    "durationSeconds": 8,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "closing",
+    "status": "ready"
+  }
+]

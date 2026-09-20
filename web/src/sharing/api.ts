@@ -10,7 +10,8 @@ export const publicSchema = z.object({ title: z.string(), version: z.string(), e
 export type PublicVideo = z.infer<typeof publicSchema>;
 export class ShareError extends Error { constructor(message: string, public status: number) { super(message); } }
 export async function shareRequest(path: string, init?: RequestInit) {
-  const response = await sessionFetch(path, { ...init, cache: 'no-store', headers: { ...sessionHeaders(), 'Content-Type': 'application/json', ...init?.headers } });
+  const signal = init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000);
+  const response = await sessionFetch(path, { ...init, signal, cache: 'no-store', headers: { ...sessionHeaders(), 'Content-Type': 'application/json', ...init?.headers } });
   if (!response.ok) throw new ShareError((await response.json().catch(() => ({}))).message || '分享操作失败，请重试', response.status);
   return response.status === 204 ? null : response.json();
 }

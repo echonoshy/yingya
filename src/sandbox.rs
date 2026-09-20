@@ -161,6 +161,15 @@ impl Sandbox {
             .env("MPLCONFIGDIR", "/tmp/yingya-cache/matplotlib")
             .env("YINGYA_NODE_MODULES", self.resources.join("node_modules"))
             .env(
+                "YINGYA_EDITOR",
+                self.resources.join("runtime/editor/cli.mjs"),
+            )
+            .env("YINGYA_EDITOR_LIBRARY", self.root.join("editor-library"))
+            .env(
+                "YINGYA_PRODUCT_VIDEO",
+                self.resources.join("runtime/product-video/build.mjs"),
+            )
+            .env(
                 "YINGYA_COMPONENT_LIBRARY",
                 self.resources.join("runtime/component-library.mjs"),
             )
@@ -373,7 +382,7 @@ import matplotlib.pyplot as plt
 assert sys.version_info[:2] == (3,12)
 assert pathlib.Path(subprocess.check_output(['python3','-c','import sys; print(sys.executable)']).decode().strip()).resolve() == pathlib.Path(sys.executable).resolve()
 assert pathlib.Path(sys.prefix) == pathlib.Path(os.environ['VIRTUAL_ENV'])
-for variable in ['YINGYA_MEDIA_ANALYSIS', 'YINGYA_EDITORIAL_ASSEMBLER', 'YINGYA_ANIME_COMPONENTS', 'YINGYA_COMPONENT_LIBRARY']:
+for variable in ['YINGYA_MEDIA_ANALYSIS', 'YINGYA_EDITORIAL_ASSEMBLER', 'YINGYA_ANIME_COMPONENTS', 'YINGYA_COMPONENT_LIBRARY', 'YINGYA_PRODUCT_VIDEO']:
     tool = pathlib.Path(os.environ[variable])
     assert tool.is_file(), f'{variable} is not installed in this release'
     command = ['python3' if variable == 'YINGYA_MEDIA_ANALYSIS' else 'node', str(tool), '--help']

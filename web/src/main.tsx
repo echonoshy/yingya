@@ -6,6 +6,7 @@ import { WebsiteRouter } from "./marketing/WebsiteRouter";
 import "./styles.css";
 import "./dropdowns.css";
 import "./home.css";
+import "./product-video.css";
 import "./capabilities.css";
 
 createRoot(document.getElementById("root")!).render(

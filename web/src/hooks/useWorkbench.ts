@@ -11,7 +11,7 @@ export function useWorkbench(projectId: string, versionId: string | undefined, u
     let cancelled = false;
     setLoading(true);
     void api.getWorkbench(projectId, versionId).then(data => { if (!cancelled) setResult({ key, data }); })
-      .catch(error => { if (!cancelled) setResult({ key, error: error instanceof Error ? error.message : "镜头清单读取失败" }); })
+      .catch(error => { if (!cancelled) setResult({ key, error: error instanceof Error ? error.message : "素材信息读取失败" }); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [projectId, versionId, key, updatedAt, reload]);

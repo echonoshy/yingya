@@ -1,3 +1,5 @@
+#[path = "editor_api.rs"]
+mod editor_api;
 #[path = "editorial_api.rs"]
 mod editorial_api;
 #[path = "tenancy.rs"]
@@ -515,6 +517,14 @@ async fn user_router(
             get(agent_event_log),
         )
         .route(
+            "/api/agent-projects/{project_id}/plan",
+            get(get_explanation_plan),
+        )
+        .route(
+            "/api/agent-projects/{project_id}/feedback-results",
+            get(get_feedback_results),
+        )
+        .route(
             "/api/agent-projects/{project_id}/checkpoint",
             post(confirm_agent_checkpoint),
         )
@@ -549,6 +559,10 @@ async fn user_router(
         .route(
             "/api/agent-projects/{project_id}/media",
             get(get_agent_media),
+        )
+        .route(
+            "/api/agent-projects/{project_id}/composition",
+            get(editor_api::get).post(editor_api::mutate),
         )
         .route(
             "/api/agent-projects/{project_id}/workbench",
@@ -960,8 +974,20 @@ async fn get_agent_project(
 
 async fn create_agent_project(
     State(state): State<AppState>,
-    Json(request): Json<CreateAgentProjectRequest>,
+    Json(mut request): Json<CreateAgentProjectRequest>,
 ) -> Result<Json<AgentProjectDetail>, ApiError> {
+    if request.requirements.creation_mode.as_deref() == Some("ai-video") {
+        return Err(ApiError::BadRequest(
+            "本阶段不提供视频模型生成，请上传已有素材或制作图文讲解".into(),
+        ));
+    }
+    request.requirements.review_mode = Some("review".into());
+    if request.requirements.target_duration_seconds.is_none() {
+        request.requirements.target_duration_seconds = Some(120.0);
+    }
+    if request.requirements.workflow.is_none() {
+        request.requirements.workflow = Some("knowledge-explainer".into());
+    }
     if let Some(client_request_id) = request.client_request_id.as_deref() {
         Uuid::parse_str(client_request_id)
             .map_err(|_| ApiError::BadRequest("clientRequestId must be a UUID".to_owned()))?;
@@ -1061,6 +1087,15 @@ async fn load_project_detail(
 }
 
 async fn post_agent_turn(
+    state: State<AppState>,
+    path: Path<String>,
+    request: Json<AgentTurnRequest>,
+) -> Result<Json<AgentTurnAccepted>, ApiError> {
+    let _confirmation_gate = CONFIRM_PLAN_GATE.lock().await;
+    post_agent_turn_inner(state, path, request).await
+}
+
+async fn post_agent_turn_inner(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
     Json(request): Json<AgentTurnRequest>,
@@ -1239,15 +1274,104 @@ async fn remove_queued_turn(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn confirm_agent_checkpoint(
+async fn get_feedback_results(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
-) -> Result<Json<AgentTurnAccepted>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     let detail = state
         .agent_projects
         .get(&project_id)
         .await
         .map_err(ApiError::Project)?;
+    let root = state
+        .agent_projects
+        .project_dir(&project_id)
+        .map_err(ApiError::Project)?;
+    Ok(Json(crate::feedback_review::outcomes(&root, &detail).await))
+}
+
+async fn get_explanation_plan(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let manifest = state
+        .agent_projects
+        .manifest(&project_id)
+        .await
+        .map_err(ApiError::Project)?;
+    let root = state
+        .agent_projects
+        .project_dir(&project_id)
+        .map_err(ApiError::Project)?;
+    crate::explanation_plan::read(&root, &manifest)
+        .await
+        .map(Json)
+        .map_err(ApiError::Conflict)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConfirmPlanRequest {
+    checkpoint_id: String,
+    revision: String,
+    client_request_id: String,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+}
+static CONFIRM_PLAN_GATE: Mutex<()> = Mutex::const_new(());
+
+async fn confirm_agent_checkpoint(
+    State(state): State<AppState>,
+    Path(project_id): Path<String>,
+    Json(input): Json<ConfirmPlanRequest>,
+) -> Result<Json<AgentTurnAccepted>, ApiError> {
+    let _gate = CONFIRM_PLAN_GATE.lock().await;
+    Uuid::parse_str(&input.client_request_id)
+        .map_err(|_| ApiError::Conflict("确认请求编号无效".into()))?;
+    let detail = state
+        .agent_projects
+        .get(&project_id)
+        .await
+        .map_err(ApiError::Project)?;
+    let context = format!("checkpoint:{}", input.checkpoint_id);
+    let revision_context = format!("plan-revision:{}", input.revision);
+    if let Some(message) = detail
+        .messages
+        .iter()
+        .find(|m| m.client_request_id.as_deref() == Some(&input.client_request_id))
+    {
+        if !message.context.contains(&context) || !message.context.contains(&revision_context) {
+            return Err(ApiError::Conflict("确认请求与原方案不一致".into()));
+        }
+        if let Some(id) = &message.turn_id {
+            return Ok(Json(AgentTurnAccepted {
+                turn_id: id.clone(),
+                status: message.status.clone(),
+                queue_depth: detail.queue.len(),
+            }));
+        }
+    }
+    if detail.project.active_turn_id.is_some() || !detail.queue.is_empty() {
+        return Err(ApiError::Conflict("方案正在更新，请等待完成后确认".into()));
+    }
+    let root = state
+        .agent_projects
+        .project_dir(&project_id)
+        .map_err(ApiError::Project)?;
+    let plan = crate::explanation_plan::read(&root, &detail.manifest)
+        .await
+        .map_err(ApiError::Conflict)?;
+    if plan["checkpointId"] != input.checkpoint_id
+        || plan["revision"] != input.revision
+        || plan["ready"] != true
+    {
+        return Err(ApiError::Conflict(
+            "方案已更新或关键画面尚未完成，请重新查看后确认".into(),
+        ));
+    }
+    crate::explanation_plan::archive(&root, &plan)
+        .await
+        .map_err(ApiError::Conflict)?;
     let checkpoint =
         detail.manifest.checkpoint.clone().ok_or_else(|| {
             ApiError::Conflict("project is not waiting for confirmation".to_owned())
@@ -1322,18 +1446,18 @@ async fn confirm_agent_checkpoint(
         } else {
             "当前草稿已经明确确认。请执行最终质量检查并渲染高质量 MP4；成功后把最终视频写入 manifest artifacts，清除 checkpoint 和 dirty，并将 phase 设置为 completed。"
         };
-        post_agent_turn(
+        post_agent_turn_inner(
             State(state.clone()),
             Path(project_id.clone()),
             Json(AgentTurnRequest {
                 text: text.to_owned(),
                 base_version_id: None,
-                client_request_id: None,
+                client_request_id: Some(input.client_request_id),
                 attachments: vec![],
-                context: vec![checkpoint_context],
+                context: vec![checkpoint_context, revision_context],
                 feedback: vec![],
-                model: None,
-                reasoning_effort: None,
+                model: input.model,
+                reasoning_effort: input.reasoning_effort,
                 interrupt: false,
             }),
         )
@@ -2051,7 +2175,27 @@ fn validate_preflight_report(
         .and_then(|value| value.get("ok").and_then(Value::as_bool))
         == Some(true);
     if !process_succeeded || !parsed_ok {
-        let detail = if stderr.is_empty() { stdout } else { stderr };
+        if serde_json::from_str::<Value>(stdout)
+            .ok()
+            .is_some_and(|report| {
+                report["layout"]["findings"]
+                    .as_array()
+                    .is_some_and(|items| {
+                        items.iter().any(|item| {
+                            item["code"] == "text_box_overflow" && item["severity"] == "error"
+                        })
+                    })
+            })
+        {
+            return Err(
+                "文字排版超出画面范围，请在对话中说明需要调整的位置，生成修正版后再导出".into(),
+            );
+        }
+        let detail = if serde_json::from_str::<Value>(stdout).is_ok() || stderr.is_empty() {
+            stdout
+        } else {
+            stderr
+        };
         return Err(format!(
             "HyperFrames {command} 检查未通过（需成功退出且 JSON 报告 ok 为 true）：{}",
             truncate_status(detail, 320)
@@ -3218,6 +3362,7 @@ fn content_type_for_path(path: &FilePath) -> &'static str {
         "webm" => "video/webm",
         "mov" => "video/quicktime",
         "png" => "image/png",
+        "webp" => "image/webp",
         "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
         "json" => "application/json",
@@ -3337,8 +3482,9 @@ async fn run_agent_turn(
         Ok(manifest) => manifest,
         Err(_) => return,
     };
-    if crate::editorial::validate_base_version(queued.base_version_id.as_deref(), &manifest)
-        .is_err()
+    if queued.feedback.is_empty()
+        && crate::editorial::validate_base_version(queued.base_version_id.as_deref(), &manifest)
+            .is_err()
     {
         let _ = state
             .agent_projects
@@ -3347,6 +3493,47 @@ async fn run_agent_turn(
         emit_agent_state_event(state, project_id, Some(queued.id), "queue/updated").await;
         return;
     }
+    let revision_root = state
+        .agent_projects
+        .project_dir(project_id)
+        .expect("validated project");
+    let revision_guard = match crate::scene_revision::prepare(
+        &revision_root,
+        &manifest,
+        queued.base_version_id.as_deref(),
+        &queued.context,
+        &queued.attachments,
+    )
+    .await
+    {
+        Ok(guard) => guard,
+        Err(error) => {
+            let _ = state
+                .agent_projects
+                .requeue_front(
+                    project_id,
+                    queued.clone(),
+                    format!("镜头修改尚未执行：{error}"),
+                )
+                .await;
+            emit_agent_state_event(state, project_id, Some(queued.id), "queue/updated").await;
+            return;
+        }
+    };
+    let feedback_guard =
+        match crate::feedback_review::Guard::prepare(&revision_root, &manifest, &queued.feedback)
+            .await
+        {
+            Ok(guard) => guard,
+            Err(error) => {
+                let _ = state
+                    .agent_projects
+                    .requeue_front(project_id, queued.clone(), format!("修改尚未执行：{error}"))
+                    .await;
+                emit_agent_state_event(state, project_id, Some(queued.id), "queue/updated").await;
+                return;
+            }
+        };
     if let Err(error) = state
         .agent_projects
         .mark_turn_dispatched(project_id, &queued.id)
@@ -3451,7 +3638,22 @@ async fn run_agent_turn(
         "用户请求：{}{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 HyperFrames 核心能力或说明 fallback。",
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
-    let prompt = format!("{prompt}{}", feedback::prompt_context(&queued.feedback));
+    let prompt = format!(
+        "{}{}",
+        prompt,
+        feedback_guard
+            .as_ref()
+            .map(|guard| guard.prompt())
+            .unwrap_or_default()
+    );
+    let prompt = format!(
+        "{prompt}{}{}",
+        feedback::prompt_context(&queued.feedback),
+        revision_guard
+            .as_ref()
+            .map(|guard| guard.prompt())
+            .unwrap_or_default()
+    );
     let project_root = state
         .agent_projects
         .project_dir(project_id)
@@ -3467,8 +3669,13 @@ async fn run_agent_turn(
         Err(error) => format!("素材用途记录需修复：{error}"),
     };
     let prompt = format!(
-        "{prompt}\n项目结构化创作要求：{requirements}\n项目素材用途：{role_note}\npresentation 为用户在首页选择的表现方式：存在时先读 references/presentation-choice.md，将 capabilityId 与 variant 落到适合的镜头及可用组件，写入方案并延续到制作；没有该字段则由内容决定。后续用户明确修改优先，不能在局部修改中强制恢复初始选择。需求原件保存在 .yingya/requirements.json，素材用途保存在 .yingya/asset-roles.json。目标时长 target 为近似目标，exact 为准确时长，max 为上限；字幕 none 不生成对白字幕但允许明确要求的标题。audioMode preserve 保留原声，narration 补充旁白，replace 用旁白替换原声，mute 为静音，auto 按真实素材与用户需求决定。新创作以有审美的动态视频为目标：即使输入是完整文稿，也要按 creative-brief.md 设计视觉主体、镜头动作与素材路线，制作授权后主动生成或制作所需素材，不默认将段落排成文字卡片。上传视频时才按 existing-footage.md 分析内容、音轨和片段证据，复用 .yingya/content-index.json，结合目标剪辑与补充画面；不要将所有视频导向录屏教程。代表片段和完整草稿按 visual-review.md 审阅实际视觉效果，沿用现有方案/草稿确认点；局部修改复用已批准设计。required 素材必须使用或明确指出冲突，reference 仅供参考，brand 保留品牌素材原貌；不得将文件名当作内容理解证据。非本轮改变的镜头、原声和素材应复用。当前请求的编辑基线：{}。",
-        queued.base_version_id.as_deref().unwrap_or("当前工作区")
+        "{prompt}\n当前产品规则：先读 references/knowledge-video.md，聚焦可分享的知识讲解视频；方案包含大纲和实际内容关键画面，用户通过对话、截图或时间段反馈修改，不使用用户编辑器。不得探测或调用外部视频生成模型/API。历史 ai-video 字段仅兼容读取，未完成生成请求说明不再提供，不自动重试。\n项目结构化创作要求：{requirements}\n项目素材用途：{role_note}\npresentation 是历史项目可能保留的表现方式：存在时先读 references/presentation-choice.md，将 capabilityId 与 variant 落到适合的镜头及可用组件，写入方案并延续到制作；没有该字段则由内容决定。后续用户明确修改优先，不能在局部修改中强制恢复初始选择。需求原件保存在 .yingya/requirements.json，素材用途保存在 .yingya/asset-roles.json。目标时长 target 为近似目标，exact 为准确时长，max 为上限；字幕 none 不生成对白字幕但允许明确要求的标题。audioMode preserve 保留原声，narration 补充旁白，replace 用旁白替换原声，mute 为静音，auto 按真实素材与用户需求决定。新创作聚焦有审美且能独立讲清内容的知识视频：按 knowledge-video.md 组织内容、PPT 信息层级、图表和解释组件，用动作帮助理解。复用项目的字体、颜色与版式；已确认方案授权后制作全片和所需图像素材，不引入视频生成服务。上传视频时才按 existing-footage.md 分析内容、音轨和片段证据，复用 .yingya/content-index.json，结合目标剪辑与补充画面；不要将所有视频导向录屏教程。代表片段和完整草稿按 visual-review.md 在内部审阅实际视觉效果，不增加样片或草稿审批步骤；初稿完成供用户观看、反馈或分享。仅首次方案、关键方向改变或意见冲突需要决定，普通局部修改直接执行并复用已批准设计。required 素材必须使用或明确指出冲突，reference 仅供参考，brand 保留品牌素材原貌；不得将文件名当作内容理解证据。非本轮改变的镜头、原声和素材应复用。当前请求的编辑基线：{}。",
+        if queued.feedback.is_empty() {
+            queued.base_version_id.as_deref()
+        } else {
+            manifest.current_draft.as_deref()
+        }
+        .unwrap_or("当前工作区")
     );
     let prompt = if state.heygen.is_configured() {
         prompt
@@ -3872,7 +4079,41 @@ async fn run_agent_turn(
                 .manifest(project_id)
                 .await
                 .unwrap_or_default();
-            let workflow = validate_completed_workflow(state, project_id, &manifest).await;
+            let mut workflow = validate_completed_workflow(state, project_id, &manifest).await;
+            if let Some(guard) = &revision_guard
+                && let Err(error) = guard.audit(&revision_root, &manifest).await
+            {
+                workflow = WorkflowCompletion {
+                    status: "incomplete",
+                    label: "镜头修改需要复核",
+                    needs_recovery: true,
+                    guidance: format!(
+                        "本次修改未通过范围核对：{error}。源文件与历史版本已保留，请修复超出范围的变化后重新生成草稿。"
+                    ),
+                };
+                recovery_reason = None;
+            }
+            if let Some(guard) = &feedback_guard
+                && let Err(error) = guard.audit(&revision_root, &manifest, &queued.id).await
+            {
+                let dir = revision_root.join(".yingya/feedback-audits");
+                if fs::create_dir_all(&dir).await.is_ok() {
+                    let _ = fs::write(
+                        dir.join(format!("{}.json", queued.id)),
+                        json!({"protectedScenesPassed":false,"reason":error}).to_string(),
+                    )
+                    .await;
+                }
+                workflow = WorkflowCompletion {
+                    status: "incomplete",
+                    label: "修改结果需要复核",
+                    needs_recovery: true,
+                    guidance: format!(
+                        "本轮反馈未通过范围核查：{error}。保留旧视频和意见，修正后再提交新版本。"
+                    ),
+                };
+                recovery_reason = None;
+            }
             if workflow.needs_recovery {
                 manifest.dirty = true;
                 let _ = state
@@ -4106,6 +4347,27 @@ async fn validate_completed_workflow(
     let quality_report_passed =
         has_current_passing_quality_report(state, project_id, manifest).await;
 
+    if manifest.phase == "plan_review"
+        && manifest
+            .output_spec
+            .pointer("/requirements/workflow")
+            .and_then(Value::as_str)
+            == Some("knowledge-explainer")
+    {
+        if let Ok(root) = state.agent_projects.project_dir(project_id) {
+            let ready = crate::explanation_plan::read(&root, manifest).await;
+            if !ready.as_ref().is_ok_and(|plan| plan["ready"] == true) {
+                return WorkflowCompletion {
+                    status: "incomplete",
+                    label: "方案画面待完善",
+                    needs_recovery: true,
+                    guidance:
+                        "方案或关键画面尚未准备完整。已有内容已保留，请继续完善方案后再确认制作。"
+                            .into(),
+                };
+            }
+        }
+    }
     classify_completed_workflow(
         manifest,
         WorkflowEvidence {
@@ -4288,7 +4550,7 @@ async fn audit_existing_project_workflows(state: &AppState) {
     };
     for project in projects {
         if project.active_turn_id.is_some()
-            || (project.queue_paused && project.status == "interrupted")
+            || (project.queue_paused && matches!(project.status.as_str(), "interrupted" | "failed"))
         {
             continue;
         }

@@ -20,7 +20,7 @@ music `on` requires a real available track, not a promise hidden in the prompt.
 Explicit later user instructions can revise these decisions; keep the saved
 requirements and plan consistent. State any conflict before expensive work.
 
-Check only capabilities needed by the proposed route: installed HyperFrames executable, local browser availability, readable input media, and available voice/image/music tools. Use local help and read-only health checks; do not download or generate media as a planning probe. A missing optional music service is not a blocker for a video that does not need music. If required speech or footage cannot be produced, disclose that before plan approval. Recheck affected capabilities before use if availability may have changed.
+Check only capabilities needed by the proposed route: installed HyperFrames executable, local browser availability, readable input media, and available voice/image/music tools. Use local help and read-only health checks; do not download or generate media as a planning probe. A missing optional music service is not a blocker for a video that does not need music. If required speech cannot be produced or existing footage is missing, disclose that before plan approval. Do not probe a video-generation service. Recheck affected capabilities before use if availability may have changed.
 
 Prefer suitable supplied and existing assets when available. With text-only inputs, generated imagery may be the main visual material; choose it deliberately alongside editable typography, diagrams and data animation according to the story. Do not promise an unverified template or a capability found only in another application's documentation.
 
@@ -56,7 +56,7 @@ visual treatment and why it suits these materials. In each scene's existing
 `visualDirection` and `motion`, describe what appears first, what changes with
 the explanation, and the final readable state. Save selected reference paths
 and provenance versions in the plan so production can use the same sources.
-Keep this text-only until production is authorized. Do not insert style names
+Follow knowledge-video.md: create limited composition source and real keyframes before plan review; full-video production waits for approval. Do not insert style names
 into the footage assembler's `recipe` field or create a parallel scene schema.
 
 Write `.yingya/plan.md` with:

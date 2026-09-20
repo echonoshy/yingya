@@ -1,5 +1,5 @@
-<p align="center"><strong>Yingya · 映芽</strong> is a workspace for making animated videos through conversation.</p>
-<p align="center">Turn text, web pages, and media into videos. Refine them in chat, preview, and export to MP4.</p>
+<p align="center"><strong>Yingya · 映芽</strong> turns ideas, source material, and existing media into narrated videos ready to share.</p>
+<p align="center">Review an outline and real keyframes first. Refine the video through screenshots and timestamped feedback.</p>
 
 <p align="center">
   <a href="README.md">简体中文</a> · <strong>English</strong>
@@ -20,9 +20,9 @@ To run Yingya on your own server, follow the setup below.
 
 ### Using Yingya
 
-Open the [workspace](https://yingya.art/app), sign in, and bring your text, a web page, screenshots, or existing media. Yingya works well for product demos, animated explainers, data stories, and brand films.
+Open the [workspace](https://yingya.art/app), sign in, and bring your text, a web page, screenshots, or existing media. Yingya focuses on explaining concepts, data, and processes, with existing media supporting the explanation.
 
-Approve a production plan, then preview and refine the video. For example:
+Approve an outline and actual keyframes, then review the draft without using a timeline or layer editor. For example:
 
 > Make the title in the second scene bigger and hold the shot for two more seconds. Keep everything else unchanged.
 

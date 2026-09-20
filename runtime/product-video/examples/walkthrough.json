@@ -1,0 +1,97 @@
+[
+  {
+    "id": "scene-1",
+    "order": 1,
+    "narrativeRole": "操作讲解",
+    "onScreenText": "第一条视频，从这里开始",
+    "narration": "",
+    "supportingText": "准备产品链接、截图或录屏。",
+    "visualDirection": "真实映芽界面，hero布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "intro"
+    ],
+    "startSeconds": 0,
+    "durationSeconds": 6,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "hero",
+    "status": "ready"
+  },
+  {
+    "id": "scene-2",
+    "order": 2,
+    "narrativeRole": "第一步 · 添加资料",
+    "onScreenText": "选用途，放入素材",
+    "narration": "",
+    "supportingText": "选择产品介绍，添加素材并描述要讲的内容。",
+    "visualDirection": "真实映芽界面，focus布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "create"
+    ],
+    "startSeconds": 6,
+    "durationSeconds": 8,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "focus",
+    "status": "ready"
+  },
+  {
+    "id": "scene-3",
+    "order": 3,
+    "narrativeRole": "第二步 · 确认方案",
+    "onScreenText": "先确认每一镜讲什么",
+    "narration": "",
+    "supportingText": "检查内容和素材，方向明确后开始制作。",
+    "visualDirection": "真实映芽界面，steps布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "plan"
+    ],
+    "startSeconds": 14,
+    "durationSeconds": 7,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "steps",
+    "status": "ready"
+  },
+  {
+    "id": "scene-4",
+    "order": 4,
+    "narrativeRole": "第三步 · 预览修改",
+    "onScreenText": "看过画面，再做调整",
+    "narration": "",
+    "supportingText": "选择镜头，带入具体修改，再发送给映芽。",
+    "visualDirection": "真实映芽界面，focus布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "edit"
+    ],
+    "startSeconds": 21,
+    "durationSeconds": 8,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "focus",
+    "status": "ready"
+  },
+  {
+    "id": "scene-5",
+    "order": 5,
+    "narrativeRole": "完成作品",
+    "onScreenText": "预览满意，再导出",
+    "narration": "",
+    "supportingText": "保留可继续修改的项目，让下一条视频更容易。",
+    "visualDirection": "真实映芽界面，closing布局",
+    "motion": "文字分层进入，截图聚焦，短淡出淡入转场",
+    "assetStrategy": "真实产品界面截图",
+    "assetIds": [
+      "intro"
+    ],
+    "startSeconds": 29,
+    "durationSeconds": 6,
+    "timingBasis": "silent-readable-hold",
+    "productLayout": "closing",
+    "status": "ready"
+  }
+]

@@ -65,7 +65,7 @@ function clockHarness() {
 test('offline catalog and guides distinguish usable packs from raw registry sources without initializing a project', async () => {
   const catalog = await listPacks();
   const ids = catalog.components.map(item => item.id);
-  assert.deepEqual(new Set(ids), new Set(['title-reveal', 'flow-path', 'number-compare', 'beam-network', 'model-stage']));
+  assert.deepEqual(new Set(ids), new Set(['title-reveal', 'flow-path', 'number-compare', 'beam-network', 'model-stage', 'explain-concept', 'explain-process', 'explain-compare', 'explain-data', 'explain-cause', 'explain-footage']));
   assert.equal(ids.length, new Set(ids).size);
   assert.ok((await listPacks({ query: '汇聚' })).components.some(item => item.id === 'beam-network'));
   for (const provider of ['@react-bits', '@magicui']) assert.equal(catalog.sources.find(source => source.id === provider).status, 'requires-adaptation');

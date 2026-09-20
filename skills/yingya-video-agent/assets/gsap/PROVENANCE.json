@@ -1,0 +1,40 @@
+{
+  "version": "3.14.2",
+  "package": "gsap",
+  "tarball": "https://registry.npmjs.org/gsap/-/gsap-3.14.2.tgz",
+  "integrity": "sha512-P8/mMxVLU7o4+55+1TCnQrPmgjPKnwkzkXOK1asnR9Jg2lna4tEY5qBJjMmAaOBDDZWtlRjBXjLa0w53G/uBLA==",
+  "licenseUrl": "https://gsap.com/community/standard-license/",
+  "licenseNote": "The npm tarball links to this license but contains no license file; preserved official page, retrieved 2026-09-18.",
+  "files": [
+    {
+      "upstreamPath": "package/dist/gsap.min.js",
+      "localPath": "gsap.min.js",
+      "sha256": "c174bfce53a729418d57a8ad8625e7247c793a22fef8e2851e3cfa3de9cd8280"
+    },
+    {
+      "upstreamPath": "package/dist/SplitText.min.js",
+      "localPath": "SplitText.min.js",
+      "sha256": "3c38c97c364b3048ed6f7756388d2aa32580b81cf42932ea251b77fc626b3831"
+    },
+    {
+      "upstreamPath": "package/dist/DrawSVGPlugin.min.js",
+      "localPath": "DrawSVGPlugin.min.js",
+      "sha256": "2d2b28b7b1ad56cd5ca0d3032ed0f56503d0aaba6b5467169dc596d96e1125e3"
+    },
+    {
+      "upstreamPath": "package/dist/MorphSVGPlugin.min.js",
+      "localPath": "MorphSVGPlugin.min.js",
+      "sha256": "40e4246c7f898f5204a9d3f02c34672e7da589c297c157cdff714e87a362b045"
+    },
+    {
+      "upstreamPath": "package/dist/MotionPathPlugin.min.js",
+      "localPath": "MotionPathPlugin.min.js",
+      "sha256": "aa5f955ca4ce3095ebe5726f43a46b72532230edb3501b28fb853f189f023cab"
+    },
+    {
+      "sourceUrl": "https://gsap.com/community/standard-license/",
+      "localPath": "LICENSE",
+      "sha256": "708eb9d9c3d1b93dbd0716d24ea935b3b935518ca6e4bf335fe9495106102763"
+    }
+  ]
+}

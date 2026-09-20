@@ -13,16 +13,16 @@ function panel({ dirty, current = "v2", active = false, queued = false }: { dirt
 }
 
 describe("export distinguishes saved scene edits from rendered versions", () => {
-  it("names the existing export version and offers a new preview for unrendered changes", () => {
+  it("keeps the existing export action without the removed source warning", () => {
     const html = panel({ dirty: true });
-    expect(html).toContain("本次导出仍是「预览第二版」，不包含这些修改");
+    expect(html).not.toContain("source-edit-notice");
     expect(html).toContain("导出已有版本");
     expect(html).not.toContain("开始导出");
-    expect(html).toMatch(/<button type="button">生成新版预览<\/button>/);
+    expect(html).not.toContain("生成新版预览");
   });
-  it("prevents the new preview action from an old version or while a turn is running or queued", () => {
+  it("keeps the source warning hidden for historical, running and queued states", () => {
     for (const args of [{ dirty: true, current: "v3" }, { dirty: true, active: true }, { dirty: true, queued: true }]) {
-      expect(panel(args)).toMatch(/<button type="button" disabled="">生成新版预览<\/button>/);
+      expect(panel(args)).not.toContain("source-edit-notice");
     }
   });
   it("keeps the regular export action when the selected source is already rendered", () => {

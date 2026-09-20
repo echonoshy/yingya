@@ -3,7 +3,7 @@ import { useCallback, useRef, useState, type SetStateAction } from "react";
 import { z } from "zod";
 
 export function readDraft<T>(key: string, schema: z.ZodType<T>, fallback: T): T {
-  try { const result = schema.safeParse(JSON.parse(localStorage.getItem(userStorageKey(key)) ?? "null")); return result.success ? result.data : fallback; }
+  try { const raw = localStorage.getItem(userStorageKey(key)); if (raw === null) return fallback; const result = schema.safeParse(JSON.parse(raw)); return result.success ? result.data : fallback; }
   catch { return fallback; }
 }
 
@@ -22,7 +22,7 @@ export function useSavedState<T>(key: string, schema: z.ZodType<T>, fallback: T)
     latest.current = { key, value: next };
     try { localStorage.setItem(storageKey, JSON.stringify(next)); setSaved(true); }
     catch { setSaved(false); }
-    setSnapshot(latest.current);
+    setSnapshot(current => current.key === key && Object.is(current.value, next) ? current : latest.current);
   }, [key, schema, fallback, storageKey]);
   return [value, setValue, saved] as const;
 }

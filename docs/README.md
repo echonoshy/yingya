@@ -6,6 +6,8 @@
 | --- | --- |
 | [安装与本地开发](DEVELOPMENT.md) | 环境准备、启动服务、运行配置、API 连通检查与测试 |
 | [服务集成](INTEGRATIONS.md) | Codex 图像生成、HeyGen 配乐音效、HyperFrames 工具与 VoxCPM2 语音 |
+| [新版设计与实施方案](YINGYA_NEXT_PRODUCT_DIRECTION.md) | 知识讲解定位、方案/视频工作区与版本反馈契约 |
+| [新版验收记录](YINGYA_KNOWLEDGE_ACCEPTANCE.md) | 工程测试、真实作品、发布及未验收事项 |
 | [产品定位](PRODUCT_POSITIONING.md) | 目标用户、制作场景、能力边界与产品表达 |
 | [用户沙箱与用量统计](USER_SANDBOX.md) | 内测登录、账号隔离、预览权限与用量口径 |
 | [不停机更新与任务恢复](ROLLING_UPDATES.md) | 单机滚动发布、独立 Worker、回滚与任务恢复边界 |

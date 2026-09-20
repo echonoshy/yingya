@@ -21,12 +21,13 @@ const feedbackBaseSchema = z.object({
 });
 const frameFeedbackSchema = feedbackBaseSchema.extend({kind: z.literal("video-frame"), frameWidth: z.number().positive(), frameHeight: z.number().positive(), region: feedbackRegionSchema});
 const timeFeedbackSchema = feedbackBaseSchema.extend({kind: z.literal("video-time")});
+const rangeFeedbackSchema = feedbackBaseSchema.extend({kind: z.literal("video-range"), endSeconds: z.number().positive()});
 export const feedbackDraftContentSchema = z.discriminatedUnion("kind", [
-  frameFeedbackSchema.extend({note:z.string().max(2000)}), timeFeedbackSchema.extend({note:z.string().max(2000)}),
-]);
+  frameFeedbackSchema.extend({note:z.string().max(2000)}), timeFeedbackSchema.extend({note:z.string().max(2000)}), rangeFeedbackSchema.extend({note:z.string().max(2000)}),
+]).refine(value => value.kind !== "video-range" || value.endSeconds > value.timeSeconds, "结束时间必须晚于开始时间");
 export const visualFeedbackSchema = z.discriminatedUnion("kind", [
-  frameFeedbackSchema.extend({screenshotAssetId:z.string().uuid(), screenshotPath:z.string(), screenshotSha256:z.string()}), timeFeedbackSchema,
-]);
+  frameFeedbackSchema.extend({screenshotAssetId:z.string().uuid(), screenshotPath:z.string(), screenshotSha256:z.string()}), timeFeedbackSchema, rangeFeedbackSchema,
+]).refine(value => value.kind !== "video-range" || value.endSeconds > value.timeSeconds, "结束时间必须晚于开始时间");
 export type VisualFeedback = z.infer<typeof visualFeedbackSchema>;
 export type FeedbackRegion = z.infer<typeof feedbackRegionSchema>;
 export type FeedbackAsset = z.infer<typeof feedbackAssetSchema>;
@@ -78,6 +79,12 @@ export const mediaAssetSchema = z.object({
 });
 export const assetRoleSchema = z.enum(["auto", "source", "required", "supplement", "brand", "reference"]);
 export const requirementsSchema = z.object({
+  creationMode: z.enum(["motion", "single", "edit", "ai-video"]).optional(),
+  styleId: z.enum(["minimal-product", "editorial", "kinetic-type", "data-story", "field-notes", "map-story"]).optional(),
+  reviewMode: z.enum(["auto", "review"]).optional(),
+  aspectMode: z.enum(["auto", "fixed"]).optional(),
+  workflow: z.enum(["product-intro", "feature-launch", "walkthrough", "knowledge-explainer"]).optional(),
+  referenceExample: z.enum(["product-intro", "feature-launch", "walkthrough"]).optional(),
   presentation: presentationSchema.optional(),
   targetDurationSeconds: z.number().min(1).max(3600).optional(), durationMode: z.enum(["target", "exact", "max"]).default("target"),
   audience: z.string().max(300).optional(), styleNotes: z.string().max(500).optional(),

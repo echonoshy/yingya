@@ -1,8 +1,9 @@
+import { AppNavigation } from "./AppNavigation";
 import { useMotionPresence } from "../hooks/useMotionPresence";
 import AssetDocumentPreview, { assetDocumentKind } from "./AssetDocumentPreview";
 import {
   ArrowsOut, Minus, PencilSimple, Trash, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
-  FilmSlate, FolderOpen, FolderSimple, Folders, Image as ImageIcon, Images,
+  FolderOpen, FolderSimple, Folders, Image as ImageIcon, Images,
   MagnifyingGlass, MusicNotes, Paperclip, Plus, Sparkle, SpeakerHigh, UploadSimple,
   VideoCamera, Waveform, X,
 } from "@phosphor-icons/react";
@@ -231,9 +232,7 @@ export function AssetStudio({ initialTool, accountPanel, models, selection, voic
   }
 
   return <div className="asset-library-layout">
-    <aside className="asset-workshop-nav">
-      <div className="asset-workshop-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div>
-      <nav className="asset-product-nav" aria-label="映芽功能"><button onClick={onCreate}><FilmSlate/>视频创作</button><button className="active" aria-current="page"><Images/>素材工坊</button></nav>
+    <AppNavigation active="assets" onCreate={onCreate} onAssets={() => { setTab("all"); setActiveFolder("all"); }} accountPanel={accountPanel}>
       <div className="asset-folder-heading"><span>文件夹</span><button aria-label="新建文件夹" aria-expanded={folderFormOpen} onClick={() => setFolderFormOpen(current => !current)}><Plus/></button></div>
       {folderFormOpen ? <form className="asset-folder-form" onSubmit={createFolder}><label htmlFor="asset-folder-name">新建文件夹</label><input id="asset-folder-name" autoFocus value={folderName} maxLength={40} onChange={event => setFolderName(event.target.value)} placeholder="文件夹名称"/><div><button type="button" onClick={() => setFolderFormOpen(false)}>取消</button><button disabled={!folderName.trim() || creatingFolder}>{creatingFolder ? <CircleNotch className="spin"/> : "创建"}</button></div></form> : null}
       <nav className="asset-folder-list" aria-label="素材文件夹">
@@ -241,8 +240,7 @@ export function AssetStudio({ initialTool, accountPanel, models, selection, voic
         <button className={activeFolder === "unfiled" ? "active" : ""} onClick={() => setActiveFolder("unfiled")}><FolderSimple/><span>未整理</span><small>{assets.filter(asset => !asset.folderId).length}</small></button>
         {folders.map(folder => <div className="asset-folder-row" key={folder.id}><button className={activeFolder === folder.id ? "active" : ""} onClick={() => setActiveFolder(folder.id)}><FolderSimple/><span>{folder.name}</span><small>{assets.filter(asset => asset.folderId === folder.id).length}</small></button><button aria-label={`重命名文件夹 ${folder.name}`} title="重命名文件夹" onClick={() => manage("rename-folder", folder.id, folder.name)}><PencilSimple/></button><button aria-label={`删除文件夹 ${folder.name}`} title="删除文件夹" onClick={() => manage("delete-folder", folder.id, folder.name)}><Trash/></button></div>)}
       </nav>
-      {accountPanel}
-    </aside>
+    </AppNavigation>
     <main className="asset-main asset-main--library">
       <header className="asset-library-header"><div><h1>素材工坊</h1><p>集中管理创作中使用的图片、视频、音频、音色与文件</p></div><label className="asset-search"><MagnifyingGlass/><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/><kbd>⌘ K</kbd></label><button className="asset-upload-button" onClick={() => uploadRef.current?.click()} disabled={uploading}>{uploading ? <CircleNotch className="spin"/> : <UploadSimple/>}上传素材</button><input hidden ref={uploadRef} type="file" multiple onChange={event => void uploadFiles(event.target.files)}/>{!uploadOnly ? <div className="asset-create-control"><button ref={createTriggerRef} className="asset-create-button" aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div className="asset-create-menu"><button onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div> : null}</header>
       <nav className="asset-media-tabs" aria-label="素材类型">{typeTabs.map(item => { const Icon = item.icon; const count = item.id === "all" ? assets.length : item.id === "voice" ? undefined : assets.filter(asset => asset.category === item.id).length; return <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => chooseTab(item.id)}><Icon/>{item.label}{count !== undefined ? <small>{count}</small> : null}</button>; })}</nav>

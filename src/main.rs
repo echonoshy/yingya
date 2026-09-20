@@ -6,7 +6,9 @@ mod codex;
 mod component_library;
 mod config;
 mod editorial;
+mod explanation_plan;
 mod feedback;
+mod feedback_review;
 mod heygen;
 mod model_relay;
 mod model_settings;
@@ -14,6 +16,7 @@ mod production_jobs;
 mod render_jobs;
 mod runtime;
 mod sandbox;
+mod scene_revision;
 mod studio_sessions;
 mod voices;
 
