@@ -2,11 +2,8 @@ import {
   FolderSimple,
   Images,
   Plus,
-  Pause,
-  Play,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { useStudioMotion } from "./StudioTheme";
 
 export function AppNavigation({
   active,
@@ -23,7 +20,6 @@ export function AppNavigation({
   accountPanel?: ReactNode;
   children?: ReactNode;
 }) {
-  const { enabled, toggle } = useStudioMotion();
   return (
     <aside className="home-nav app-navigation">
       <div className="app-navigation-surface">
@@ -64,7 +60,6 @@ export function AppNavigation({
       {children && <div className="app-navigation-extra">{children}</div>}
       <div className="app-account-dock">
         {accountPanel}
-        {active === "create" ? <button className="studio-motion-toggle" type="button" onClick={toggle} aria-label={enabled ? "暂停插画动效" : "播放插画动效"} title={enabled ? "暂停插画动效" : "播放插画动效"} aria-pressed={!enabled}>{enabled ? <Pause/> : <Play/>}</button> : null}
       </div>
     </aside>
   );

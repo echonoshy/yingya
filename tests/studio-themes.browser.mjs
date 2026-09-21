@@ -6,8 +6,8 @@ import { installApiMock, detail } from './ui-qa.mjs';
 // Browser plugin not available. Exercise the real frontend with controlled API
 // fixtures; these checks never create videos, users, invoices or public shares.
 const base = process.env.YINGYA_UI_QA_URL ?? 'http://127.0.0.1:8798';
-const out = process.env.YINGYA_THEME_QA_OUT ?? '/tmp/yingya-kami-theme-qa';
-const themes = ['paper'];
+const out = process.env.YINGYA_THEME_QA_OUT ?? '/tmp/yingya-comic-theme-qa';
+const themes = ['comic'];
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const results = [];
@@ -31,12 +31,21 @@ async function addFixtures(page) {
 }
 
 async function check(page, theme, surface, variant, width = 1440) {
-  await page.locator(`.studio-art[data-artwork="${variant}"]:visible`).first().waitFor();
+  const headings = { home: '今天想做什么视频？', projects: '我的作品', assets: '素材工坊', usage: '用量统计', billing: 'API 等价账单', admin: '用户管理', 'admin-invites': '邀请码', 'admin-audit': '操作记录', 'admin-shares': '视频分享', 'admin-billing': 'API 等价账单' };
+  if (headings[surface]) await page.getByRole('heading', { name: headings[surface], exact: true }).waitFor();
+  else await page.locator(`.studio-art[data-artwork="${variant}"]:visible`).first().waitFor();
+  if (surface === 'home') {
+    assert.equal(await page.locator('.home-create .studio-art--home').count(), 1, 'Creation uses the selected comic hero');
+    assert.equal(await page.locator('.paper-accent').count(), 0, 'No legacy paper decoration');
+    assert.equal(await page.locator('.studio-motion-toggle').count(), 0, 'No orphan illustration control');
+    assert.equal(await page.locator('.studio-shell').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(255, 255, 255)');
+  }
   await page.locator('.studio-art:visible img').evaluateAll(images => Promise.all(images.map(image => image.decode())));
   await page.evaluate(() => document.fonts.ready);
   assert.equal(await page.locator('html').getAttribute('data-studio-theme'), theme, `${surface}: stable theme`);
   assert.equal(await page.locator('vite-error-overlay').count(), 0);
   const art = await page.locator('.studio-art:visible').evaluateAll(nodes => nodes.map(node => ({ theme: node.dataset.theme, variant: node.dataset.artwork, width: node.clientWidth, image: node.querySelector('img').naturalWidth, visible: getComputedStyle(node.querySelector('img')).visibility })));
+  assert.ok(art.length > 0, `${surface}: comic artwork present`);
   assert.ok(art.every(item => item.theme === theme && item.width > 0 && item.image > 0 && item.visible !== 'hidden'), `${surface}: complete matching art`);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${surface}: no viewport overflow at ${width}`);
   const path = `${out}/${theme}-${surface}-${width}.png`;
@@ -90,7 +99,7 @@ try {
     }
     await page.goto(base);
     await page.locator('#marketing-title').waitFor();
-    await check(page, theme, 'marketing', 'home');
+    await check(page, theme, 'marketing', 'marketing');
 
     // Phone and narrow viewport checks retain the same selected family.
     for (const width of [390, 320]) {
@@ -103,6 +112,14 @@ try {
         assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, `${theme}: ${name} fits at ${width}`);
       }
       assert.equal(await page.locator('.home-create textarea').evaluate(el => getComputedStyle(el).fontSize), '16px');
+      const tools = await page.locator('.composer-more-trigger, .home-create .model-trigger, .home-create .send-button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().y));
+      assert.ok(Math.max(...tools) - Math.min(...tools) < 2, 'Mobile composer actions stay on one row');
+      await page.getByRole('button', { name: '添加素材与设置', exact: true }).click();
+      await page.getByLabel('视频画幅', { exact: true }).selectOption('9:16');
+      assert.equal(await page.getByLabel('视频画幅', { exact: true }).inputValue(), '9:16');
+      await page.keyboard.press('Escape');
+      assert.equal(await page.getByRole('button', { name: '添加素材与设置', exact: true }).evaluate(el => el === document.activeElement), true);
+
       await page.getByRole('button', { name: '我的作品', exact: true }).click();
       await check(page, theme, 'projects', 'projects', width);
       await page.getByRole('button', { name: '素材工坊', exact: true }).click();
@@ -122,10 +139,10 @@ try {
       await page.goto(`${base}/admin/shares`);
       await check(page, theme, 'admin-shares', 'account', width);
       await page.goto(base);
-      await check(page, theme, 'marketing', 'home', width);
+      await check(page, theme, 'marketing', 'marketing', width);
     }
 
-    // Fixed paper style survives navigation/reload without mutating the draft.
+    // Legacy theme compatibility survives navigation/reload without mutating the draft.
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${base}/app#/`);
     await page.locator('.home-create textarea').waitFor();
@@ -134,7 +151,7 @@ try {
     assert.equal(await page.getByRole('button', { name: /^换个画风/ }).count(), 0);
     await page.reload();
     await page.locator('.home-create textarea').waitFor();
-    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), 'paper');
+    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), 'comic');
     assert.equal(await page.locator('.home-create textarea').inputValue(), draft);
     await context.close();
 
@@ -160,7 +177,7 @@ try {
     await login.setViewportSize({ width: 320, height: 844 });
     await check(login, theme, 'reset', 'access', 320);
     await guest.close();
-    console.log(`Theme ${theme}: app, library, assets, usage, billing, workbench, share, admin, marketing, login/register/reset, 390/320, fixed paper and persistence passed.`);
+    console.log(`Theme ${theme}: app, library, assets, usage, billing, workbench, share, admin, marketing, login/register/reset, 390/320, comic surfaces and draft persistence passed.`);
   }
   assert.deepEqual(errors, [], 'No frontend runtime errors');
   await writeFile(`${out}/results.json`, JSON.stringify({ result: 'passed', base, browser: 'Playwright; Browser plugin not available', api: 'isolated mocks', themes, results, errors }, null, 2));

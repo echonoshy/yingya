@@ -2,14 +2,14 @@
   color-scheme: light;
   font-family: var(--font-ui);
   font-synthesis: none;
-  background: #f5f4ed;
-  color: #141413;
+  background: #f7f7f8;
+  color: #202123;
   --canvas: #ffffff;
-  --background: #f5f4ed;
-  --surface: #faf9f5;
-  --surface-hover: #e8e6dc;
-  --primary: #1b365d;
-  --accent: #1b365d;
+  --background: #f7f7f8;
+  --surface: #f7f7f8;
+  --surface-hover: #e6e7e9;
+  --primary: #202123;
+  --accent: #1769c2;
   --black: var(--canvas);
   --prey-950: var(--background);
   --prey-900: var(--surface);
@@ -17,21 +17,21 @@
   --prey-750: var(--surface-hover);
   --prey-700: var(--line);
   --prey-600: var(--line-strong);
-  --prey-400: #76746e;
+  --prey-400: #74777d;
   --purple-500: var(--accent);
   --purple-400: var(--accent);
   --purple-300: var(--accent-text);
-  --purple-200: #1b365d;
-  --text: #141413;
-  --muted: #504e49;
-  --dim: #6b6a64;
-  --accent-text: #1b365d;
-  --line: #e8e6dc;
-  --line-strong: #a7a59b;
+  --purple-200: #1769c2;
+  --text: #202123;
+  --muted: #55585e;
+  --dim: #6b6e75;
+  --accent-text: #1769c2;
+  --line: #e6e7e9;
+  --line-strong: #a5a8af;
   --danger: #d70015;
   --warning: #a05a00;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC Variable", "Noto Sans SC", sans-serif;
-  --font-editorial: "Noto Serif SC Variable", "Noto Serif SC", "Songti SC", "STSong", serif;
+  --font-editorial: var(--font-ui);
   --font-mono: "Fragment Mono", "SFMono-Regular", Consolas, monospace;
   --text-search: var(--text-control);
   --radius-control: 12px;
@@ -42,20 +42,21 @@
   --motion-slow: 360ms;
   --ease-sprout: cubic-bezier(.22, 1, .36, 1);
   --ease-play: cubic-bezier(.22, 1, .36, 1);
-  --selection: #eef2f7;
-  --selection-line: #b6c5d7;
-  --surface-inset: #f0eee6;
+  --selection: #eef4fb;
+  --selection-line: #bdd3ee;
+  --surface-inset: #f0f1f3;
   --shadow-popover: 0 12px 36px color-mix(in srgb, var(--primary) 12%, transparent), 0 2px 6px color-mix(in srgb, var(--primary) 5%, transparent);
   --motion-stagger: 28ms;
   --ease-exit: cubic-bezier(.4, 0, 1, 1);
-  --primary-hover: #27496f;
-  --text-display: clamp(2rem, 2.8vw, 2.5rem);
-  --text-title: 1.25rem;
+  --primary-hover: #35373b;
+  --text-display: clamp(2rem, 3.2vw, 2.75rem);
+  --text-title: 1.5rem;
   --text-section: 1rem;
   --text-body: .9375rem;
   --text-input: 1rem;
+  --text-creation: 1.0625rem;
   --text-field: var(--text-control);
-  --text-control: .8125rem;
+  --text-control: .875rem;
   --text-caption: .75rem;
   --weight-regular: 400;
   --weight-medium: 500;
@@ -713,7 +714,7 @@ button:not(:disabled) { cursor: pointer; }
 .message--user { display: flex; justify-content: flex-end; }
 .message--user .message-body { max-width: min(560px, 86%); border: 1px solid var(--line); border-radius: 17px 17px 4px 17px; background: var(--background); color: var(--text); }
 .message--assistant .message-body { max-width: 65ch; color: var(--muted); }
-.message-markdown code { background: var(--background); color: #1b365d; }
+.message-markdown code { background: var(--background); color: var(--accent-text); }
 .message-markdown pre { border-color: var(--line); background: var(--background); }
 .message-markdown blockquote { border-left-color: var(--text); }
 .quick-replies button { border-color: var(--line); background: var(--surface); }

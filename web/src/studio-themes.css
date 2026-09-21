@@ -1,80 +1,75 @@
-/* Fixed Kami paper language. Illustration slots never overlap controls or customer media. */
-.studio-art { margin: 0; flex-shrink: 0; user-select: none; }
+/* One comic illustration family across product surfaces. Keep real media clear. */
+.studio-art { margin: 0; flex-shrink: 0; user-select: none; pointer-events: none; }
 .studio-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.studio-art--home img { mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent), linear-gradient(to bottom, transparent, black 8%, black 92%, transparent); mask-composite: intersect; }
-.studio-art--home { width: 100%; aspect-ratio: 3 / 1; height: auto; margin: 0 auto 12px; }
-.studio-shell--home .home-create { position: relative; }
-.studio-shell--home .home-scroll { padding-top: 40px; padding-bottom: 40px; }
-.studio-shell--home .home-create .composer { position: relative; z-index: 1; background: var(--surface); box-shadow: 0 4px 0 -1px var(--canvas), 0 5px 0 -1px var(--line), 0 8px 0 -2px var(--surface), 0 9px 0 -2px var(--line); }
-.paper-accent { width: 184px; padding: 8px; margin: 32px 12px 0 auto; background: var(--canvas); border: 1px solid var(--line); transform: rotate(-4deg); pointer-events: none; }
-.paper-accent img { display: block; width: 100%; height: auto; }
-/* Original white-ground scenes sit on explicit paper mounts instead of blending into media. */
-.studio-art:not(.studio-art--home) { background: var(--canvas); border-radius: var(--radius-control); }
-.studio-shell--library .home-scroll { padding-top: 28px; }
-.home-project-heading { position: relative; min-height: 100px; flex-wrap: wrap; align-content: center; }
-.home-project-heading > .studio-art { width: 148px; height: 88px; margin-right: 16px; align-self: center; transform: rotate(-3deg); }
-.asset-library-header > div:first-child { position: relative; padding-left: 152px; min-height: 106px; display: flex; flex-direction: column; justify-content: center; }
-.asset-library-header > div:first-child > .studio-art { position: absolute; left: 0; top: 4px; width: 136px; height: 92px; transform: rotate(-3deg); }
-.asset-library-header h1 { font-family: var(--font-editorial); font-size: var(--text-title); font-weight: var(--weight-medium); }
-.asset-empty-state > .studio-art, .home-project-empty > .studio-art { width: 200px; height: 120px; margin-bottom: 12px; }
-.studio-shell--login .login-content { padding: 28px 32px; border: 1px solid var(--line); background: var(--surface); }
-.login-content > .studio-art { width: 240px; height: 140px; margin: 0 auto 24px; }
-.studio-shell--login .login-content h1 { font-family: var(--font-editorial); font-size: var(--text-display); font-weight: var(--weight-medium); text-align: center; }
-.usage-heading > div { position: relative; padding-right: 160px; min-height: 94px; }
-.usage-heading .studio-art { position: absolute; right: 0; top: 0; width: 140px; height: 90px; }
-.billing-panel .admin-page-heading > div:first-child, .admin-main > .admin-page-heading > div:first-child { position: relative; padding-right: 136px; min-height: 82px; }
-.billing-panel .admin-page-heading .studio-art, .admin-main > .admin-page-heading .studio-art { position: absolute; right: 0; top: 0; width: 120px; height: 80px; }
+.studio-art--home { width: 100%; aspect-ratio: 3 / 1; height: auto; margin: 0 auto 24px; }
+.studio-shell--home .home-create > .studio-art--home { pointer-events: auto; }
+.home-project-heading { min-height: 100px; flex-wrap: wrap; align-content: center; }
+.home-project-heading > .studio-art { width: 120px; height: 80px; margin-right: 16px; }
+.asset-library-header > div:first-child { min-height: 76px; position: relative; padding-left: 120px; display: flex; flex-direction: column; justify-content: center; }
+.asset-library-header > div:first-child > .studio-art { position: absolute; width: 108px; height: 72px; left: 0; top: 2px; }
+.asset-library-header h1 { font-size: var(--text-title); font-weight: var(--weight-emphasis); letter-spacing: 0; }
+.asset-empty-state > .studio-art, .home-project-empty > .studio-art { width: 200px; height: 132px; margin-bottom: 12px; }
+.studio-shell--login .login-content { padding: 28px 32px; border: 1px solid var(--line); background: var(--canvas); }
+.login-content > .studio-art { width: 216px; height: 144px; margin: 0 auto 16px; }
+.studio-shell--login .login-content h1 { font-size: var(--text-title); font-weight: var(--weight-emphasis); text-align: center; }
+.usage-heading > div { position: relative; padding-right: 164px; min-height: 100px; }
+.usage-heading .studio-art { position: absolute; right: 0; top: 0; width: 150px; height: 100px; }
+.billing-panel .admin-page-heading > div:first-child,
+.admin-main > .admin-page-heading > div:first-child,
+.studio-share-admin .admin-page-heading > div:first-child { position: relative; padding-right: 144px; min-height: 88px; display: flex; flex-direction: column; justify-content: center; }
+.billing-panel .admin-page-heading .studio-art,
+.admin-main > .admin-page-heading .studio-art,
+.studio-share-admin .admin-page-heading .studio-art { position: absolute; right: 0; top: 0; width: 132px; height: 88px; }
+.admin-main { background: var(--canvas); }
+.admin-page-heading h1, .usage-heading h1 { font-weight: var(--weight-emphasis); }
+/* Dense production controls retain their compact reading sizes. */
+.knowledge-workspace { --text-control: .8125rem; --text-title: 1.25rem; }
 .knowledge-workspace .project-header-brand { background: none; }
-.knowledge-workspace .project-header-brand > .studio-art { width: 40px; height: 30px; }
+.knowledge-workspace .project-header-brand > .studio-art { width: 42px; height: 28px; }
 .knowledge-workspace .project-header-brand > img { width: 28px; height: 28px; }
-.knowledge-workspace .studio-art img { width: 100%; height: 100%; }
-.knowledge-workspace .workspace-tabs > .studio-art { width: 36px; height: 32px; margin-right: 4px; }
-.knowledge-workspace .project-header, .knowledge-workspace .thread-header, .knowledge-workspace .artifact-canvas > header { background: var(--surface); }
+.knowledge-workspace .workspace-tabs > .studio-art { width: 36px; height: 24px; margin-right: 4px; }
+.knowledge-workspace .project-header, .knowledge-workspace .thread-header, .knowledge-workspace .artifact-canvas > header { background: var(--canvas); }
 .knowledge-workspace .thread-header { min-height: 48px; height: 48px; padding-block: 8px; }
 .knowledge-workspace .thread-header > div { display: flex; align-items: center; gap: 12px; }
 .knowledge-workspace .thread-header b { margin: 0; font-weight: var(--weight-regular); color: var(--muted); }
 .knowledge-workspace .queue-interrupt-notice { font-size: var(--text-caption); line-height: var(--leading-ui); color: var(--muted); margin: 0 0 12px; }
-.studio-share-admin .admin-page-heading > div:first-child { position: relative; padding-right: 136px; min-height: 82px; }
-.studio-share-admin .admin-page-heading .studio-art { position: absolute; right: 0; top: 0; width: 120px; height: 80px; }
-.creation-pending-card > .studio-art { width: 160px; height: 110px; margin: 0 auto 16px; }
-.studio-share-brand { display: flex; align-items: center; gap: 16px; }
-.studio-share-brand .studio-art { width: 100px; height: 68px; }
-.admin-login { background: var(--background); }
-.admin-login section > .studio-art { width: 200px; height: 120px; margin: 0 auto 16px; }
-.admin-login h1 { font-family: var(--font-editorial); font-weight: var(--weight-medium); }
-.studio-marketing-art { width: min(1060px, 100%); margin: 24px auto 32px; }
-.studio-marketing-art .studio-art--home { width: 100%; margin: 0; }
-@media (max-width: 1100px) {
-  .home-project-heading > .studio-art { width: 120px; height: 80px; }
-  .asset-library-header > div:first-child { padding-left: 112px; }
-  .asset-library-header > div:first-child > .studio-art { width: 100px; height: 80px; top: 12px; }
+.knowledge-workspace :is(.planning-empty, .workbench-empty) > .studio-art { width: 168px; height: 112px; margin: 0 auto 12px; }
+.creation-pending-card > .studio-art { width: 200px; height: 132px; margin: 0 auto 16px; }
+.studio-share-brand { display: flex; align-items: center; gap: 12px; }
+.studio-share-brand .studio-art { width: 84px; height: 56px; }
+.public-share-state > .studio-art, .state-screen > .studio-art { width: 200px; height: 132px; margin: 0 auto 16px; }
+.admin-login { background: var(--canvas); }
+.admin-login section > .studio-art { width: 200px; height: 132px; margin: 0 auto 16px; }
+.admin-login h1 { font-family: var(--font-ui); font-weight: var(--weight-emphasis); }
+.studio-marketing-art { width: min(1120px, 100%); margin: 24px auto 32px; }
+.studio-marketing-art .studio-art--marketing { width: 100%; aspect-ratio: 3 / 1; margin: 0; }
+.comic-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.comic-empty > .studio-art { width: 140px; height: 92px; }
+@media (max-width: 1100px) and (min-width: 801px) {
+  .asset-library-header > div:first-child { padding-left: 84px; min-width: 200px; }
+  .asset-library-header > div:first-child > .studio-art { width: 76px; height: 60px; top: 8px; }
 }
 @media (max-width: 800px) {
-  .studio-shell--home .home-scroll { padding-top: 32px; padding-bottom: 40px; align-content: center; }
-  .studio-art--home { margin-bottom: 16px; }
-  .paper-accent { display: none; }
   .home-project-heading { min-height: 72px; gap: 8px; }
-  .home-project-heading > .studio-art { width: 92px; height: 64px; margin-right: 4px; }
+  .home-project-heading > .studio-art { width: 84px; height: 56px; margin-right: 4px; }
   .home-project-heading > span { font-size: var(--text-caption); }
-  .studio-shell--library .home-scroll { padding-top: 20px; }
-  .asset-library-header > div:first-child { padding-left: 108px; min-height: 72px; }
-  .asset-library-header > div:first-child > .studio-art { width: 92px; height: 64px; top: 0; }
-  .studio-shell--login .login-content { padding: 20px; margin-block: auto; }
-  .login-content > .studio-art { height: 112px; width: 184px; margin-bottom: 16px; }
-  .studio-shell--login .login-content h1 { font-size: 24px; }
-  .usage-heading > div { padding-right: 104px; }
-  .usage-heading .studio-art { width: 94px; height: 72px; }
-  .billing-panel .admin-page-heading > div:first-child, .admin-main > .admin-page-heading > div:first-child,
-  .studio-share-admin .admin-page-heading > div:first-child { padding-right: 90px; }
-  .billing-panel .admin-page-heading .studio-art, .admin-main > .admin-page-heading .studio-art,
-  .studio-share-admin .admin-page-heading .studio-art { width: 80px; height: 64px; }
-  .studio-share-brand { gap: 8px; }
-  .studio-share-brand .studio-art { width: 74px; height: 56px; }
+  .asset-library-header > div:first-child { min-height: 64px; padding-left: 92px; }
+  .asset-library-header > div:first-child > .studio-art { width: 80px; height: 56px; top: 4px; }
+  .studio-shell--login .login-content { padding: 24px; margin-block: auto; }
+  .login-content > .studio-art { height: 100px; width: 150px; margin-bottom: 12px; }
+  .usage-heading > div { padding-right: 96px; min-height: 76px; }
+  .usage-heading .studio-art { width: 88px; height: 64px; }
+  .billing-panel .admin-page-heading > div:first-child,
+  .admin-main > .admin-page-heading > div:first-child,
+  .studio-share-admin .admin-page-heading > div:first-child { padding-right: 88px; min-height: 72px; }
+  .billing-panel .admin-page-heading .studio-art,
+  .admin-main > .admin-page-heading .studio-art,
+  .studio-share-admin .admin-page-heading .studio-art { width: 80px; height: 60px; }
+  .studio-shell--home .home-create > .studio-art--home { margin-bottom: 20px; }
 }
 @media (max-width: 390px) {
-  .home-project-heading > .studio-art { width: 70px; height: 56px; }
   .home-project-heading { gap: 6px; }
-  .home-project-heading > span { margin-left: auto; }
+  .home-project-heading > .studio-art { width: 64px; height: 48px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .studio-art, .studio-art img { animation: none !important; transition: none !important; transform: none !important; }

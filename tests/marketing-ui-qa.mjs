@@ -17,7 +17,7 @@ try {
   assert.equal(await page.locator('.marketing-example').count(), 6);
   assert.equal(await page.locator('vite-error-overlay, [data-arm], .factory-viewport, .cinema-feed').count(), 0);
   await page.waitForFunction(() => document.querySelector('.studio-marketing-art .studio-art img').complete && document.querySelector('.studio-marketing-art .studio-art img').naturalWidth > 0);
-  assert.equal(await page.locator('.studio-marketing-art .studio-art img').evaluate(i => getComputedStyle(i).animationName), 'none');
+  assert.equal(await page.locator('.studio-marketing-art .studio-art img').first().evaluate(i => getComputedStyle(i).animationName), 'none');
   await page.locator('#showcase').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => [...document.querySelectorAll('.marketing-example img')].every(i => i.src.endsWith('.webp') && i.complete && i.naturalWidth));
   assert.equal(new Set(await page.locator('.marketing-example img').evaluateAll(imgs => imgs.map(i => i.src))).size, 6);
@@ -58,7 +58,7 @@ try {
     await page.setViewportSize({ width, height: width === 1440 ? 1400 : 1000 });
     await page.locator('.marketing-page').evaluate(el => el.scrollTo({ top: 0, behavior: 'instant' }));
     assert.equal(await page.locator('.marketing-page').evaluate(el => el.scrollWidth <= el.clientWidth), true, `No overflow at ${width}`);
-    assert.equal(await page.locator('.studio-marketing-art .studio-art img').evaluate(el => el.getAnimations().length), 0, 'Theme artwork has no autonomous animation');
+    assert.equal(await page.locator('.studio-marketing-art .studio-art img').first().evaluate(el => el.getAnimations().length), 0, 'Theme artwork has no autonomous animation');
     await page.locator('#showcase').evaluate(el => el.scrollIntoView({ block: 'start' }));
     await page.waitForTimeout(450);
     const box = await page.locator('.motion-more').boundingBox();

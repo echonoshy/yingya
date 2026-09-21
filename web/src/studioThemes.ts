@@ -1,6 +1,6 @@
-/** A fixed paper UI; the other illustration families remain in the asset library. */
-export const studioTheme = { id: "paper", name: "纸上放映室", material: "paper" } as const;
-export type StudioArtworkVariant = "home" | "projects" | "assets" | "access" | "account" | "workspace";
+/** A unified comic studio; legacy illustration families remain archived. */
+export const studioTheme = { id: "comic", name: "小鬼片场", material: "comic" } as const;
+export type StudioArtworkVariant = "home" | "marketing" | "projects" | "assets" | "access" | "account" | "workspace" | "empty";
 export const studioThemeSessionKey = "yingya-studio-theme-v1";
 
 /** Migrate only the former theme preference, never drafts or account settings. */

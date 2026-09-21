@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/noto-sans-sc";
-import "@fontsource-variable/noto-serif-sc";
 import "@fontsource/fragment-mono";
 import { WebsiteRouter } from "./marketing/WebsiteRouter";
 import "./styles.css";

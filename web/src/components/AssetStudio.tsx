@@ -254,7 +254,7 @@ export function AssetStudio({ initialTool, accountPanel, models, selection, voic
             {batchStatus ? <p className="asset-batch-status" role="status"><Check/>{batchStatus}</p> : null}
             {filtered.length ? <div className="asset-mixed-grid">{filtered.map(asset => <AssetCard key={asset.id} asset={asset} folder={folders.find(folder => folder.id === asset.folderId)} inspected={asset.id === selectedId} checked={batchSelectedSet.has(asset.id)} selectionMode={selectionMode} onOpen={() => { setSelectedId(asset.id); setInspectorOpen(true); }} onToggle={() => toggleBatchSelection(asset.id)}/>)}</div> : null}
             {!loading && !filtered.length ? <div className={`asset-empty-state ${sourceFilter === "generated" && !keyword ? "asset-empty-state--generated" : ""}`}>
-              {keyword ? <MagnifyingGlass/> : <StudioArtwork variant="assets"/>}
+              <StudioArtwork variant={keyword ? "empty" : "assets"}/>
               <h2>{keyword ? "没有匹配的素材" : sourceFilter === "generated" ? "这里还没有 AI 生成的素材" : "这个分类还没有素材"}</h2>
               <p>{keyword ? "尝试更换关键词或筛选条件。" : sourceFilter === "generated" ? "描述你想要的画面，生成图片后会自动保存到素材库。" : sourceFilter === "uploaded" ? "上传图片、视频、音频或文件，集中整理创作素材。" : "上传已有文件，或生成一张新的图片。"}</p>
               <div className="asset-empty-actions">
@@ -277,7 +277,7 @@ export function AssetStudio({ initialTool, accountPanel, models, selection, voic
               {selected.prompt ? <section><h3>提示词</h3><p>{selected.prompt}</p></section> : null}
               <section><h3>信息</h3><dl><div><dt>类型</dt><dd>{assetTypeLabel(selected)}（{assetFormat(selected)}）</dd></div><div><dt>来源</dt><dd>{selected.kind === "generated" ? <><Sparkle/>AI 生成</> : <><UploadSimple/>已上传</>}</dd></div><div><dt>文件夹</dt><dd><select aria-label="素材文件夹" value={selected.folderId ?? ""} onChange={event => void moveSelected(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></dd></div><div><dt>添加时间</dt><dd>{formatDate(selected.createdAt)}</dd></div></dl></section>
               <div className="asset-manage-actions"><button onClick={() => manage("rename-asset", selected.id, assetName(selected))}><PencilSimple/>重命名素材</button><button onClick={() => manage("delete-asset", selected.id, assetName(selected))}><Trash/>删除素材</button></div>
-              <a className="asset-download" href={selected.url} download={fileNameFor(selected)}><DownloadSimple/>下载文件</a></> : <div className="asset-empty-state"><FileIcon/><p>选择一项素材查看详情</p></div>}
+              <a className="asset-download" href={selected.url} download={fileNameFor(selected)}><DownloadSimple/>下载文件</a></> : <div className="asset-empty-state"><StudioArtwork variant="assets"/><p>选择一项素材查看详情</p></div>}
           </aside> : null}
         </div>
       </>}

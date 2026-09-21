@@ -4,7 +4,7 @@ import { featuredIntro, posterPath, videoPath, type VideoExample } from './examp
 import { BrandLogo as Brand } from './BrandLogo';
 import { MotionGallery } from './MotionGallery';
 import { WorkflowShowcase } from './WorkflowShowcase';
-import { StudioArtwork } from '../components/StudioTheme';
+import { HeroPlayground } from './HeroPlayground';
 import './marketing.css';
 import './workshopHome.css';
 
@@ -49,8 +49,8 @@ export function MarketingPage() {
     <header className="marketing-header"><div className="marketing-header-inner"><Brand /><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看映芽源码"><GithubLogo weight="fill" /><span>GitHub</span></a><a className="marketing-login" href="/app">登录</a></div></header>
     <main id="main-content" tabIndex={-1}>
       <section className="marketing-hero" aria-labelledby="marketing-title">
-        <div className="marketing-hero-copy"><h1 id="marketing-title">对话式视频制作</h1><div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div></div>
-        <div className="studio-marketing-art"><StudioArtwork variant="home"/></div>
+        <div className="marketing-hero-copy"><h1 id="marketing-title" aria-label="对话式视频制作">{Array.from("对话式视频制作").map((character, index) => <span key={index} aria-hidden="true">{character}</span>)}</h1><div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div></div>
+        <div className="studio-marketing-art"><HeroPlayground/></div>
       </section>
       <MotionGallery onOpen={setSelected} suspended={Boolean(selected)} reduced={reduced} />
       <WorkflowShowcase />

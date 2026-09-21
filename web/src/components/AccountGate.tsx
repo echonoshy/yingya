@@ -1,7 +1,7 @@
+import { StudioArtwork } from "./StudioTheme";
 import { AvatarImage, AvatarPicker, useAccountAvatar } from "./AvatarPicker";
 import { animateElement } from "./motion";
 import { AppNavigation } from "./AppNavigation";
-import { StudioArtwork } from "./StudioTheme";
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChartBar, CircleNotch, ShieldCheck, Receipt, SignOut, UserCircle } from '@phosphor-icons/react';
 import { z } from 'zod';
@@ -70,7 +70,7 @@ function UsagePage({onBack}:{onBack:()=>void}) {
  void call(`/api/usage?${params}`,{signal:controller.signal}).then(value=>{if(!disposed)setData(usageSchema.parse(value));}).catch(e=>{if(!disposed)setError(e.message);}).finally(()=>{if(!disposed)setLoading(false);});return()=>{disposed=true;controller.abort();};},[since,until,model,refresh]);
  const rows=data?.users??[];
  const sum=(key:'requests'|'executions'|'totalTokens'|'unknownExecutions')=>rows.reduce((n,row)=>n+row[key],0);
- return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><span>创作记录</span><StudioArtwork variant="account"/><h1>用量统计</h1><p>查看当前账号的请求次数与模型实际返回的 token 用量。</p></div></div>
+ return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><StudioArtwork variant="account"/><span>创作记录</span><h1>用量统计</h1><p>查看当前账号的请求次数与模型实际返回的 token 用量。</p></div></div>
  <div className="usage-toolbar"><b>我的用量</b><button className="usage-refresh" disabled={loading} onClick={()=>setRefresh(v=>v+1)}>{loading?'正在更新…':'刷新数据'}</button></div>
  <QuotaOverview refresh={refresh}/>
  <div className="usage-filters"><label>开始日期<input type="date" value={since} onChange={e=>{const since=e.target.value;setDateRange(range=>({...range,since}));}}/></label><label>结束日期<input type="date" value={until} onChange={e=>{const until=e.target.value;setDateRange(range=>({...range,until}));}}/></label><UsageModelFilter models={data?.models ?? []} value={model} onChange={setModel}/></div>

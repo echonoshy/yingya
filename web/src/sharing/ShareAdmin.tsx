@@ -1,9 +1,9 @@
+import { StudioArtwork } from "../components/StudioTheme";
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { ArrowClockwise, CaretLeft, CaretRight, LinkBreak, MagnifyingGlass } from '@phosphor-icons/react';
 import { message, ShareError, shareDate, shareRequest, shareSchema, shareSize, shareStatus, type Share } from './api';
 import './sharing.css';
-import { StudioArtwork } from '../components/StudioTheme';
 
 export function ShareAdmin({ members, onAuthenticationError }: { members: { id: string; email: string }[]; onAuthenticationError: () => void }) {
   const [items, setItems] = useState<Share[]>([]), [offset, setOffset] = useState(0), [refresh, setRefresh] = useState(0), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [search, setSearch] = useState('');
@@ -20,7 +20,7 @@ export function ShareAdmin({ members, onAuthenticationError }: { members: { id: 
   const needle = search.trim().toLowerCase();
   const email = (owner: string) => members.find(value => value.id === owner)?.email || owner;
   const visible = items.filter(item => [item.title, item.id, item.projectId, email(item.ownerId)].some(value => value.toLowerCase().includes(needle)));
-  return <section className="studio-share-admin"><header className="admin-page-heading"><div><p>映芽 / 管理后台</p><StudioArtwork variant="account"/><h1>视频分享</h1></div><button className="admin-button" disabled={loading} onClick={() => setRefresh(value => value + 1)}><ArrowClockwise/>刷新</button></header>
+  return <section className="studio-share-admin"><header className="admin-page-heading"><div><p>映芽 / 管理后台</p><StudioArtwork variant="workspace"/><h1>视频分享</h1></div><button className="admin-button" disabled={loading} onClick={() => setRefresh(value => value + 1)}><ArrowClockwise/>刷新</button></header>
     <p className="share-help">管理公开的视频链接。下架后停止新的观看请求，操作会保留记录。</p>
     <label className="share-admin-search"><MagnifyingGlass/><input aria-label="搜索当前页分享" placeholder="搜索当前页标题、分享 ID、项目 ID 或账号" value={search} onChange={event => setSearch(event.target.value)}/></label>
     {error ? <p className="admin-error" role="alert">{error}</p> : null}{notice ? <p className="share-notice" role="status">{notice}</p> : null}

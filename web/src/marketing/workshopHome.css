@@ -1,4 +1,5 @@
-.workshop-home { --font-hero: var(--font-editorial); }
+@font-face { font-family: "Yingya Comic Title"; src: url("/marketing/fonts/yingya-comic-title-v1.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+.workshop-home { --text-hero-comic: clamp(48px, 5.4vw, 76px); --font-hero: "Yingya Comic Title", var(--font-editorial); }
 .workshop-home .marketing-header { position: relative; border: 0; }
 .workshop-home .marketing-header-inner { max-width: 1372px; height: 92px; padding: 0 60px; gap: 36px; }
 .workshop-home .marketing-brand-toy { width: 126px; }
@@ -7,8 +8,15 @@
 .workshop-home .marketing-login { min-width: 104px; background: var(--primary); color: var(--canvas); border: 1px solid var(--primary); }
 .workshop-home .marketing-hero { max-width: 1372px; min-height: 0; margin: auto; padding: 30px 0 0; display: block; }
 .workshop-home .marketing-hero-copy { position: relative; z-index: 1; width: 100%; text-align: center; padding: 0 24px; }
-.workshop-home .marketing-hero-copy h1 { font-size: var(--text-display); line-height: 1.25; font-family: var(--font-hero); font-weight: 500; font-synthesis: none; letter-spacing: -.02em; text-wrap: balance; }
-.workshop-home #marketing-title > span { display: inline-block; white-space: nowrap; }
+.workshop-home .marketing-hero-copy h1 { font-size: var(--text-hero-comic); line-height: 1.4; font-family: var(--font-hero); font-weight: 500; font-synthesis: none; letter-spacing: .025em; text-wrap: balance; }
+.workshop-home #marketing-title { white-space: nowrap; }
+.workshop-home #marketing-title > span { display: inline-block; transform: rotate(-4deg); }
+.workshop-home #marketing-title > span:nth-child(2) { transform: translateY(-.08em) rotate(5deg); }
+.workshop-home #marketing-title > span:nth-child(3) { transform: translateY(.03em) rotate(-6deg); }
+.workshop-home #marketing-title > span:nth-child(4) { transform: translateY(-.06em) rotate(4deg); }
+.workshop-home #marketing-title > span:nth-child(5) { transform: rotate(-3deg); }
+.workshop-home #marketing-title > span:nth-child(6) { transform: translateY(-.08em) rotate(5deg); }
+.workshop-home #marketing-title > span:nth-child(7) { transform: rotate(-5deg); }
 .workshop-home .marketing-hero-copy > p { font-size: clamp(17px, 1.9vw, 26px); line-height: 1.6; margin: 16px auto 0; text-wrap: balance; }
 .workshop-home .marketing-hero-actions { justify-content: center; gap: 18px; margin-top: 26px; }
 .workshop-home .marketing-hero-actions > * { min-width: 172px; min-height: 50px; }
@@ -34,7 +42,7 @@
   .workshop-home .marketing-header .marketing-github { margin-left: auto; font-size: var(--text-control); }
   .workshop-home .marketing-login { min-width: 62px; }
   .workshop-home .marketing-hero { padding-top: 24px; }
-  .workshop-home .marketing-hero-copy h1 { font-size: 32px; }
+  .workshop-home .marketing-hero-copy h1 { font-size: clamp(36px, 9vw, 56px); }
   .workshop-home .marketing-hero-copy > p { font-size: var(--text-body); margin-top: 14px; }
   .workshop-home .marketing-hero-actions { gap: 12px; margin-top: 22px; }
   .workshop-home .marketing-hero-actions > * { min-width: 0; min-height: 46px; padding: 10px 18px; }
@@ -47,3 +55,35 @@
 .studio-illustration { animation: none; transition: none; }
 
 .workshop-home .marketing-header .marketing-github { margin-left: auto; }
+
+.workshop-home #motion-gallery-title { font-size: var(--text-title); letter-spacing: 0; }
+/* Rigid raster characters; the independent film ribbon alone bends. */
+.studio-marketing-art .hero-connected-scene { position: relative; width: 100%; aspect-ratio: 3 / 1; pointer-events: auto; isolation: isolate; overflow-anchor: none; }
+.hero-scene-props, .hero-ribbon { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.hero-scene-props { z-index: 0; }
+.hero-ribbon { z-index: 1; }
+.hero-scene-character { position: absolute; z-index: 2; padding: 0; border: 0; border-radius: var(--radius-panel); background: transparent; cursor: pointer; min-width: 44px; min-height: 44px; -webkit-tap-highlight-color: transparent; touch-action: pan-y pinch-zoom; }
+.hero-actor-motion { display: block; width: 100%; height: 100%; transform-origin: 50% 85%; pointer-events: none; }
+.hero-actor-motion img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; }
+.hero-scene-character--film, .hero-ribbon-handle { cursor: grab; }
+.hero-ribbon-handle { position: absolute; z-index: 3; left: 59%; top: 56%; width: 12%; height: 27%; min-width: 44px; min-height: 44px; padding: 0; background: transparent; border: 0; border-radius: var(--radius-panel); touch-action: pan-y pinch-zoom; }
+.hero-connected-scene[data-playing="dragging"] [data-tug] { cursor: grabbing; }
+.hero-scene-character:focus-visible, .hero-ribbon-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.hero-connected-scene .hero-ribbon-texture, .hero-connected-scene .hero-scene-fallback { display: none; }
+.hero-connected-scene:not([data-engine="gsap-rigid"]) > :not(.hero-scene-fallback) { visibility: hidden; }
+.hero-connected-scene:not([data-engine="gsap-rigid"]) .hero-scene-fallback { display: block; position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* The ghost, ivory prop and foreground hand share the same aligned canvas. */
+.hero-scene-character--play .hero-actor-motion { position: relative; }
+.hero-toss-body, .hero-toss-key, .hero-toss-arm { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hero-toss-body { transform-origin: 30% 80%; }
+.hero-toss-key { transform-origin: 67% 54%; }
+.hero-toss-arm { transform-origin: 25% 59%; }
+
+/* Reuse the original props in two depth planes, with the middle kept clear. */
+.hero-depth-props { position: absolute; inset: 0; pointer-events: none; }
+.hero-depth-actor { display: block; width: 100%; height: 100%; pointer-events: none; }
+.hero-depth-props--rear { clip-path: inset(0 0 0 60%); filter: blur(.65px); opacity: .92; }
+.hero-depth-props--front { clip-path: inset(0 55% 0 0); }
+.hero-depth-props--front, .hero-actor-motion { filter: drop-shadow(0 10px 9px color-mix(in srgb, var(--text) 10%, transparent)); }

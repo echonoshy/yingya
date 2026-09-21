@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { Check, CircleNotch, Shuffle, UploadSimple, UserCircle, X } from "@phosphor-icons/react";
 import { z } from "zod";
 import { sessionFetch } from "../session";
+import comicAvatar from "../assets/comic/avatar.webp";
 import "../avatars.css";
 
 export const avatarPresets = [
-  { id: "cat", name: "奶油猫猫" }, { id: "bunny", name: "软软兔兔" },
+  { id: "cat", name: "捣蛋小鬼" }, { id: "bunny", name: "软软兔兔" },
   { id: "fox", name: "小狐狸" }, { id: "panda", name: "熊猫团子" },
 ] as const;
 const avatarSchema = z.object({ presetId: z.string().nullable(), url: z.string() });
@@ -50,10 +51,12 @@ export function useAccountAvatar(userId?: string) {
 }
 
 export function AvatarImage({ url, className = "" }: { url?: string; className?: string }) {
+  // Keep the persisted preset ID compatible; uploaded account photos retain their own URL.
+  const imageUrl = url === presetUrl("cat") ? comicAvatar : url;
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [url]);
+  useEffect(() => setFailed(false), [imageUrl]);
   return <span className={`account-avatar ${className}`} aria-hidden="true">
-    {url && !failed ? <img src={url} alt="" draggable={false} onError={() => setFailed(true)} /> : <UserCircle />}
+    {imageUrl && !failed ? <img src={imageUrl} alt="" draggable={false} onError={() => setFailed(true)} /> : <UserCircle />}
   </span>;
 }
 

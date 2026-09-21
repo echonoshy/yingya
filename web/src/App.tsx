@@ -1,5 +1,5 @@
 import { AppNavigation } from "./components/AppNavigation";
-import { PaperAccent, StudioArtwork } from "./components/StudioTheme";
+import { StudioArtwork } from "./components/StudioTheme";
 
 import { ComposerMoreMenu } from "./components/ComposerMoreMenu";
 
@@ -87,11 +87,11 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
     setProjects(current => current.map(project => project.id === id ? { ...project, ...updated } : project));
     setActive(current => current?.id === id ? { ...current, ...updated } : current);
   }
-  if (offline && !active) return <div className="state-screen"><CloudSlash/><h1>本地服务未连接</h1><p>项目仍保存在电脑上。服务恢复后可继续。</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
+  if (offline && !active) return <div className="state-screen"><StudioArtwork variant="empty"/><CloudSlash/><h1>本地服务未连接</h1><p>项目仍保存在电脑上。服务恢复后可继续。</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
   const showCreate = () => { navigate({ section: "create" }); void refreshProjects(); };
   const showAssets = () => navigate({ section: "assets" });
   const showProjects = () => { navigate({ section: "create", homeSection: "projects" }); void refreshProjects(); };
-  const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
+  const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><StudioArtwork variant="workspace"/><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
     : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showProjects}/>
     : route.section === "assets" ? <AssetStudio key={route.assetTool ?? "library"} initialTool={route.assetTool} accountPanel={accountPanel} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
     : <StartScreen onCreate={showCreate} homeSection={route.homeSection} accountPanel={accountPanel} openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
@@ -211,6 +211,7 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
       <div className="home-scroll">
         {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
         {!projectsPage ? <section className="home-create" aria-label="新建视频">
+          <header className="creation-intro"><h1>今天想做什么视频？</h1><p>把想法、资料和素材，变成讲得清楚的视频</p></header>
           <StudioArtwork variant="home"/>
           <h2 id="create-prompt-label" className="sr-only">新建视频</h2>{prompt && !promptSaved ? <p className="form-error" role="status">草稿保存失败，请勿关闭页面</p> : null}
           <ComposerForm className="composer composer--hero" onSubmit={submit} filesDisabled={busy || fileDraftStatus === "loading" || acceptedCreation} onFiles={added => setFiles(current => [...current, ...added])}>
@@ -218,7 +219,6 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
           <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<AssetRoleSelect name={file.name} value={assetRoles[fileRoleKey(file)]} onChange={role => setAssetRoles(current => ({ ...current, [fileRoleKey(file)]: role }))}/><button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
           <div className="composer-tools"><div className="home-creation-options"><input ref={fileRef} hidden multiple type="file" onChange={event => { setFiles(current => [...current, ...Array.from(event.target.files ?? [])]); event.target.value = ""; }}/><ComposerMoreMenu onUpload={() => fileRef.current?.click()} onSelectAssets={() => setLibraryOpen(true)} selectedCount={libraryIds.length} voiceId={voiceId} onVoice={onVoice} running={busy} narration={settings.audioMode === "narration" || settings.audioMode === "replace"} settings={<><label className="composer-setting-field">画幅<select aria-label="视频画幅" value={aspectAuto ? "auto" : aspectRatio} onChange={event => { setAspectAuto(event.target.value === "auto"); if (event.target.value !== "auto") setAspectRatio(event.target.value as typeof aspectRatio); }}><option value="auto">自动选择</option><option value="9:16">9:16 竖屏</option><option value="16:9">16:9 横屏</option><option value="1:1">1:1 方形</option></select></label><CreationSettings includeLibrary={false} value={settings} onChange={setSettings} selectedIds={libraryIds} onSelect={setLibraryIds} roles={assetRoles} onRole={(id, role) => setAssetRoles(current => ({ ...current, [id]: role }))}/></>}/><select className="home-aspect-select" aria-label="首页视频画幅" value={aspectAuto ? "auto" : aspectRatio} onChange={event => { setAspectAuto(event.target.value === "auto"); if (event.target.value !== "auto") setAspectRatio(event.target.value as typeof aspectRatio); }}><option value="auto">自动画幅</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option></select><ModelSelector models={models} value={selection} onChange={onSelection}/></div><button className="send-button" disabled={(!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || fileDraftStatus === "loading"} aria-label={acceptedCreation ? "继续打开任务" : "生成方案"}><span>{acceptedCreation ? "继续打开任务" : "生成方案"}</span><ArrowRight weight="bold"/></button></div>
           </ComposerForm>
-          <PaperAccent/>
           {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加。</p> : files.length ? <p className="draft-save-status">{fileDraftStatus === "saved" ? "附件已保存" : "正在保存附件…"}</p> : null}
 
           {acceptedCreation ? <p className="draft-save-status" role="status">任务已提交，继续打开可恢复制作进度。</p> : null}

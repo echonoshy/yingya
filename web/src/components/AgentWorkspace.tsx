@@ -2809,7 +2809,7 @@ function ArtifactCanvas({
                         />
                       ) : (
                         <div className="planning-empty">
-                          <FileText />
+                          <StudioArtwork variant="workspace"/>
                           <h3>
                             {project.manifest.phase === "plan_review"
                               ? "制作方案待确认"
@@ -3172,7 +3172,7 @@ function ProjectAssetsPanel({
           </div>
         ) : (
           <div className="workbench-empty">
-            <File />
+            <StudioArtwork variant="empty"/>
             <b>这个文件夹暂无素材</b>
             <p>可前往素材工坊上传任意类型的参考文件。</p>
           </div>
