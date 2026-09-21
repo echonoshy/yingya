@@ -4,7 +4,7 @@
 .cap-modal button { font:inherit; cursor:pointer; border:0; color:inherit; }
 .cap-modal button:disabled { opacity:.45; cursor:not-allowed; }
 .cap-modal button svg { width:18px; height:18px; flex-shrink:0; }
-.cap-modal :is(button,input,summary):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.cap-modal :is(button,summary):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .cap-modal .cap-primary { background:var(--primary); color:var(--canvas); }
 .cap-modal-actions > button { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:8px 16px; border-radius:var(--radius-control); white-space:nowrap; }
 .cap-modal .reference-picker { padding:0; }

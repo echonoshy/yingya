@@ -31,7 +31,7 @@
 .admin-search { display: flex; align-items: center; flex: 0 1 360px; gap: 10px; padding: 0 12px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); }
 .admin-search svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); }
 .admin-search input { min-width: 0; width: 100%; height: 42px; border: 0; background: transparent; color: var(--text); font-size: var(--text-search); outline: none; }
-.admin-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.admin-search:focus-within { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .admin-filters > select { height: 44px; min-width: 120px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font-size: var(--text-control); }
 .admin-filters > span { margin-left: auto; font-size: var(--text-caption); color: var(--muted); white-space: nowrap; }
 .admin-table-scroll { overflow: auto; width: 100%; min-height: 220px; }
@@ -98,7 +98,7 @@
 .admin-login-input { display: flex; align-items: center; gap: 12px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-control); }
 .admin-login-input input { min-width: 0; width: 100%; height: 48px; padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--text-input); outline: none; }
 .admin-login-input svg { width: 20px; height: 20px; color: var(--muted); flex-shrink: 0; }
-.admin-login-input:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.admin-login-input:focus-within { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .admin-login form > button { width: 100%; margin-top: 28px; min-height: 46px; }
 .admin-return { display: inline-flex; align-items: center; gap: 8px; margin-top: 28px; color: var(--muted); font-size: var(--text-control); text-decoration: none; }
 .admin-login > footer { text-align: center; color: var(--dim); font-size: var(--text-caption); }

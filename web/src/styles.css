@@ -109,7 +109,7 @@ button, textarea, select, input { font: inherit; }
 button { color: inherit; }
 /* Product controls use a compact baseline even when their parent is a reading surface. */
 :where(.account-shell) button { font-size: var(--text-control); font-weight: var(--weight-medium); }
-button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--purple-300); outline-offset: 2px; }
+button:focus-visible, input:is([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"]):focus-visible { outline: 2px solid var(--purple-300); outline-offset: 2px; }
 button:disabled { opacity: .42; cursor: not-allowed; }
 button:not(:disabled) { cursor: pointer; }
 ::selection { background: var(--purple-500); color: white; }
@@ -247,7 +247,7 @@ button:not(:disabled) { cursor: pointer; }
 .thread-title-button svg { flex: 0 0 auto; width: 14px; color: transparent; transition: color var(--motion-standard) ease; }
 .thread-title-button:hover svg, .thread-title-button:focus-visible svg { color: var(--dim); }
 .thread-title-editor { display: flex; align-items: center; gap: 5px; }
-.thread-title-editor input { width: min(420px, 42vw); height: 34px; padding: 0 10px; border: 1px solid var(--purple-500); border-radius: var(--radius-control); background: var(--prey-900); color: var(--text); font-size: 15px; font-weight: 620; outline: none; }
+.thread-title-editor input { width: min(420px, 42vw); height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--prey-900); color: var(--text); font-size: 15px; font-weight: 620; outline: none; }
 .thread-title-editor button { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--prey-600); border-radius: 8px; background: var(--prey-800); color: var(--muted); }
 .thread-title-editor button:first-of-type { border-color: var(--purple-500); color: var(--purple-300); }
 .thread-title-editor svg { width: 14px; }
@@ -473,7 +473,7 @@ button:not(:disabled) { cursor: pointer; }
 .render-history-actions svg { width: 13px; height: 13px; }
 .artifact-list > .section-heading { margin-bottom: 10px; }
 .artifact-search { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); }
-.artifact-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.artifact-search:focus-within { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .artifact-search > svg { flex: 0 0 18px; color: var(--dim); }
 .artifact-search input { min-width: 0; width: 100%; height: 44px; padding: 0; border: 0; outline: none; background: transparent; font: var(--text-search) var(--font-ui); color: var(--text); }
 .artifact-search button { display: grid; place-items: center; flex: 0 0 32px; height: 32px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--muted); }
@@ -780,7 +780,7 @@ button:not(:disabled) { cursor: pointer; }
 .asset-main { height: var(--app-height, 100dvh); overflow: hidden; background: var(--canvas); }
 .asset-inspector button, .asset-drawer button { border: 0; background: transparent; }
 .asset-search { width: min(260px, 24vw); height: 38px; padding: 0 11px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--dim); }
-.asset-search:focus-within { border-color: var(--accent-text); outline: 2px solid color-mix(in srgb, var(--accent) 18%, transparent); }
+.asset-search:focus-within { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .asset-search svg { flex: 0 0 auto; width: 16px; }
 .asset-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-size: var(--text-search); }
 .asset-search kbd { white-space: nowrap; color: var(--dim); font: var(--text-caption) var(--font-ui); }
@@ -1329,7 +1329,7 @@ button:not(:disabled) { cursor: pointer; }
 .home-project-heading { display: flex; align-items: baseline; gap: 12px; }
 .home-project-heading > span { color: var(--dim); font-size: 12px; }
 .home-project-search { width: 240px; min-height: 40px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--dim); }
-.home-project-search:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.home-project-search:focus-within { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .home-project-search > svg { width: 17px; height: 17px; flex-shrink: 0; }
 .home-project-search input { width: 100%; min-width: 0; padding: 8px 0; outline: none; border: 0; background: transparent; color: var(--text); font-size: var(--text-search); }
 .home-project-search input::placeholder { color: var(--dim); }
@@ -1453,7 +1453,7 @@ button:not(:disabled) { cursor: pointer; }
 }
 .asset-folder-form label { display: block; margin-bottom: 9px; font-size: 12px; font-weight: 680; }
 .asset-folder-form input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; outline: 0; background: var(--canvas); font-size: 12px; }
-.asset-folder-form input:focus { border-color: var(--accent-text); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
+.asset-folder-form input:focus { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .asset-folder-form > div { margin-top: 10px; display: flex; justify-content: flex-end; gap: 7px; }
 .asset-folder-form button { min-height: 33px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas); font-size: var(--text-caption); }
 .asset-folder-form button:last-child { border-color: var(--primary); background: var(--primary); color: #fff; }
@@ -2100,10 +2100,12 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 .login-content h1 { font-size: var(--text-display); font-weight: 600; letter-spacing: -.02em; line-height: 1.3; margin: 16px 0; }
 .login-intro { color: var(--muted); font-size: var(--text-body); line-height: 1.8; margin: 0 0 32px; }
 .login-content form > label { display: block; margin-bottom: 10px; font-size: var(--text-control); font-weight: 500; }
-.login-input { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 0 16px; }
-.login-input:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.login-input { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: var(--radius-control); padding: 0 16px; background: var(--canvas); }
+.login-input:focus-within { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .login-input svg { color: var(--muted); width: 20px; height: 20px; }
 .login-input input { min-width: 0; width: 100%; height: 52px; border: 0; outline: 0; background: transparent; font-size: var(--text-input); color: var(--text); }
+/* Cover the browser's autofill tint with a flat canvas fill, including on focus. */
+.login-input input:is(:autofill, :-webkit-autofill) { box-shadow: inset 0 0 0 1000px var(--canvas); -webkit-text-fill-color: var(--text); caret-color: var(--text); }
 .login-submit { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 16px; border: 0; border-radius: var(--radius-control); background: var(--primary); color: var(--canvas); font-size: var(--text-body); font-weight: 500; }
 .login-submit:disabled { opacity: .6; cursor: wait; }
 .login-notice { margin-top: 28px; padding: 16px; background: var(--surface); border-radius: var(--radius-control); font-size: var(--text-caption); line-height: 1.7; color: var(--muted); }
@@ -2219,7 +2221,7 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 /* Text and frame feedback share the same editable card. */
 .feedback-time-icon { flex: 0 0 24px; width: 24px; height: 24px; color: var(--muted); }
 .visual-feedback-card textarea { transition-property: none; display: block; width: 100%; min-height: 36px; resize: none; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font: inherit; font-size: var(--text-field); line-height: 1.6; }
-.visual-feedback-card textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.visual-feedback-card textarea:focus-visible { border-color: var(--line-strong); outline: none; box-shadow: none; }
 .feedback-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
 .feedback-card-actions button { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 6px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--accent-text); font-size: var(--text-caption); }
 .feedback-card-actions button:focus-visible { outline: 2px solid var(--accent); }
@@ -2463,4 +2465,12 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
  .model-menu { grid-template-columns: minmax(0, 1fr) 100px; }
  .model-menu-primary, .model-menu-secondary { min-width: 0; }
  .model-menu button { overflow-wrap: anywhere; }
+}
+
+/* All editable fields use their existing border for focus, never an outer ring.
+   :root keeps this policy stable across lazily loaded form styles. Borderless
+   inputs use their enclosing search/login/composer focus-within boundary. */
+:root :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"]), textarea, select, [contenteditable="true"]):focus {
+  outline: none;
+  border-color: var(--line-strong);
 }
