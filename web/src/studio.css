@@ -1,0 +1,102 @@
+/* Shared light studio navigation and layout; page artwork lives in studio-themes.css. */
+:root {
+  --studio-navigation-width: 248px;
+  --studio-shadow: 0 8px 32px color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.studio-shell { position: relative; isolation: isolate; background: var(--canvas); }
+.home-layout.studio-shell, .asset-library-layout.studio-shell { grid-template-columns: var(--studio-navigation-width) minmax(0, 1fr); }
+.studio-shell--login .login-content { position: relative; border-radius: var(--radius-panel); background: color-mix(in srgb, var(--canvas) 94%, transparent); padding: 28px; width: min(100%, 476px); }
+.studio-shell--login .login-brand { position: relative; }
+.studio-shell .home-main, .studio-shell .asset-main { background: transparent; }
+.studio-shell .home-main { position: relative; }
+.studio-shell--home .home-scroll { display: grid; align-content: center; padding: 72px 128px 72px 24px; }
+.studio-shell--home .home-create { width: min(880px, 100%); max-width: 880px; margin: 0 auto; background: transparent; }
+.studio-shell--home .home-create .composer { padding: 24px; border-radius: var(--radius-panel); box-shadow: var(--studio-shadow); background: var(--canvas); }
+.studio-shell--home .home-create textarea { min-height: 128px; padding: 4px 0 20px; font-size: var(--text-input); }
+.studio-shell--home .home-create .composer-tools { gap: 12px; }
+.studio-shell--home .home-creation-options { min-width: 0; }
+.studio-shell--home .home-creation-options > .home-aspect-select { flex: 0 0 auto; width: 104px; min-width: 104px; padding-inline: 10px; white-space: nowrap; }
+.studio-shell--home .model-trigger { max-width: 190px; }
+.studio-shell--home .send-button { padding-inline: 18px; }
+.studio-shell--home .open-project-error { width: min(880px, 100%); margin: 0 auto 16px; }
+.studio-shell--library .home-scroll { padding-top: 52px; }
+.studio-shell--library .home-projects { border-top: 0; padding-top: 0; }
+.studio-shell--library .home-project-heading h1 { margin: 0; font-size: var(--text-title); font-weight: 600; }
+.studio-shell--library .asset-library-header { background: transparent; }
+.studio-shell .app-navigation.home-nav { z-index: 30; padding: 20px 12px 20px 20px; border: 0; background: transparent; }
+.app-navigation-surface { flex-shrink: 0; padding: 16px 12px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--background) 92%, transparent); box-shadow: var(--studio-shadow); }
+.app-navigation-surface .home-brand { padding: 0 8px; height: 44px; }
+.app-navigation-surface .home-brand img { width: 30px; height: 30px; }
+.app-navigation-surface .home-brand b { font-size: 20px; }
+.app-navigation-surface > .home-new-button { width: 100%; min-height: 44px; margin: 18px 0 12px; font-size: var(--text-control); }
+.app-navigation-surface > nav.app-primary-navigation { margin: 0; gap: 4px; }
+.app-navigation-surface > nav button { font-weight: 500; padding-inline: 10px; }
+.app-navigation .app-navigation-extra { min-height: 0; overflow: auto; padding: 12px 8px; margin-top: 16px; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--surface); }
+.app-account-dock { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 20px; }
+.app-account-dock .account-panel { position: relative; inset: auto; margin: 0; padding: 0; border: 0; }
+.app-account-dock .account-panel > summary { gap: 14px; padding: 8px; min-height: 44px; background: color-mix(in srgb, var(--canvas) 92%, transparent); }
+.app-account-dock .account-identity { display: none; }
+.app-account-dock .account-panel > summary > svg:first-child { width: 30px; height: 30px; color: var(--text); }
+.studio-motion-toggle { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: var(--radius-control); background: var(--canvas); color: var(--muted); cursor: pointer; }
+.studio-motion-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.studio-motion-toggle svg { width: 16px; height: 16px; }
+.studio-motion-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.studio-shell .app-navigation .account-menu { z-index: 80; }
+.studio-shell > .usage-page, .studio-shell > .billing-page { position: relative; background: transparent; }
+/* A small material accent in the brand area; the conversation/preview remain plain. */
+.knowledge-workspace .project-header-brand { border-radius: var(--radius-control); }
+.knowledge-workspace .project-back { border-radius: var(--radius-control); }
+@media (min-width: 801px) {
+  .studio-shell .asset-main--library { padding-top: 12px; }
+}
+@media (max-width: 1100px) and (min-width: 801px) {
+  :root { --studio-navigation-width: 196px; }
+  .studio-shell--home .home-scroll { padding-inline: 28px; }
+  .studio-shell--home .model-trigger { max-width: 140px; }
+}
+@media (max-width: 800px) {
+  .home-layout.studio-shell, .asset-library-layout.studio-shell { display: block; }
+  .studio-shell .app-navigation.home-nav { position: sticky; top: 0; padding: 8px 60px 8px 12px; min-height: 64px; height: auto; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0; background: var(--canvas); border-bottom: 1px solid var(--line); }
+  .app-navigation-surface { display: flex; align-items: center; flex: 1; gap: 6px; min-width: 0; height: 44px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .app-navigation-surface .home-brand { padding: 0; gap: 0; height: 40px; }
+  .studio-shell .app-navigation .home-brand b { display: none; }
+  .app-navigation-surface .home-brand img { width: 28px; height: 28px; }
+  .app-navigation-surface > .home-new-button { width: 38px; min-height: 38px; padding: 0; margin: 0 2px; }
+  .app-navigation-surface > .home-new-button span { display: none; }
+  .app-navigation-surface > nav.app-primary-navigation { display: flex; margin: 0; }
+  .app-navigation-surface > nav.app-primary-navigation button { width: 36px; min-height: 40px; padding: 0; justify-content: center; }
+  .app-account-dock { order: 1; flex-shrink: 0; padding: 0; margin: 0 0 0 auto; gap: 2px; }
+  .app-account-dock .account-panel > summary { width: 40px; min-height: 40px; padding: 4px; }
+  .app-account-dock .account-menu { left: auto; right: 0; top: calc(100% + 12px); bottom: auto; }
+  .studio-motion-toggle { width: 40px; }
+  .app-navigation .app-navigation-extra { order: 2; flex-basis: 100%; width: 100%; margin-top: 8px; padding: 4px 8px; border-radius: var(--radius-control); }
+  .studio-shell--home .home-main { height: auto; min-height: calc(100svh - 64px); }
+  .studio-shell--home .home-scroll { min-height: calc(100svh - 64px); height: auto; padding: 64px 20px 96px; }
+  .studio-shell--home .home-create { margin: 0; }
+  .studio-shell--home .home-create .composer { padding: 16px; }
+  .studio-shell--home .home-create textarea { min-height: 120px; }
+  .studio-shell--home .composer-tools { flex-wrap: nowrap; gap: 8px; }
+  .studio-shell--home .composer-tools > div:first-child { width: auto; flex: 1; flex-wrap: wrap; gap: 6px; }
+  .studio-shell--home .home-create .send-button { flex-shrink: 0; align-self: flex-end; width: 40px; min-width: 40px; height: 40px; padding: 0; }
+  .studio-shell--home .send-button span { display: none; }
+  .studio-shell--home .model-selector { flex: 0 0 100%; }
+  .studio-shell--home .model-trigger { width: 100%; max-width: 180px; }
+  .studio-shell--login .login-content { padding: 24px 12px; margin-block: auto; }
+  .studio-shell--library .home-scroll { padding: 28px 16px; }
+  .studio-shell--library .home-projects { scroll-margin-top: 80px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-motion-toggle { display: none; }
+}
+
+/* Keep all six material categories discoverable without sideways scrolling. */
+@media (max-width: 600px) {
+  .studio-shell .asset-media-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: auto; gap: 4px; padding: 8px 12px; overflow: visible; }
+  .studio-shell .asset-media-tabs button { min-width: 0; min-height: 40px; justify-content: center; gap: 6px; padding: 6px; border-radius: var(--radius-control); white-space: nowrap; }
+  .studio-shell .asset-media-tabs button.active { background: var(--selection); }
+  .studio-shell .asset-media-tabs button::after { display: none; }
+  .studio-shell .asset-media-tabs svg, .studio-shell .asset-media-tabs small { flex-shrink: 0; }
+}
+
+.studio-shell .asset-catalog { background: transparent; }
+.studio-shell .asset-card-item { background: var(--canvas); border-radius: var(--radius-control); }

@@ -16,8 +16,8 @@ try {
   assert.equal(await page.locator('a[href="https://github.com/echonoshy/yingya"]').count(), 2);
   assert.equal(await page.locator('.marketing-example').count(), 6);
   assert.equal(await page.locator('vite-error-overlay, [data-arm], .factory-viewport, .cinema-feed').count(), 0);
-  await page.waitForFunction(() => document.querySelector('.studio-illustration').complete && document.querySelector('.studio-illustration').naturalWidth > 0);
-  assert.equal(await page.locator('.studio-illustration').evaluate(i => getComputedStyle(i).animationName), 'none');
+  await page.waitForFunction(() => document.querySelector('.studio-marketing-art .studio-art img').complete && document.querySelector('.studio-marketing-art .studio-art img').naturalWidth > 0);
+  assert.equal(await page.locator('.studio-marketing-art .studio-art img').evaluate(i => getComputedStyle(i).animationName), 'none');
   await page.locator('#showcase').scrollIntoViewIfNeeded();
   await page.waitForFunction(() => [...document.querySelectorAll('.marketing-example img')].every(i => i.src.endsWith('.webp') && i.complete && i.naturalWidth));
   assert.equal(new Set(await page.locator('.marketing-example img').evaluateAll(imgs => imgs.map(i => i.src))).size, 6);
@@ -58,7 +58,7 @@ try {
     await page.setViewportSize({ width, height: width === 1440 ? 1400 : 1000 });
     await page.locator('.marketing-page').evaluate(el => el.scrollTo({ top: 0, behavior: 'instant' }));
     assert.equal(await page.locator('.marketing-page').evaluate(el => el.scrollWidth <= el.clientWidth), true, `No overflow at ${width}`);
-    assert.equal(await page.locator('.studio-illustration').evaluate(el => el.getAnimations().length), 0, 'Original hero fallback has no autonomous animation');
+    assert.equal(await page.locator('.studio-marketing-art .studio-art img').evaluate(el => el.getAnimations().length), 0, 'Theme artwork has no autonomous animation');
     await page.locator('#showcase').evaluate(el => el.scrollIntoView({ block: 'start' }));
     await page.waitForTimeout(450);
     const box = await page.locator('.motion-more').boundingBox();
@@ -105,6 +105,6 @@ try {
   await page.getByRole('link', { name: '返回映芽首页', exact: true }).click();
   await page.locator('#marketing-title').waitFor();
   assert.deepEqual(errors, []);
-  console.log('Marketing QA passed: centered reference layout, static hero fallback, 12 WebPs, six-card initial page, icon expansion/collapse, removed controls, concise four-step workflow, 12 dialog conversions, full intro, focus/copy, responsive widths, reduced motion, GitHub and login.');
+  console.log('Marketing QA passed: centered reference layout, selected theme artwork, 12 WebPs, six-card initial page, icon expansion/collapse, removed controls, concise four-step workflow, 12 dialog conversions, full intro, focus/copy, responsive widths, reduced motion, GitHub and login.');
   await context.close();
 } finally { await browser.close(); }

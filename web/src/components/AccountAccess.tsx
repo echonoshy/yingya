@@ -1,3 +1,4 @@
+import { StudioArtwork, StudioThemeControl } from "./StudioTheme";
 import { useEffect, useState, type FormEvent } from 'react';
 import { ArrowRight, CircleNotch, EnvelopeSimple, Key, LockKey, Prohibit } from '@phosphor-icons/react';
 import { z } from 'zod';
@@ -40,8 +41,8 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
       onLogin(z.object({ id: z.string(), email: z.string(), isAdmin: z.boolean() }).parse(body.user));
     } catch (error) { setError(message(error)); } finally { setBusy(false); }
   }
-  return <main className="login-screen"><a className="login-brand" href="/" aria-label="返回映芽首页"><img src="/brand/yingya-ghost.png" alt="" /><span>映芽</span></a>
-    <section className="login-content account-login"><h1>{mode === 'reset' ? '重置密码' : mode === 'register' ? '开启你的创作空间' : '回到你的创作空间'}</h1><p className="login-intro">映芽邀请内测</p>
+  return <main className="login-screen studio-shell studio-shell--login"><a className="login-brand" href="/" aria-label="返回映芽首页"><img src="/brand/yingya-ghost.png" alt="" /><span>映芽</span></a>
+    <section className="login-content account-login"><StudioArtwork variant="access"/><h1>{mode === 'reset' ? '重置密码' : mode === 'register' ? '开启你的创作空间' : '回到你的创作空间'}</h1><p className="login-intro">映芽邀请内测</p>
       <div className="account-tabs" role="group" aria-label="账号方式">{(['login', 'register'] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); setError(''); }}>{value === 'login' ? '登录' : '邀请注册'}</button>)}</div>
       <form onSubmit={event => void submit(event)}>
         <label htmlFor="login-email">邮箱地址</label><div className="login-input"><EnvelopeSimple /><input id="login-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} disabled={busy} /></div>
@@ -51,7 +52,7 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
         <button className="login-submit" disabled={busy}>{busy ? <CircleNotch className="spin" /> : <ArrowRight />}{busy ? '正在处理…' : mode === 'reset' ? '重置密码并登录' : mode === 'register' ? '注册并进入工作台' : '进入工作台'}</button>
         {error ? <p className="account-error" role="alert">{error}</p> : null}
       </form><p className="account-help">{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员。' : '忘记密码或首次激活已有内测账号，请联系管理员。'}</p>
-    </section><footer>映芽 · 对话式动画视频制作工作台</footer></main>;
+    </section><footer><StudioThemeControl compact/>映芽 · 对话式动画视频制作工作台</footer></main>;
 }
 
 export function QuotaOverview({ refresh }: { refresh: number }) {

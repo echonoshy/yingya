@@ -17,11 +17,12 @@ try{
  await page.route('**/files/plans/frame.jpg*',async route=>route.fulfill({contentType:'image/jpeg',body:await readFile('tests/fixtures/media/explainer.jpg')}));
  await page.route('**/checkpoint',route=>{confirmation=route.request().postDataJSON();return route.fulfill({json:{turnId:'confirmed',status:'queued',queueDepth:1}});});
  await page.route('**/turns',route=>{submitted=route.request().postDataJSON();return route.fulfill({json:{turnId:'feedback',status:'queued',queueDepth:1}});});
- await page.goto(base+'/app#/');await page.getByRole('heading',{name:'把内容讲清楚，做成可以分享的视频。'}).waitFor();
+ await page.goto(base+'/app#/');await page.locator('.home-create textarea').waitFor();
+ assert.equal(await page.locator('.home-projects, .knowledge-example-grid, .home-header').count(),0,'Home contains only the composer');
  for(const width of [390,320]) {
   await page.setViewportSize({width,height:844});
   await page.getByRole('button',{name:'我的作品',exact:true}).click();
-  const heading=await page.getByRole('heading',{name:'最近项目',exact:true}).boundingBox();
+  const heading=await page.getByRole('heading',{name:'我的作品',exact:true}).boundingBox();
   const navigation=await page.locator('.app-navigation').boundingBox();
   assert.ok(heading.y>=navigation.y+navigation.height,'Projects heading must clear sticky mobile navigation');
   await page.getByRole('button',{name:'新建视频',exact:true}).click();
@@ -29,14 +30,12 @@ try{
   assert.equal(await page.locator('.home-create textarea').evaluate(el=>el===document.activeElement),true);
  }
  await page.setViewportSize({width:1440,height:900});
- await page.getByRole('button',{name:'解释一个概念',exact:true}).click();assert.match(await page.locator('.home-create textarea').inputValue(),/初学者/);assert.equal(await page.getByText('直接打开空白编辑器').count(),0);assert.equal(await page.getByText('AI 镜头视频').count(),0);await page.screenshot({path:out+'/home.png'});
- for(const sample of await page.locator('.knowledge-example-grid video').all()){await sample.scrollIntoViewIfNeeded();await sample.evaluate(v=>v.play());await sample.evaluate(v=>new Promise(resolve=>{if(v.currentTime>0)return resolve();v.addEventListener('timeupdate',resolve,{once:true});}));await sample.evaluate(v=>v.pause());assert.equal(await sample.evaluate(v=>getComputedStyle(v).objectFit),'contain');}
-
- const samples=page.locator('.knowledge-example-grid video');
- await samples.nth(0).evaluate(v=>v.play());
- await samples.nth(1).evaluate(v=>v.play());
- assert.equal(await samples.nth(0).evaluate(v=>v.paused),true,'Starting another example pauses the previous one');
- await samples.nth(1).evaluate(v=>v.pause());
+ await page.locator('.home-create textarea').fill('面向初学者，用生活例子解释单摆的周期。');
+ await page.getByRole('button',{name:'我的作品',exact:true}).click();
+ assert.equal(await page.locator('.home-create').count(),0,'Library does not duplicate the creation composer');
+ await page.getByRole('button',{name:'新建视频',exact:true}).click();
+ assert.match(await page.locator('.home-create textarea').inputValue(),/初学者/,'Draft survives navigation');
+ await page.screenshot({path:out+'/home.png'});
 
  const creationRequest=page.waitForRequest(request=>new URL(request.url()).pathname.endsWith('/agent-projects')&&request.method()==='POST');
  await page.getByRole('button',{name:'生成方案',exact:true}).click();

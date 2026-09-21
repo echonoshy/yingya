@@ -10,6 +10,8 @@ use std::{
 };
 use uuid::Uuid;
 mod access;
+mod avatars;
+pub use avatars::{Avatar, normalize_avatar};
 mod billing;
 mod management;
 pub use access::{InviteInput, ModelCharge};
@@ -62,6 +64,7 @@ impl Accounts {
         access::migrate(&db)?;
         management::migrate(&db)?;
         billing::migrate(&db)?;
+        avatars::migrate(&db)?;
         Ok(Self(
             Arc::new(Mutex::new(db)),
             Arc::new(

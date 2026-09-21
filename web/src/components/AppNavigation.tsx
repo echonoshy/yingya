@@ -2,24 +2,31 @@ import {
   FolderSimple,
   Images,
   Plus,
+  Pause,
+  Play,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
+import { useStudioMotion } from "./StudioTheme";
 
 export function AppNavigation({
   active,
   onCreate,
   onAssets,
+  onProjects,
   accountPanel,
   children,
 }: {
-  active: "create" | "assets";
+  active: "create" | "assets" | "projects" | "account";
   onCreate: () => void;
   onAssets: () => void;
+  onProjects?: () => void;
   accountPanel?: ReactNode;
   children?: ReactNode;
 }) {
+  const { enabled, toggle } = useStudioMotion();
   return (
     <aside className="home-nav app-navigation">
+      <div className="app-navigation-surface">
       <div className="home-brand">
         <img src="/brand/yingya-ghost.png" alt="" />
         <b>映芽</b>
@@ -30,13 +37,13 @@ export function AppNavigation({
       </button>
       <nav className="app-primary-navigation" aria-label="映芽功能">
         <button
-          className={active === "create" && window.location.hash === "#/projects" ? "active" : ""}
-          aria-current={active === "create" && window.location.hash === "#/projects" ? "page" : undefined}
+          className={active === "projects" ? "active" : ""}
+          aria-current={active === "projects" ? "page" : undefined}
           title="我的作品"
           aria-label="我的作品"
           onClick={() => {
+            if (onProjects) { onProjects(); return; }
             window.location.hash = "/projects";
-            document.querySelector(".home-projects")?.scrollIntoView({block:"start"});
           }}
         >
           <FolderSimple />
@@ -53,8 +60,12 @@ export function AppNavigation({
           <span>素材工坊</span>
         </button>
       </nav>
+      </div>
       {children && <div className="app-navigation-extra">{children}</div>}
-      {accountPanel}
+      <div className="app-account-dock">
+        {accountPanel}
+        {active === "create" ? <button className="studio-motion-toggle" type="button" onClick={toggle} aria-label={enabled ? "暂停插画动效" : "播放插画动效"} title={enabled ? "暂停插画动效" : "播放插画动效"} aria-pressed={!enabled}>{enabled ? <Pause/> : <Play/>}</button> : null}
+      </div>
     </aside>
   );
 }

@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
-import { ArrowLeft, ChartBar, CaretUpDown, CircleNotch, ShieldCheck, Receipt, SignOut, UserCircle } from '@phosphor-icons/react';
+import { AvatarImage, AvatarPicker, useAccountAvatar } from "./AvatarPicker";
+import { animateElement } from "./motion";
+import { AppNavigation } from "./AppNavigation";
+import { StudioArtwork, StudioThemeControl } from "./StudioTheme";
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChartBar, CircleNotch, ShieldCheck, Receipt, SignOut, UserCircle } from '@phosphor-icons/react';
 import { z } from 'zod';
 import { App } from '../App';
 import { UsageModelFilter } from './UsageModelFilter';
@@ -21,13 +25,21 @@ async function call(path:string, init?:RequestInit) {
 }
 export function AccountGate() {
  const [user,setUser]=useState<User|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[screen,setScreen]=useState<'work'|'usage'|'billing'>('work');
+ const avatarState = useAccountAvatar(user?.id);
+ const [avatarOpen,setAvatarOpen]=useState(false);
+ const accountTrigger=useRef<HTMLElement|null>(null);
+ function avatarTap(event: React.MouseEvent<HTMLElement>) {
+   accountTrigger.current=event.currentTarget;
+   const image=event.currentTarget.querySelector<HTMLElement>('.account-avatar');
+   if(image){image.getAnimations().forEach(animation=>animation.cancel());animateElement(image,[{transform:'scale(1) rotate(0deg)'},{transform:'scale(.94, 1.04) rotate(-5deg)',offset:.3},{transform:'scale(1.02) rotate(4deg)',offset:.65},{transform:'scale(1) rotate(0deg)'}],'--motion-slow');}
+ }
  useEffect(()=>{let cancelled=false;void fetch('/api/auth/me',{cache:'no-store'}).then(async response=>{
    if(response.status===401)return;
    if(!response.ok)throw new Error('无法读取登录状态，请刷新重试');
    const value=userSchema.parse((await response.json()).user);
    if(!cancelled){setCurrentUser(value.id);setUser(value);}
  }).catch(e=>{if(!cancelled)setError(e.message);}).finally(()=>{if(!cancelled)setLoading(false);});
- const expired=()=>{cancelled=true;setUser(null);setScreen('work');setError('登录已过期，请重新登录后继续。');setLoading(false);};
+ const expired=()=>{cancelled=true;setAvatarOpen(false);setUser(null);setScreen('work');setError('登录已过期，请重新登录后继续。');setLoading(false);};
  window.addEventListener(SESSION_EXPIRED,expired);
  const changed=(event:StorageEvent)=>{if(event.key==='yingya-session-change')window.location.reload();};window.addEventListener('storage',changed);
  return()=>{cancelled=true;window.removeEventListener('storage',changed);window.removeEventListener(SESSION_EXPIRED,expired);};},[]);
@@ -35,12 +47,13 @@ export function AccountGate() {
  if(loading)return <div className="state-screen" role="status"><CircleNotch className="spin"/><p>正在恢复你的工作台…</p></div>;
  if(!user)return <LoginScreen initialError={error} onLogin={value=>{setCurrentUser(value.id);setUser(value);setError('');sessionChanged();window.history.replaceState(null,'',`/app${window.location.search}${window.location.hash}`);}}/>;
  const accountPanel = <details className="account-panel" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))event.currentTarget.open=false;}} onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}>
-   <summary aria-label={`账号：${user.email}`} title={user.email}><UserCircle/><span className="account-identity"><span>{user.email}</span><small>内测账号</small></span><CaretUpDown className="account-chevron"/></summary>
-   <div className="account-menu"><div className="account-menu-identity"><b>{user.email}</b><small>内测账号</small></div><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen(screen==='work'?'usage':'work');}}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen('billing');}}><Receipt/><span>API 等价账单</span></button>{user.isAdmin?<button onClick={()=>window.location.assign('/admin')}><ShieldCheck/><span>账号管理</span></button>:null}<button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button>{error?<p className="account-error" role="alert">{error}</p>:null}</div>
+   <summary ref={element=>{if(element)accountTrigger.current=element;}} onClick={avatarTap} aria-label={`账号：${user.email}`} title={user.email}><AvatarImage url={avatarState.avatar?.url}/><span className="account-identity"><span>{user.email}</span><small>内测账号</small></span></summary>
+   <div className="account-menu"><button onClick={event=>{const details=event.currentTarget.closest('details');const summary=details?.querySelector('summary');if(summary)accountTrigger.current=summary;if(details)details.open=false;setAvatarOpen(true);}}><UserCircle/><span>更换头像</span></button><div className="account-menu-identity"><b>{user.email}</b><small>内测账号</small></div><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen(screen==='work'?'usage':'work');}}><ChartBar/><span>{screen==='work'?'用量统计':'返回创作'}</span></button><button onClick={event=>{event.currentTarget.closest('details')?.removeAttribute('open');setScreen('billing');}}><Receipt/><span>API 等价账单</span></button>{user.isAdmin?<button onClick={()=>window.location.assign('/admin')}><ShieldCheck/><span>账号管理</span></button>:null}<StudioThemeControl/><button onClick={()=>void logout()} aria-label="退出登录"><SignOut/><span>退出</span></button>{error?<p className="account-error" role="alert">{error}</p>:null}</div>
  </details>;
  return <div className="account-shell">
+   {avatarOpen?<AvatarPicker current={avatarState.avatar} loadError={avatarState.error} onRetry={avatarState.retry} onSaved={avatarState.saved} onClose={()=>setAvatarOpen(false)} returnFocus={accountTrigger}/>:null}
    <div hidden={screen!=='work'}><App accountPanel={accountPanel}/></div>
-   {screen!=='work'?<div className="home-layout"><aside className="home-nav"><div className="home-brand"><img src="/brand/yingya-ghost.png" alt=""/><b>映芽</b></div><nav aria-label="映芽功能"><button onClick={()=>setScreen('work')}><ArrowLeft/>返回创作</button></nav>{accountPanel}</aside>{screen==='billing'?<main className="billing-page"><button className="usage-back" onClick={()=>setScreen('work')}><ArrowLeft/>返回工作台</button><BillingPanel/></main>:<UsagePage onBack={()=>setScreen('work')}/>}</div>:null}
+   {screen!=='work'?<div className="home-layout studio-shell studio-shell--library"><AppNavigation active="account" onProjects={()=>{window.location.hash='/projects';setScreen('work');}} onCreate={()=>{window.location.hash='/';setScreen('work');}} onAssets={()=>{window.location.hash='/assets';setScreen('work');}} accountPanel={accountPanel}/>{screen==='billing'?<main className="billing-page"><button className="usage-back" onClick={()=>setScreen('work')}><ArrowLeft/>返回工作台</button><BillingPanel/></main>:<UsagePage onBack={()=>setScreen('work')}/>}</div>:null}
  </div>;
 }
 function UsagePage({onBack}:{onBack:()=>void}) {
@@ -57,7 +70,7 @@ function UsagePage({onBack}:{onBack:()=>void}) {
  void call(`/api/usage?${params}`,{signal:controller.signal}).then(value=>{if(!disposed)setData(usageSchema.parse(value));}).catch(e=>{if(!disposed)setError(e.message);}).finally(()=>{if(!disposed)setLoading(false);});return()=>{disposed=true;controller.abort();};},[since,until,model,refresh]);
  const rows=data?.users??[];
  const sum=(key:'requests'|'executions'|'totalTokens'|'unknownExecutions')=>rows.reduce((n,row)=>n+row[key],0);
- return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><span>创作记录</span><h1>用量统计</h1><p>查看当前账号的请求次数与模型实际返回的 token 用量。</p></div></div>
+ return <main className="usage-page"><div className="usage-heading"><button className="usage-back" onClick={onBack}><ArrowLeft/>返回工作台</button><div><span>创作记录</span><StudioArtwork variant="account"/><h1>用量统计</h1><p>查看当前账号的请求次数与模型实际返回的 token 用量。</p></div></div>
  <div className="usage-toolbar"><b>我的用量</b><button className="usage-refresh" disabled={loading} onClick={()=>setRefresh(v=>v+1)}>{loading?'正在更新…':'刷新数据'}</button></div>
  <QuotaOverview refresh={refresh}/>
  <div className="usage-filters"><label>开始日期<input type="date" value={since} onChange={e=>{const since=e.target.value;setDateRange(range=>({...range,since}));}}/></label><label>结束日期<input type="date" value={until} onChange={e=>{const until=e.target.value;setDateRange(range=>({...range,until}));}}/></label><UsageModelFilter models={data?.models ?? []} value={model} onChange={setModel}/></div>

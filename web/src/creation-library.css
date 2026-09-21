@@ -6,6 +6,11 @@
 .cap-modal button svg { width:18px; height:18px; flex-shrink:0; }
 .cap-modal :is(button,input,summary):focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .cap-modal .cap-primary { background:var(--primary); color:var(--canvas); }
+.cap-modal-actions > button { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:8px 16px; border-radius:var(--radius-control); white-space:nowrap; }
+.cap-modal .reference-picker { padding:0; }
+.cap-modal .reference-picker > p { margin-block:10px; }
+.cap-modal .reference-picker-tools { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.cap-modal .reference-picker-tools :is(input,select) { width:100%; }
 .cap-modal .reference-picker-grid { max-height:38vh; overflow:auto; }
 .cap-modal .cap-modal-body { padding:20px; }
 .cap-modal .cap-modal-actions { position:sticky; bottom:0; background:var(--canvas); padding-top:8px; }

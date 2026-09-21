@@ -1,4 +1,6 @@
 use super::*;
+#[path = "avatar_api.rs"]
+mod avatar_api;
 #[path = "shares.rs"]
 mod shares;
 use axum::{
@@ -267,6 +269,8 @@ pub(super) async fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
+        .route("/api/auth/avatar", get(avatar_api::get_avatar).patch(avatar_api::select_preset).layer(DefaultBodyLimit::max(4096)))
+        .route("/api/auth/avatar/image", get(avatar_api::image).put(avatar_api::upload).layer(DefaultBodyLimit::max(5 * 1024 * 1024)))
         .route("/api/usage", get(usage))
         .route("/api/admin/usage", get(admin_usage))
         .route("/api/billing", get(billing))

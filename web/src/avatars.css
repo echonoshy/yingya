@@ -1,0 +1,31 @@
+.account-avatar { display: inline-flex; width: 40px; height: 40px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; background: var(--surface-inset); transform-origin: 50% 70%; }
+.account-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.account-avatar > svg { width: 28px; height: 28px; color: var(--muted); }
+.app-account-dock .account-panel > summary { padding: 4px; width: 48px; min-height: 48px; justify-content: center; border-radius: 50%; }
+.avatar-picker { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 0; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--canvas); color: var(--text); box-shadow: var(--shadow-popover); font: var(--text-control)/var(--leading-ui) var(--font-ui); }
+.avatar-picker::backdrop { background: color-mix(in srgb, var(--primary) 28%, transparent); }
+.avatar-picker > header { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 20px 20px 0; }
+.avatar-picker h2 { margin: 0; font-size: var(--text-section); font-weight: var(--weight-emphasis); }
+.avatar-picker header p { margin: 4px 0 0; color: var(--muted); }
+.avatar-picker button { font: inherit; color: inherit; cursor: pointer; }
+.avatar-picker button:disabled { opacity: .5; cursor: not-allowed; }
+.avatar-picker button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.avatar-picker header button { display: grid; place-items: center; flex: 0 0 36px; min-height: 36px; border: 0; border-radius: var(--radius-control); background: transparent; }
+.avatar-picker button svg { width: 18px; height: 18px; flex: 0 0 auto; }
+.avatar-picker-body { padding: 16px 20px 20px; }
+.avatar-preview { display: grid; justify-items: center; gap: 8px; margin: 0 0 20px; color: var(--muted); }
+.avatar-preview .account-avatar { width: 88px; height: 88px; }
+.avatar-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.avatar-options > button { position: relative; display: grid; justify-items: center; gap: 8px; padding: 10px 2px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); font-size: var(--text-caption); }
+.avatar-options .account-avatar { width: 54px; height: 54px; }
+.avatar-options > button[aria-pressed="true"] { border-color: var(--accent); background: var(--selection); }
+.avatar-options .avatar-check { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; padding: 1px; border-radius: 50%; color: var(--canvas); background: var(--accent); }
+.avatar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.avatar-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; flex: 1 1 auto; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
+.avatar-hint { margin: 10px 0 0; color: var(--dim); font-size: var(--text-caption); line-height: var(--leading-body); }
+.avatar-error { margin: 12px 0 0; color: var(--danger); overflow-wrap: anywhere; }
+.avatar-error button { margin-left: 8px; border: 0; background: transparent; text-decoration: underline; }
+.avatar-picker > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--canvas); }
+.avatar-picker footer button { display: inline-flex; align-items: center; gap: 6px; justify-content: center; min-height: 40px; padding: 8px 18px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); }
+.avatar-picker footer .primary-button { background: var(--primary); color: var(--canvas); border-color: var(--primary); }
+@media (max-width: 359px) { .avatar-options { gap: 5px; } .avatar-options .account-avatar { width: 44px; height: 44px; } .avatar-picker-body, .avatar-picker > header, .avatar-picker > footer { padding-inline: 14px; } }

@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { chromium } from 'playwright';
+import { installApiMock } from './ui-qa.mjs';
+const base = process.env.YINGYA_UI_QA_URL ?? 'http://127.0.0.1:8798';
+const out = process.env.YINGYA_THEME_QA_OUT ?? 'output/theme-qa';
+await mkdir(out, { recursive: true });
+const themes = ['paper','letterpress','pencil','watercolor','felt','cel','crayon','wood','screenprint'];
+const browser = await chromium.launch();
+const evidence = [];
+try {
+  // Sample actual startup at every interval boundary with deterministic randomness.
+  for (const [index, theme] of themes.entries()) {
+    const context = await browser.newContext({ viewport: { width: 1752, height: 898 }, reducedMotion: 'reduce' });
+    await context.addInitScript(value => { Math.random = () => value; }, (index + .5) / themes.length);
+    const page = await context.newPage();
+    await installApiMock(page);
+    await page.goto(`${base}/app#/`);
+    await page.locator('.home-create textarea').waitFor();
+    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), theme, 'Actual startup reaches each theme');
+    await page.locator('.studio-art img').evaluateAll(images => Promise.all(images.map(image => image.decode())));
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: `${out}/${theme}-reference-1752.png` });
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    await page.route(/\/api\/(?:u\/[^/]+\/)?agent-projects$/, async route => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      await gate;
+      await route.fallback();
+    });
+    await page.locator('.home-create textarea').fill('主题等待页面检查');
+    await page.getByRole('button', { name: '生成方案', exact: true }).click();
+    await page.locator('.creation-pending-card .studio-art img').evaluate(image => image.decode());
+    assert.equal(await page.locator('.creation-pending-card .studio-art').getAttribute('data-theme'), theme);
+    await page.screenshot({ path: `${out}/${theme}-pending-1752.png` });
+    await page.setViewportSize({ width: 320, height: 844 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: `${out}/${theme}-pending-320.png` });
+    release();
+    await page.locator('.knowledge-workspace').waitFor();
+    await page.route('**/api/admin/me', route => route.fulfill({ status: 401, json: { message: '请登录' } }));
+    await page.goto(`${base}/admin`);
+    await page.locator('.admin-login input[name=email]').waitFor();
+    await page.locator('.admin-login .studio-art img').evaluate(image => image.decode());
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: `${out}/${theme}-admin-login-320.png` });
+    await page.locator('.admin-login input[name=email]').fill('draft@example.test');
+    await page.getByRole('button', { name: /^换个画风/ }).click();
+    assert.notEqual(await page.locator('html').getAttribute('data-studio-theme'), theme);
+    assert.equal(await page.locator('.admin-login input[name=email]').inputValue(), 'draft@example.test');
+    evidence.push({ theme, startup: 'passed', pending: 'passed', adminLogin: 'passed', formPreserved: true });
+    await context.close();
+  }
+  const context = await browser.newContext();
+  await context.addInitScript(() => { Object.defineProperty(window, 'sessionStorage', { get() { throw new DOMException('Blocked', 'SecurityError'); } }); });
+  const page = await context.newPage();
+  await installApiMock(page);
+  await page.goto(`${base}/app#/`);
+  await page.locator('.home-create textarea').fill('存储禁用时也保留草稿');
+  const first = await page.locator('html').getAttribute('data-studio-theme');
+  assert.ok(themes.includes(first));
+  await page.getByRole('button', { name: '我的作品', exact: true }).click();
+  await page.getByRole('heading', { name: '我的作品', exact: true }).waitFor();
+  assert.equal(await page.locator('html').getAttribute('data-studio-theme'), first);
+  await page.getByRole('button', { name: '新建视频', exact: true }).click();
+  assert.equal(await page.locator('.home-create textarea').inputValue(), '存储禁用时也保留草稿');
+  await page.locator('.app-account-dock summary').click();
+  await page.getByRole('button', { name: /^换个画风/ }).click();
+  assert.notEqual(await page.locator('html').getAttribute('data-studio-theme'), first);
+  await writeFile(`${out}/state-results.json`, JSON.stringify({ result: 'passed', base, api: 'isolated mocks', storageBlocked: 'passed', evidence }, null, 2));
+  console.log('All nine startup choices, pending, admin login, form preservation and blocked storage passed.');
+} finally { await browser.close(); }

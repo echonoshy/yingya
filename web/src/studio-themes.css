@@ -1,0 +1,86 @@
+/* The nine selected illustration families share the product's neutral UI.
+   Artwork has its own measured slot; it never sits behind text or video. */
+.studio-art { margin: 0; flex-shrink: 0; user-select: none; }
+.studio-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.studio-art--home { width: min(560px, 78%); height: 216px; margin: 0 0 20px auto; }
+[data-studio-align="start"] .home-create > .studio-art--home { margin-left: 0; margin-right: auto; }
+.studio-shell--home .home-create { position: relative; }
+.studio-shell--home .home-scroll { padding-top: 40px; padding-bottom: 64px; }
+.studio-shell--home .home-create .composer { position: relative; box-shadow: none; }
+[data-studio-material="paper"] .studio-shell--home .home-create .composer { box-shadow: 0 3px 0 -1px var(--canvas), 0 4px 0 -1px var(--line); }
+[data-studio-material="soft"] .studio-shell--home .home-create .composer { box-shadow: var(--studio-shadow); }
+.studio-theme-control { display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; min-height: 40px; padding: 8px 12px; border: 0; border-radius: var(--radius-control); background: var(--canvas); color: var(--muted); font-family: var(--font-ui); font-size: var(--text-control); cursor: pointer; }
+.studio-theme-control:hover { color: var(--text); background: var(--surface-hover); }
+.studio-theme-control svg { width: 16px; height: 16px; flex-shrink: 0; }
+.studio-theme-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.studio-theme-control span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio-theme-control--compact { font-size: var(--text-caption); }
+.account-menu .studio-theme-control { width: 100%; }
+.studio-shell--library .home-scroll { padding-top: 28px; }
+.home-project-heading { position: relative; min-height: 86px; flex-wrap: wrap; align-content: center; }
+.home-project-heading > .studio-art { width: 132px; height: 82px; margin-right: 4px; align-self: center; }
+.asset-library-header > div:first-child { position: relative; padding-left: 112px; min-height: 78px; display: flex; flex-direction: column; justify-content: center; }
+.asset-library-header > div:first-child > .studio-art { position: absolute; left: 0; top: 0; width: 100px; height: 78px; }
+.asset-empty-state > .studio-art, .home-project-empty > .studio-art { width: 180px; height: 110px; margin-bottom: 8px; }
+.studio-shell--login .login-content { padding: 20px 28px; }
+.login-content > .studio-art { width: min(240px, 70%); height: 138px; margin: 0 auto 20px; }
+.login-screen > footer { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.usage-heading > div { position: relative; padding-right: 160px; min-height: 94px; }
+.usage-heading .studio-art { position: absolute; right: 0; top: 0; width: 140px; height: 90px; }
+.billing-panel .admin-page-heading > div:first-child, .admin-main > .admin-page-heading > div:first-child { position: relative; padding-right: 136px; min-height: 82px; }
+.billing-panel .admin-page-heading .studio-art, .admin-main > .admin-page-heading .studio-art { position: absolute; right: 0; top: 0; width: 120px; height: 80px; }
+.knowledge-workspace .project-header-brand { background: none; }
+.knowledge-workspace .project-header-brand > .studio-art { width: 52px; height: 38px; }
+.knowledge-workspace .project-header-brand > img { width: 28px; height: 28px; }
+.knowledge-workspace .studio-art img { width: 100%; height: 100%; }
+.studio-share-admin .admin-page-heading > div:first-child { position: relative; padding-right: 136px; min-height: 82px; }
+.studio-share-admin .admin-page-heading .studio-art { position: absolute; right: 0; top: 0; width: 120px; height: 80px; }
+.knowledge-workspace .workspace-tabs > .studio-art { width: 44px; height: 40px; margin-right: 4px; }
+.creation-pending-card > .studio-art { width: 160px; height: 110px; margin: 0 auto 16px; }
+.studio-share-brand { display: flex; align-items: center; gap: 16px; }
+.studio-share-brand .studio-art { width: 100px; height: 68px; }
+.admin-login section > .studio-art { width: 200px; height: 120px; margin: 0 auto 16px; }
+.admin-login footer { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.studio-marketing-art { width: min(760px, 100%); margin-inline: auto; }
+.studio-marketing-art .studio-art--home { width: 100%; height: clamp(180px, 24vw, 310px); margin: 0; }
+.workshop-footer > .studio-theme-control { margin: 0 auto 12px; }
+@media (min-width: 1101px) and (min-height: 760px) {
+  .studio-shell--home .home-scroll { padding-right: min(12.5vw, 220px); padding-bottom: min(34vh, 300px); }
+  .home-create > .studio-art--home { width: min(640px, 82%); height: 280px; margin-right: -64px; }
+  .home-create > .studio-art--home img { object-position: right center; }
+  [data-studio-align="start"] .home-create > .studio-art--home img { object-position: left center; }
+}
+@media (max-width: 1100px) {
+  .home-project-heading > .studio-art { width: 104px; height: 70px; }
+  .asset-library-header > div:first-child { padding-left: 90px; }
+  .asset-library-header > div:first-child > .studio-art { width: 80px; }
+}
+@media (max-width: 800px) {
+  .studio-share-admin .admin-page-heading > div:first-child { padding-right: 90px; }
+  .studio-share-admin .admin-page-heading .studio-art { width: 80px; height: 64px; }
+  .studio-shell--home .home-scroll { padding-top: 28px; padding-bottom: 64px; }
+  .studio-art--home { width: min(340px, 88%); height: 160px; margin-bottom: 16px; }
+  .home-project-heading { min-height: 66px; gap: 8px; }
+  .home-project-heading > .studio-art { width: 92px; height: 64px; margin-right: 2px; }
+  .home-project-heading > span { font-size: var(--text-caption); }
+  .studio-shell--library .home-scroll { padding-top: 20px; }
+  .asset-library-header > div:first-child { padding-left: 100px; min-height: 66px; }
+  .asset-library-header > div:first-child > .studio-art { width: 90px; height: 64px; }
+  .studio-shell--login .login-content { padding: 16px 0; }
+  .login-content > .studio-art { height: 104px; width: 180px; margin-bottom: 16px; }
+  .usage-heading > div { padding-right: 104px; }
+  .usage-heading .studio-art { width: 94px; height: 72px; }
+  .billing-panel .admin-page-heading > div:first-child, .admin-main > .admin-page-heading > div:first-child { padding-right: 90px; }
+  .billing-panel .admin-page-heading .studio-art, .admin-main > .admin-page-heading .studio-art { width: 80px; height: 64px; }
+  .studio-share-brand { gap: 8px; }
+  .studio-share-brand .studio-art { width: 74px; height: 56px; }
+}
+@media (max-width: 390px) {
+  .studio-art--home { height: 136px; }
+  .home-project-heading > .studio-art { width: 70px; height: 56px; }
+  .home-project-heading { gap: 6px; }
+  .home-project-heading > span { margin-left: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-art, .studio-art img { animation: none !important; transition: none !important; transform: none !important; }
+}

@@ -8,9 +8,12 @@ import "./dropdowns.css";
 import "./home.css";
 import "./knowledge-layout.css";
 import "./creation-library.css";
+import "./studio.css";
+import "./studio-themes.css";
+import { StudioThemeProvider } from "./components/StudioTheme";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <WebsiteRouter />
+    <StudioThemeProvider><WebsiteRouter /></StudioThemeProvider>
   </StrictMode>,
 );

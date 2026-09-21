@@ -1,3 +1,4 @@
+import { StudioArtwork } from "./StudioTheme";
 import { FeedbackResults } from "./FeedbackResults";
 import { parseTimeRange } from "../feedback/timeRange";
 import { readAnnotationDraft, type AnnotationDraft } from "../feedback/annotationDraft";
@@ -1439,6 +1440,7 @@ export function AgentWorkspace({
     >
       <header className="project-header">
         <div className="project-header-brand">
+          <StudioArtwork variant="workspace"/>
           <img src="/brand/yingya-ghost.png" alt="" />
           <b>映芽</b>
         </div>
@@ -1548,6 +1550,7 @@ export function AgentWorkspace({
         }
       />
       <nav className="workspace-tabs" aria-label="工作区视图">
+        <StudioArtwork variant="workspace"/>
         <SelectionIndicator value={`${mobilePanel}:${canvasTab}`} />
         <button
           aria-pressed={mobilePanel === "thread"}

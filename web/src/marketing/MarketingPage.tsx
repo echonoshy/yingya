@@ -4,7 +4,7 @@ import { featuredIntro, posterPath, videoPath, type VideoExample } from './examp
 import { BrandLogo as Brand } from './BrandLogo';
 import { MotionGallery } from './MotionGallery';
 import { WorkflowShowcase } from './WorkflowShowcase';
-import { StudioIllustration } from './StudioIllustration';
+import { StudioArtwork, StudioThemeControl } from '../components/StudioTheme';
 import './marketing.css';
 import './workshopHome.css';
 
@@ -50,12 +50,12 @@ export function MarketingPage() {
     <main id="main-content" tabIndex={-1}>
       <section className="marketing-hero" aria-labelledby="marketing-title">
         <div className="marketing-hero-copy"><h1 id="marketing-title"><span>你的想法，</span><span>映芽来制作。</span></h1><p>从文案、网页或素材开始，用对话完成一支视频。</p><div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div></div>
-        <StudioIllustration suspended={Boolean(selected)} />
+        <div className="studio-marketing-art"><StudioArtwork variant="home"/></div>
       </section>
       <MotionGallery onOpen={setSelected} suspended={Boolean(selected)} reduced={reduced} />
       <WorkflowShowcase />
     </main>
-    <footer className="workshop-footer"><div><Brand /><span aria-hidden="true">|</span><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer"><GithubLogo weight="fill" />Star on Github</a></div><p>用 AI，把好创意变成好作品。</p></footer>
+    <footer className="workshop-footer"><StudioThemeControl compact/><div><Brand /><span aria-hidden="true">|</span><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer"><GithubLogo weight="fill" />Star on Github</a></div><p>用 AI，把好创意变成好作品。</p></footer>
     {selected ? <ExampleDialog key={selected.id} example={selected} onClose={() => setSelected(null)} /> : null}
   </div>;
 }

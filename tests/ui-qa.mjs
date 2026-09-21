@@ -65,7 +65,8 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
   await page.route(url => url.pathname.startsWith("/api/"), async route => {
     const request = route.request();
     const url = new URL(request.url());
-    const pathname = url.pathname.replace(/^\/api\/u\/qa-user\//, "/api/");
+    const pathname = url.pathname.replace(/^\/api\/u\/[^/]+\//, "/api/");
+    if (pathname === "/api/auth/avatar") return json(route, { presetId: "cat", url: "/avatars/cat-v1.webp" });
     if (pathname === "/api/auth/me") return json(route, { user: { id: "qa-user", email: "qa@example.com", isAdmin: false } });
     const method = request.method();
 
@@ -269,7 +270,7 @@ async function assertWorkflowRecovery(browser) {
     manifest: { ...structuredClone(manifest), phase: "briefing", dirty: true, checkpoint: null, artifacts: [], versions: [], currentDraft: null },
   };
   await installApiMock(page, failed);
-  await page.goto(workspaceUrl);
+  await page.goto(`${workspaceUrl}#/projects`);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   await page.getByText("制作需要恢复").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
@@ -286,7 +287,7 @@ async function assertIncompleteWorkflowRecovery(browser) {
     manifest: { ...structuredClone(manifest), phase: "production", dirty: true, checkpoint: null, versions: [], currentDraft: null },
   };
   await installApiMock(page, incomplete);
-  await page.goto(workspaceUrl);
+  await page.goto(`${workspaceUrl}#/projects`);
   await page.getByRole("button", { name: /^秋季新品短片/ }).click();
   const recovery = page.getByRole("status");
   await recovery.getByText("检查已通过，草稿待封存", { exact: true }).waitFor();
@@ -313,7 +314,7 @@ async function assertWaitingInputPrompt(browser) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
     await installApiMock(page, waiting);
-    await page.goto(workspaceUrl);
+    await page.goto(`${workspaceUrl}#/projects`);
     await page.getByRole("button", { name: /^秋季新品短片/ }).click();
     if (viewport.name === "mobile") await page.setViewportSize(viewport);
     const prompt = page.getByLabel("等待你的确认");
