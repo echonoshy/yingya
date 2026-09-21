@@ -966,11 +966,7 @@ export function AgentWorkspace({
       <header className="thread-header">
         <div>
           <span>创作对话</span>
-          <b>
-            {running
-              ? "正在制作，可继续补充要求"
-              : "用对话调整内容、画面与节奏"}
-          </b>
+          {running ? <b>正在制作</b> : null}
         </div>
         {titleError ? (
           <small className="thread-title-error">{titleError}</small>
@@ -1039,7 +1035,7 @@ export function AgentWorkspace({
           ) : null}
           {project.queue.length ? (
             <section className="queue-card">
-              <p className="queue-interrupt-notice">意见按顺序处理；选择“立即执行”会停止当前制作，先处理这条意见。</p>
+              <p className="queue-interrupt-notice">消息按顺序处理；立即执行将中断当前任务。</p>
               <header>
                 <Queue />
                 <b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b>
@@ -2668,7 +2664,6 @@ function ArtifactCanvas({
       ) : null}
       <header>
         <div className="canvas-version">
-          <span className="canvas-label">{"预览版本"}</span>
           {project.manifest.versions.length ? (
             <select
               aria-label="视频版本"

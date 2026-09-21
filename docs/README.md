@@ -14,6 +14,7 @@
 | [视频制作流程](VIDEO_PRODUCTION_WORKFLOW.md) | 方案确认、旁白与分镜对齐、草稿检查与导出 |
 | [项目结构](PROJECT_STRUCTURE.md) | 源码、用户数据、工具缓存与清理规则 |
 | [界面设计规范](UI_DESIGN_STYLE.md) | 产品布局、设计令牌、交互与无障碍要求 |
+| [Kami 纸感改造方案](KAMI_REDESIGN_PLAN.md) | 单一纸感方向、原创素材复用、页面密度分级与实施顺序（规划） |
 
 ## 相关参考
 

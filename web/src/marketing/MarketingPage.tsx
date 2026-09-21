@@ -4,7 +4,7 @@ import { featuredIntro, posterPath, videoPath, type VideoExample } from './examp
 import { BrandLogo as Brand } from './BrandLogo';
 import { MotionGallery } from './MotionGallery';
 import { WorkflowShowcase } from './WorkflowShowcase';
-import { StudioArtwork, StudioThemeControl } from '../components/StudioTheme';
+import { StudioArtwork } from '../components/StudioTheme';
 import './marketing.css';
 import './workshopHome.css';
 
@@ -30,7 +30,7 @@ function ExampleDialog({ example, onClose }: { example: VideoExample; onClose: (
     <header><div><p>{example.category} · {example.source}</p><h2 id="example-title">{example.title}</h2></div><button className="marketing-close" onClick={onClose} aria-label="关闭示例" autoFocus><X /></button></header>
     <video ref={videoRef} src={videoPath(example.id)} poster={posterPath(example.id)} controls autoPlay playsInline preload="metadata" aria-label={example.title} onError={() => setMediaError(true)} />
     {mediaError ? <p className="marketing-media-error" role="alert">视频暂时无法播放，请稍后重试。你仍可复制下方创作需求。</p> : null}
-    <div className="marketing-dialog-body"><h3>你可以这样开始</h3><p className="marketing-example-prompt">{example.prompt}</p><div className="marketing-dialog-actions"><button className="marketing-secondary" onClick={() => void copyPrompt()}>{copied ? <Check /> : <Copy />}{copied ? '已复制需求' : '复制创作需求'}</button><a className="marketing-primary" href="/app">进入工作台<ArrowRight /></a></div><p className="marketing-dialog-note" role="status">{copyError ? '复制未成功，请选中上方文字手动复制。' : copied ? '需求已复制，进入工作台后粘贴，并补充你的内容或素材。' : '效果示例供参考；实际作品将根据你的内容与素材制作。'}</p></div>
+    <div className="marketing-dialog-body"><h3>创作需求</h3><p className="marketing-example-prompt">{example.prompt}</p><div className="marketing-dialog-actions"><button className="marketing-secondary" onClick={() => void copyPrompt()}>{copied ? <Check /> : <Copy />}{copied ? '已复制需求' : '复制创作需求'}</button><a className="marketing-primary" href="/app">进入工作台<ArrowRight /></a></div><p className="marketing-dialog-note" role="status">{copyError ? '复制未成功，请选中上方文字手动复制。' : copied ? '需求已复制，进入工作台后粘贴，并补充你的内容或素材。' : '效果示例供参考；实际作品将根据你的内容与素材制作。'}</p></div>
   </dialog>;
 }
 
@@ -49,13 +49,13 @@ export function MarketingPage() {
     <header className="marketing-header"><div className="marketing-header-inner"><Brand /><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看映芽源码"><GithubLogo weight="fill" /><span>GitHub</span></a><a className="marketing-login" href="/app">登录</a></div></header>
     <main id="main-content" tabIndex={-1}>
       <section className="marketing-hero" aria-labelledby="marketing-title">
-        <div className="marketing-hero-copy"><h1 id="marketing-title"><span>你的想法，</span><span>映芽来制作。</span></h1><p>从文案、网页或素材开始，用对话完成一支视频。</p><div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div></div>
+        <div className="marketing-hero-copy"><h1 id="marketing-title">对话式视频制作</h1><div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div></div>
         <div className="studio-marketing-art"><StudioArtwork variant="home"/></div>
       </section>
       <MotionGallery onOpen={setSelected} suspended={Boolean(selected)} reduced={reduced} />
       <WorkflowShowcase />
     </main>
-    <footer className="workshop-footer"><StudioThemeControl compact/><div><Brand /><span aria-hidden="true">|</span><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer"><GithubLogo weight="fill" />Star on Github</a></div><p>用 AI，把好创意变成好作品。</p></footer>
+    <footer className="workshop-footer"><div><Brand /><span aria-hidden="true">|</span><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer"><GithubLogo weight="fill" />GitHub</a></div></footer>
     {selected ? <ExampleDialog key={selected.id} example={selected} onClose={() => setSelected(null)} /> : null}
   </div>;
 }

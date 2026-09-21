@@ -27,6 +27,8 @@ try{
   assert.ok(heading.y>=navigation.y+navigation.height,'Projects heading must clear sticky mobile navigation');
   await page.getByRole('button',{name:'新建视频',exact:true}).click();
   await page.waitForURL('**/app#/');
+  // Navigation updates the URL before the scheduled animation-frame focus runs.
+  await page.waitForFunction(()=>document.querySelector('.home-create textarea')===document.activeElement,{},{timeout:3000});
   assert.equal(await page.locator('.home-create textarea').evaluate(el=>el===document.activeElement),true);
  }
  await page.setViewportSize({width:1440,height:900});

@@ -3,21 +3,21 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { installApiMock } from './ui-qa.mjs';
 const base = process.env.YINGYA_UI_QA_URL ?? 'http://127.0.0.1:8798';
-const out = process.env.YINGYA_THEME_QA_OUT ?? 'output/theme-qa';
+const out = process.env.YINGYA_THEME_QA_OUT ?? '/tmp/yingya-kami-theme-state';
 await mkdir(out, { recursive: true });
 const themes = ['paper','letterpress','pencil','watercolor','felt','cel','crayon','wood','screenprint'];
 const browser = await chromium.launch();
 const evidence = [];
 try {
-  // Sample actual startup at every interval boundary with deterministic randomness.
+  // Migrate every legacy family to paper without clearing form/draft state.
   for (const [index, theme] of themes.entries()) {
     const context = await browser.newContext({ viewport: { width: 1752, height: 898 }, reducedMotion: 'reduce' });
-    await context.addInitScript(value => { Math.random = () => value; }, (index + .5) / themes.length);
+    await context.addInitScript(value => { sessionStorage.setItem('yingya-studio-theme-v1', value); }, theme);
     const page = await context.newPage();
     await installApiMock(page);
     await page.goto(`${base}/app#/`);
     await page.locator('.home-create textarea').waitFor();
-    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), theme, 'Actual startup reaches each theme');
+    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), 'paper', 'Legacy theme migrates to paper');
     await page.locator('.studio-art img').evaluateAll(images => Promise.all(images.map(image => image.decode())));
     await page.evaluate(() => document.fonts.ready);
     await page.screenshot({ path: `${out}/${theme}-reference-1752.png` });
@@ -31,7 +31,7 @@ try {
     await page.locator('.home-create textarea').fill('主题等待页面检查');
     await page.getByRole('button', { name: '生成方案', exact: true }).click();
     await page.locator('.creation-pending-card .studio-art img').evaluate(image => image.decode());
-    assert.equal(await page.locator('.creation-pending-card .studio-art').getAttribute('data-theme'), theme);
+    assert.equal(await page.locator('.creation-pending-card .studio-art').getAttribute('data-theme'), 'paper');
     await page.screenshot({ path: `${out}/${theme}-pending-1752.png` });
     await page.setViewportSize({ width: 320, height: 844 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -45,8 +45,8 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.screenshot({ path: `${out}/${theme}-admin-login-320.png` });
     await page.locator('.admin-login input[name=email]').fill('draft@example.test');
-    await page.getByRole('button', { name: /^换个画风/ }).click();
-    assert.notEqual(await page.locator('html').getAttribute('data-studio-theme'), theme);
+    assert.equal(await page.getByRole('button', { name: /^换个画风/ }).count(), 0);
+    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), 'paper');
     assert.equal(await page.locator('.admin-login input[name=email]').inputValue(), 'draft@example.test');
     evidence.push({ theme, startup: 'passed', pending: 'passed', adminLogin: 'passed', formPreserved: true });
     await context.close();
@@ -58,15 +58,15 @@ try {
   await page.goto(`${base}/app#/`);
   await page.locator('.home-create textarea').fill('存储禁用时也保留草稿');
   const first = await page.locator('html').getAttribute('data-studio-theme');
-  assert.ok(themes.includes(first));
+  assert.equal(first, 'paper');
   await page.getByRole('button', { name: '我的作品', exact: true }).click();
   await page.getByRole('heading', { name: '我的作品', exact: true }).waitFor();
   assert.equal(await page.locator('html').getAttribute('data-studio-theme'), first);
   await page.getByRole('button', { name: '新建视频', exact: true }).click();
   assert.equal(await page.locator('.home-create textarea').inputValue(), '存储禁用时也保留草稿');
   await page.locator('.app-account-dock summary').click();
-  await page.getByRole('button', { name: /^换个画风/ }).click();
-  assert.notEqual(await page.locator('html').getAttribute('data-studio-theme'), first);
+  assert.equal(await page.getByRole('button', { name: /^换个画风/ }).count(), 0);
+  assert.equal(await page.locator('html').getAttribute('data-studio-theme'), first);
   await writeFile(`${out}/state-results.json`, JSON.stringify({ result: 'passed', base, api: 'isolated mocks', storageBlocked: 'passed', evidence }, null, 2));
-  console.log('All nine startup choices, pending, admin login, form preservation and blocked storage passed.');
+  console.log('All nine legacy preference migrations, pending, admin login, form preservation and blocked storage passed.');
 } finally { await browser.close(); }

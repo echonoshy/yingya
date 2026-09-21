@@ -1,6 +1,7 @@
-# 九套画风
+# 纸感与插画资源
 
-映芽使用白色工作画布与九套原创插画。装饰在独立区域出现，不覆盖文字、控件或客户视频。
+映芽固定采用 Kami 纸感。原有九套共 54 张插画全部保留，作为素材资源库，不再作为可切换主题。
+装饰在独立区域出现，不覆盖文字、控件或客户视频。
 
 | 标识 | 名称 | 材质 |
 | --- | --- | --- |
@@ -20,7 +21,7 @@
 
 | 文件 | 使用页面 |
 | --- | --- |
-| home.webp | 创作首页、官网首页 |
+| home.webp | 保留原纸张首页插画；当前首页与官网使用 Kami 新场景 |
 | projects.webp | 我的作品页头与空状态 |
 | assets.webp | 素材工坊页头与空状态 |
 | access.webp | 登录、邀请注册、重置密码、管理后台登录 |
@@ -30,15 +31,14 @@
 表单、抽屉、任务菜单沿用统一中性色控件，不重复堆放装饰。制作中的画面、视频、音频和用户素材不套画风。
 图片原稿、提示词与裁切记录保留于 `output/theme-art/`。构建使用哈希资源 URL，仅下载当前页面所需的主题图片。
 
-## 随机与状态
+## 固定纸感与状态
 
-`studioThemes.ts` 维护九套配置，`StudioThemeProvider` 包裹整个网站：
+`studioThemes.ts` 只维护 paper 配置，`StudioThemeProvider` 包裹网站：
 
-- 无有效记录的新会话均匀抽取九套之一。
-- `sessionStorage[yingya-studio-theme-v1]` 保持当前选择，刷新、登录、页面跳转保持一致。
-- 账户菜单及登录、官网页的「换个画风」均匀抽取另外八套之一，不重复当前风格。
-- 存储被禁用或记录失效时自动降级到内存；不会阻断页面。
-- 切换只替换插画与轻微表面样式，不重建表单、播放器、工作区和任务。
+- 将旧 `sessionStorage[yingya-studio-theme-v1]` 统一写为 paper；存储不可用也使用 paper。
+- 移除「换个画风」和随机选择，不重建表单、播放器、工作区和任务。
+- 首页与官网采用 `web/src/assets/kami/hero-paper-v2.webp`，首页局部装饰复用 pencil/projects.webp。
+- 其余插画槽使用原有 paper 家族；所有其他家族的原文件保持不变。
 - 首页只有短暂入场与一次鼠标反馈；编辑输入时不触发鼠标反馈。
 - 暂停设置保存于本机；`prefers-reduced-motion` 下禁用装饰运动。其他页面插画静止。
 
@@ -47,8 +47,8 @@
 - `npm run typecheck`、`npm run web:build`、`npm run test:web`。
 - `npm run test:ui`：核心创作、素材、工作区、反馈和响应式回归。
 - `npm run test:marketing`：官网布局、示例、对话框与移动端回归。
-- `node tests/studio-themes.browser.mjs`：九套画风在全部页面的资源、主题一致性、390/320 像素视口、草稿与刷新持久性。
+- `node tests/studio-themes.browser.mjs`：固定纸感在全部页面的资源、主题一致性、390/320 像素视口、草稿与刷新持久性。
 - `node tests/studio-browser.mjs`：鼠标反馈、暂停与减少动效、输入保护、任务等待和中间断点。
-- `node tests/studio-theme-state.browser.mjs`：九个实际随机区间、各套创建等待与管理登录页、表单保留及禁用存储的回退。
+- `node tests/studio-theme-state.browser.mjs`：九个旧偏好的迁移、创建等待与管理登录页、表单保留及禁用存储的回退。
 
 浏览器测试通过 `YINGYA_UI_QA_URL` 指定本地或正式网站。主题测试使用隔离 API 数据，验证真实前端，不创建真实视频、账单或用户。正式发布仍须核对公网页面引用的 JS/CSS 及资源是否属于新版本。

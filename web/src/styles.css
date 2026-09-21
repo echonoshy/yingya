@@ -2,14 +2,14 @@
   color-scheme: light;
   font-family: var(--font-ui);
   font-synthesis: none;
-  background: #f3f4f6;
-  color: #24262b;
+  background: #f5f4ed;
+  color: #141413;
   --canvas: #ffffff;
-  --background: #f3f4f6;
-  --surface: #fafafb;
-  --surface-hover: #e9ebef;
-  --primary: #24262b;
-  --accent: #006bd6;
+  --background: #f5f4ed;
+  --surface: #faf9f5;
+  --surface-hover: #e8e6dc;
+  --primary: #1b365d;
+  --accent: #1b365d;
   --black: var(--canvas);
   --prey-950: var(--background);
   --prey-900: var(--surface);
@@ -17,20 +17,21 @@
   --prey-750: var(--surface-hover);
   --prey-700: var(--line);
   --prey-600: var(--line-strong);
-  --prey-400: #86868b;
+  --prey-400: #76746e;
   --purple-500: var(--accent);
   --purple-400: var(--accent);
   --purple-300: var(--accent-text);
-  --purple-200: #004f9e;
-  --text: #24262b;
-  --muted: #50545c;
-  --dim: #626771;
-  --accent-text: #005fc1;
-  --line: #e0e3e8;
-  --line-strong: #bec4cd;
+  --purple-200: #1b365d;
+  --text: #141413;
+  --muted: #504e49;
+  --dim: #6b6a64;
+  --accent-text: #1b365d;
+  --line: #e8e6dc;
+  --line-strong: #a7a59b;
   --danger: #d70015;
   --warning: #a05a00;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC Variable", "Noto Sans SC", sans-serif;
+  --font-editorial: "Noto Serif SC Variable", "Noto Serif SC", "Songti SC", "STSong", serif;
   --font-mono: "Fragment Mono", "SFMono-Regular", Consolas, monospace;
   --text-search: var(--text-control);
   --radius-control: 12px;
@@ -41,13 +42,13 @@
   --motion-slow: 360ms;
   --ease-sprout: cubic-bezier(.22, 1, .36, 1);
   --ease-play: cubic-bezier(.22, 1, .36, 1);
-  --selection: #edf3ff;
-  --selection-line: #c3d5f3;
-  --surface-inset: #eceef1;
+  --selection: #eef2f7;
+  --selection-line: #b6c5d7;
+  --surface-inset: #f0eee6;
   --shadow-popover: 0 12px 36px color-mix(in srgb, var(--primary) 12%, transparent), 0 2px 6px color-mix(in srgb, var(--primary) 5%, transparent);
   --motion-stagger: 28ms;
   --ease-exit: cubic-bezier(.4, 0, 1, 1);
-  --primary-hover: #373b43;
+  --primary-hover: #27496f;
   --text-display: clamp(2rem, 2.8vw, 2.5rem);
   --text-title: 1.25rem;
   --text-section: 1rem;
@@ -712,7 +713,7 @@ button:not(:disabled) { cursor: pointer; }
 .message--user { display: flex; justify-content: flex-end; }
 .message--user .message-body { max-width: min(560px, 86%); border: 1px solid var(--line); border-radius: 17px 17px 4px 17px; background: var(--background); color: var(--text); }
 .message--assistant .message-body { max-width: 65ch; color: var(--muted); }
-.message-markdown code { background: var(--background); color: #004f9e; }
+.message-markdown code { background: var(--background); color: #1b365d; }
 .message-markdown pre { border-color: var(--line); background: var(--background); }
 .message-markdown blockquote { border-left-color: var(--text); }
 .quick-replies button { border-color: var(--line); background: var(--surface); }
@@ -730,7 +731,7 @@ button:not(:disabled) { cursor: pointer; }
 .queue-card { border-color: var(--line); background: var(--surface); }
 .queue-card > div { border-color: var(--line); }
 .thread-footer { padding: 14px 24px 18px; border-color: transparent; background: linear-gradient(to top, #fff 72%, rgba(255,255,255,0)); }
-.thread-footer .composer { border-color: #86868b; box-shadow: 0 12px 36px rgba(0, 0, 0, .08); animation-name: composer-in; }
+.thread-footer .composer { border-color: #76746e; box-shadow: 0 12px 36px rgba(0, 0, 0, .08); animation-name: composer-in; }
 .interrupt-toggle { border-color: var(--line); background: var(--background); }
 .stop-button { color: var(--danger); }
 
@@ -2113,7 +2114,7 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 .usage-heading { max-width: 1200px; margin: 0 auto; }
 .usage-back { display: inline-flex; align-items: center; gap: 8px; padding-left: 0; margin-bottom: 32px; }
 .usage-heading > div > span { font-size: var(--text-control); color: var(--muted); }
-.usage-heading h1 { font-size: var(--text-display); font-weight: 600; margin: 8px 0; }
+.usage-heading h1 { font-family: var(--font-editorial); font-size: var(--text-title); font-weight: 500; margin: 8px 0; }
 .usage-heading p { font-size: var(--text-body); color: var(--muted); line-height: 1.8; }
 .usage-toolbar, .usage-filters, .usage-metrics, .usage-table-wrap, .usage-notes { max-width: 1200px; margin-left: auto; margin-right: auto; }
 .usage-toolbar { display: flex; align-items: center; justify-content: space-between; margin-top: 32px; font-size: var(--text-control); }

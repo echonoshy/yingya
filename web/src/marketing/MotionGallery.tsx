@@ -37,7 +37,7 @@ export function MotionGallery({ onOpen, suspended, reduced }: { onOpen: (value: 
   const shown = expanded ? motionReferences : motionReferences.slice(0, 6);
   const noMotion = reduced || suspended;
   return <section className="workshop-showcase motion-showcase" id="showcase" aria-labelledby="motion-gallery-title" data-motion-off={noMotion}>
-    <div className="motion-gallery-heading"><div><p className="motion-eyebrow">从一个画面，找到下一次灵感</p><h2 id="motion-gallery-title">好想法，有很多种样子。</h2></div></div>
+    <div className="motion-gallery-heading"><div><h2 id="motion-gallery-title">视频示例</h2></div></div>
     <div className="marketing-gallery motion-gallery" id="motion-gallery-cards">{shown.map((example, index) => <MotionCard key={example.id} index={index} example={example} paused={noMotion} onOpen={onOpen} />)}</div>
     <div className="motion-gallery-bottom"><button className="motion-more" aria-label={expanded ? '收起更多例子' : '展开更多例子'} title={expanded ? '收起更多例子' : '展开更多例子'} aria-controls="motion-gallery-cards" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? <CaretUp aria-hidden="true" /> : <CaretDown aria-hidden="true" />}</button></div>
   </section>;

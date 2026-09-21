@@ -36,12 +36,12 @@
 .share-dialog .share-notice, .share-notice { color: var(--accent-text); }
 .share-dialog .share-error, .share-error { color: var(--danger); }
 .share-footnote, .share-empty { color: var(--dim); font-size: var(--text-caption); line-height: var(--leading-ui); margin: 20px 0 0; }
-.public-share { min-height: 100dvh; background: var(--canvas); color: var(--text); display: flex; flex-direction: column; padding: 0 40px; }
+.public-share { min-height: 100dvh; background: var(--background); color: var(--text); display: flex; flex-direction: column; padding: 0 40px; }
 .public-share > header { width: min(100%, 1080px); margin: 0 auto; min-height: 88px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); font-size: var(--text-control); color: var(--muted); }
 .share-brand { display: inline-flex; gap: 10px; align-items: center; text-decoration: none; color: var(--text); font-size: var(--text-section); }
 .share-brand img { width: 34px; height: 34px; object-fit: contain; }
 .public-share main { flex: 1; width: min(100%, 1080px); margin: 0 auto; padding: 32px 0; min-width: 0; }
-.public-share-heading h1 { font-size: var(--text-title); font-weight: 600; line-height: var(--leading-ui); margin: 0 0 8px; overflow-wrap: anywhere; }
+.public-share-heading h1 { font-family: var(--font-editorial); font-size: var(--text-title); font-weight: 500; line-height: var(--leading-ui); margin: 0 0 8px; overflow-wrap: anywhere; }
 .public-share-heading p { font-size: var(--text-caption); color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 24px; }
 .public-video-stage { display: flex; align-items: center; justify-content: center; background: var(--surface-inset); border: 1px solid var(--line); border-radius: var(--radius-panel); overflow: hidden; }
 .public-video-stage video { display: block; width: auto; max-width: 100%; max-height: 65dvh; min-height: 120px; }

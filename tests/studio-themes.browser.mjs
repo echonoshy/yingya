@@ -6,8 +6,8 @@ import { installApiMock, detail } from './ui-qa.mjs';
 // Browser plugin not available. Exercise the real frontend with controlled API
 // fixtures; these checks never create videos, users, invoices or public shares.
 const base = process.env.YINGYA_UI_QA_URL ?? 'http://127.0.0.1:8798';
-const out = process.env.YINGYA_THEME_QA_OUT ?? 'output/theme-qa';
-const themes = (process.env.YINGYA_THEME_QA_THEMES ?? 'paper,letterpress,pencil,watercolor,felt,cel,crayon,wood,screenprint').split(',');
+const out = process.env.YINGYA_THEME_QA_OUT ?? '/tmp/yingya-kami-theme-qa';
+const themes = ['paper'];
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const results = [];
@@ -125,23 +125,16 @@ try {
       await check(page, theme, 'marketing', 'home', width);
     }
 
-    // Explicitly shuffling must keep the draft, leave the active workflow intact,
-    // update artwork immediately and persist across reload within this visit.
+    // Fixed paper style survives navigation/reload without mutating the draft.
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${base}/app#/`);
     await page.locator('.home-create textarea').waitFor();
     assert.equal(await page.locator('.home-create textarea').inputValue(), draft);
     await page.locator('.app-account-dock summary').click();
-    const change = page.getByRole('button', { name: /^换个画风/ });
-    await change.focus();
-    await page.keyboard.press('Enter');
-    await page.waitForFunction(old => document.documentElement.dataset.studioTheme !== old, theme);
-    const next = await page.locator('html').getAttribute('data-studio-theme');
-    assert.ok(next && next !== theme);
-    assert.equal(await page.locator('.home-create textarea').inputValue(), draft);
+    assert.equal(await page.getByRole('button', { name: /^换个画风/ }).count(), 0);
     await page.reload();
     await page.locator('.home-create textarea').waitFor();
-    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), next);
+    assert.equal(await page.locator('html').getAttribute('data-studio-theme'), 'paper');
     assert.equal(await page.locator('.home-create textarea').inputValue(), draft);
     await context.close();
 
@@ -167,7 +160,7 @@ try {
     await login.setViewportSize({ width: 320, height: 844 });
     await check(login, theme, 'reset', 'access', 320);
     await guest.close();
-    console.log(`Theme ${theme}: app, library, assets, usage, billing, workbench, share, admin, marketing, login/register/reset, 390/320, shuffle and persistence passed.`);
+    console.log(`Theme ${theme}: app, library, assets, usage, billing, workbench, share, admin, marketing, login/register/reset, 390/320, fixed paper and persistence passed.`);
   }
   assert.deepEqual(errors, [], 'No frontend runtime errors');
   await writeFile(`${out}/results.json`, JSON.stringify({ result: 'passed', base, browser: 'Playwright; Browser plugin not available', api: 'isolated mocks', themes, results, errors }, null, 2));

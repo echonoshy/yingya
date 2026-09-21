@@ -1,4 +1,4 @@
-.admin-shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); height: 100dvh; background: var(--canvas); color: var(--text); }
+.admin-shell { display: grid; grid-template-columns: 216px minmax(0, 1fr); height: 100dvh; background: var(--surface); color: var(--text); }
 .admin-brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; font-size: var(--text-title); font-weight: 600; }
 .admin-brand img { width: 34px; height: 34px; object-fit: contain; }
 .admin-brand small { display: block; margin-top: 4px; color: var(--muted); font-size: var(--text-caption); font-weight: 400; }
@@ -14,7 +14,7 @@
 .admin-main { min-width: 0; overflow: auto; padding: 36px 40px; }
 .admin-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 30px; }
 .admin-page-heading p { margin: 0 0 12px; color: var(--dim); font-size: var(--text-caption); }
-.admin-page-heading h1 { margin: 0; font-size: var(--text-title); font-weight: 600; letter-spacing: 0; }
+.admin-page-heading h1 { margin: 0; font-family: var(--font-editorial); font-size: var(--text-title); font-weight: 500; letter-spacing: 0; }
 .admin-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .admin-icon, .admin-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font-size: var(--text-control); text-decoration: none; }
 .admin-icon { width: 40px; height: 40px; flex: 0 0 40px; padding: 8px; border-color: transparent; }

@@ -12,7 +12,7 @@ try {
   await page.goto(baseUrl);
   await page.locator('#marketing-title').waitFor();
   assert.equal(await page.title(), '映芽 | 对话式动画视频制作工作台');
-  assert.equal(await page.locator('#marketing-title').innerText(), '你的想法，映芽来制作。');
+  assert.equal(await page.locator('#marketing-title').innerText(), '对话式视频制作');
   assert.equal(await page.locator('a[href="https://github.com/echonoshy/yingya"]').count(), 2);
   assert.equal(await page.locator('.marketing-example').count(), 6);
   assert.equal(await page.locator('vite-error-overlay, [data-arm], .factory-viewport, .cinema-feed').count(), 0);
