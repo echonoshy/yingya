@@ -38,7 +38,7 @@ export function PlanDocument({ project, compact = false, onCompose, onConfirm, c
       </article>)}</div>
       {document.materials.length ? <p>使用素材：{document.materials.join('、')}</p> : null}
       {document.missingMaterials.length ? <p className="plan-materials">需要补充：{document.missingMaterials.join('、')}</p> : null}
-    </> : result?.markdown ? <Suspense fallback={<p>正在显示方案…</p>}><MarkdownPreview projectId={project.id}>{result.markdown}</MarkdownPreview></Suspense> : !loading && !error ? <div className="plan-empty"><p>在对话中添加内容或参考资料。</p></div> : null}
+    </> : result?.markdown ? <Suspense fallback={<p>正在显示方案…</p>}><MarkdownPreview projectId={project.id}>{result.markdown}</MarkdownPreview></Suspense> : !error ? <div className="plan-empty"><p>{loading ? '正在读取制作方案。' : working ? '正在整理视频结构与关键画面。' : '在对话中添加内容或参考资料。'}</p><small>{working || loading ? '方案就绪后，可在这里审阅并确认制作。' : '你的想法会在这里整理成可审阅的制作方案。'}</small></div> : null}
     {result && !result.ready && !working && !loading && onCompose ? <p>方案还未准备完整。<button onClick={() => onCompose("请继续完善当前方案与实际关键画面，保留已确定的内容和设计，完成后再让我确认制作。")}>继续完善方案</button></p> : null}
     {result?.checkpointId && onConfirm ? <footer className="plan-confirm">{working || !result.ready ? <p>{working ? '方案更新中。' : '正在准备关键画面。'}</p> : null}<button className="primary-button primary-fill" disabled={!canConfirm} onClick={() => result.checkpointId && onConfirm({ checkpointId: result.checkpointId, revision: result.revision })}>{confirming ? '正在提交…' : '按这个方案制作'}<ArrowRight/></button></footer> : null}
   </section>;

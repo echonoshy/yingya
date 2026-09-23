@@ -4,7 +4,7 @@
   --menu-option-height: 40px;
 }
 
-:is(.model-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
+:is(.model-menu, .aspect-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--canvas);
@@ -12,34 +12,36 @@
   box-shadow: var(--shadow-popover);
 }
 
-:is(.usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
+:is(.aspect-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
   padding: var(--menu-padding);
 }
 
-:is(.model-menu, .home-project-menu, .asset-create-menu, .account-menu) button,
+:is(.model-menu, .aspect-menu, .home-project-menu, .asset-create-menu, .account-menu) button,
 .usage-model-option {
   min-height: var(--menu-option-height);
   padding: 8px 10px;
   border-radius: var(--radius-control);
   font-family: var(--font-ui);
   font-size: var(--text-control);
+  font-weight: var(--weight-medium);
   line-height: var(--leading-ui);
   letter-spacing: 0;
 }
 
-:is(.model-menu, .home-project-menu, .asset-create-menu, .account-menu) button:hover:not(:disabled),
+:is(.model-menu, .aspect-menu, .home-project-menu, .asset-create-menu, .account-menu) button:hover:not(:disabled),
 .usage-model-option.is-active {
   background: var(--surface-hover);
 }
 
 .model-menu button[aria-checked="true"],
+.aspect-menu button[aria-checked="true"],
 .usage-model-option[aria-selected="true"] {
   background: var(--selection);
   color: var(--accent-text);
   font-weight: var(--weight-emphasis);
 }
 
-:is(.model-menu, .home-project-menu, .asset-create-menu, .account-menu) button:focus-visible {
+:is(.model-menu, .aspect-menu, .home-project-menu, .asset-create-menu, .account-menu) button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

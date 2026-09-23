@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { cssTimeMilliseconds } from './motionTiming';
 
 // One outline, shared by the drawing and its occlusion mask. No bitmap underneath.
 const BODY = 'M27 41 C25 22 41 8 59 8 C80 8 93 24 91 43 C90 61 82 70 78 80 C76 88 73 91 67 87 C62 82 60 81 54 85 C49 89 46 93 41 91 C36 90 35 82 31 81 C27 79 23 83 18 82 C11 81 7 77 8 72 C9 66 13 67 18 68 C28 71 29 54 27 41Z';
@@ -49,7 +50,7 @@ export function BrandLogo() {
     setPlaying(true);
     setAnnouncement('');
     const style = getComputedStyle(button);
-    const quick = parseFloat(style.getPropertyValue('--motion-quick')) || 160;
+    const quick = cssTimeMilliseconds(style.getPropertyValue('--motion-quick'));
     const ease = style.getPropertyValue('--ease-sprout').trim() || 'ease-out';
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const duration = reduced ? quick : quick * 30;

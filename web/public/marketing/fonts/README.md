@@ -1,5 +1,11 @@
 # 首页标题字体
 
+## 当前彩字标题（2026-09-22）
+
+`yingya-marker-title-v1.woff2` 是荆南麦圆体 KNMaiyuan Regular v1.20 的七字子集，字体家族重命名为 Yingya Marker，保留版权信息；许可见 `Maiyuan-OFL.txt`。来源：https://github.com/maoken-fonts/KNMaiyuan （`fonts/TTF/KNMaiyuan-Regular.ttf`）。使用 fontTools 裁切“对话式视频制作”并转换为 WOFF2，无外部运行时请求。官网标题分两行，以字形描边和轻微静态旋转匹配用户选定的粗圆马克笔风格；正文与控件继续使用界面字体。
+
+以下为保留的历史标题资源。
+
 当前标题使用霞鹜文楷 v1.522 Medium 的字形子集，导出名称为 Yingya WenKai。
 沿用确认样张的 Medium 字形，不做人工加粗；仅包含“你的想法，映芽来制作。”，
 以 WOFF2 格式随站点部署，无外部运行时请求。正文、按钮继续使用界面字体。

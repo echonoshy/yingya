@@ -13,6 +13,7 @@ export function ComposerMoreMenu({
   running,
   narration = false,
   settings,
+  triggerLabel,
 }: {
   onUpload: () => void;
   onSelectAssets: () => void;
@@ -22,6 +23,7 @@ export function ComposerMoreMenu({
   running: boolean;
   narration?: boolean;
   settings?: ReactNode;
+  triggerLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const presence = useMotionPresence(open ? "menu" : null);
@@ -106,6 +108,7 @@ export function ComposerMoreMenu({
         onClick={() => setOpen((current) => !current)}
       >
         <Plus aria-hidden="true" />
+        {triggerLabel ? <span>{triggerLabel}</span> : null}
       </button>
       {presence.value ? (
         <div

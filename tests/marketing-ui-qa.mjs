@@ -11,37 +11,34 @@ try {
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(baseUrl);
   await page.locator('#marketing-title').waitFor();
+  await page.locator('#marketing-title').waitFor();
   assert.equal(await page.title(), '映芽 | 对话式动画视频制作工作台');
-  assert.equal(await page.locator('#marketing-title').innerText(), '对话式视频制作');
+  assert.equal((await page.locator('#marketing-title').innerText()).replace(/\s/g, ''), '让想法跃然成片');
+  assert.deepEqual(await page.locator('#motion-gallery-title').evaluate(el => { const title = getComputedStyle(el); const card = getComputedStyle(document.querySelector('.motion-card-caption h3')); return [title.fontFamily === card.fontFamily, title.fontWeight === card.fontWeight]; }), [true, true]);
   assert.equal(await page.locator('a[href="https://github.com/echonoshy/yingya"]').count(), 2);
-  assert.equal(await page.locator('.marketing-example').count(), 6);
+  assert.equal(await page.locator('.marketing-example').count(), 12);
   assert.equal(await page.locator('vite-error-overlay, [data-arm], .factory-viewport, .cinema-feed').count(), 0);
-  await page.waitForFunction(() => document.querySelector('.studio-marketing-art .studio-art img').complete && document.querySelector('.studio-marketing-art .studio-art img').naturalWidth > 0);
-  assert.equal(await page.locator('.studio-marketing-art .studio-art img').first().evaluate(i => getComputedStyle(i).animationName), 'none');
+  await page.waitForFunction(() => document.querySelector('.ink-landscape-image').complete && document.querySelector('.ink-landscape-image').naturalWidth > 0);
+  assert.equal(await page.locator('.ink-landscape-image').first().evaluate(i => getComputedStyle(i).animationName), 'none');
   await page.locator('#showcase').scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => [...document.querySelectorAll('.marketing-example img')].every(i => i.src.endsWith('.webp') && i.complete && i.naturalWidth));
-  assert.equal(new Set(await page.locator('.marketing-example img').evaluateAll(imgs => imgs.map(i => i.src))).size, 6);
+  for (const card of await page.locator('.marketing-example').all()) { await card.scrollIntoViewIfNeeded(); await card.locator('img').evaluate(img => img.decode()); }
+  assert.equal(await page.locator('.marketing-example img').evaluateAll(imgs => imgs.every(img => img.src.endsWith('.jpg'))), true);
+  assert.equal(new Set(await page.locator('.marketing-example img').evaluateAll(imgs => imgs.map(i => i.src))).size, 12);
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(500);
+  assert.deepEqual(await page.locator('.motion-tile').evaluateAll(xs => xs.map(x => x.dataset.motionId)), ['motion-rabbit', 'motion-flower', 'motion-books', 'motion-toy', 'motion-ocean', 'motion-bloom', 'motion-clouds', 'motion-portal', 'motion-flow', 'motion-terrain', 'motion-air', 'motion-beauty']);
   const before = await page.locator('.marketing-gallery').screenshot();
   await page.waitForTimeout(1000);
   const after = await page.locator('.marketing-gallery').screenshot();
-  assert.notDeepEqual(before, after, 'Supplied WebP animation actually changes frames');
+  assert.deepEqual(before, after, 'Editorial covers remain still without interaction');
   assert.equal(await page.locator('.motion-gallery-tools, .motion-gallery-heading a, .motion-gallery-bottom p, .marketing-header nav').count(), 0);
-  const expand = page.getByRole('button', { name: '展开更多例子', exact: true });
-  assert.equal(await expand.innerText(), '', 'Expansion uses only an icon');
-  await expand.click();
-  assert.equal(await page.locator('.marketing-example').count(), 12);
-  const collapse = page.getByRole('button', { name: '收起更多例子', exact: true });
-  assert.equal(await collapse.evaluate(el => document.activeElement === el), true);
-  await collapse.press('Enter');
-  assert.equal(await page.locator('.marketing-example').count(), 6);
-  await expand.press('Enter');
-  assert.equal(await page.locator('.marketing-example').count(), 12);
+  assert.equal(await page.locator('.motion-more').count(), 0);
   for (const button of await page.locator('.marketing-example').all()) {
     await button.click();
     await page.waitForFunction(() => document.querySelector('dialog video').readyState >= 2);
     assert.equal(await page.locator('dialog video').evaluate(v => v.error), null);
     assert.match(await page.locator('dialog').innerText(), /第三方效果参考/);
-    assert.equal(await page.locator('.marketing-example img').evaluateAll(xs => xs.every(x => x.src.endsWith('.jpg'))), true);
+    assert.equal(await page.locator('.marketing-example img').evaluateAll(xs => xs.every(x => !x.src.includes('/marketing/motion/'))), true);
     await page.getByRole('button', { name: '复制创作需求', exact: true }).click();
     await page.getByRole('button', { name: '已复制需求', exact: true }).waitFor();
     assert.ok((await page.evaluate(() => navigator.clipboard.readText())).length > 20);
@@ -58,10 +55,10 @@ try {
     await page.setViewportSize({ width, height: width === 1440 ? 1400 : 1000 });
     await page.locator('.marketing-page').evaluate(el => el.scrollTo({ top: 0, behavior: 'instant' }));
     assert.equal(await page.locator('.marketing-page').evaluate(el => el.scrollWidth <= el.clientWidth), true, `No overflow at ${width}`);
-    assert.equal(await page.locator('.studio-marketing-art .studio-art img').first().evaluate(el => el.getAnimations().length), 0, 'Theme artwork has no autonomous animation');
+    assert.equal(await page.locator('.ink-landscape-image').first().evaluate(el => el.getAnimations().length), 0, 'Theme artwork has no autonomous animation');
     await page.locator('#showcase').evaluate(el => el.scrollIntoView({ block: 'start' }));
     await page.waitForTimeout(450);
-    const box = await page.locator('.motion-more').boundingBox();
+    const box = await page.locator('.marketing-example').first().boundingBox();
     assert.ok(box.height >= 40 && box.width >= 40 && box.x >= 0 && box.x + box.width <= width);
     await page.screenshot({ path: `/tmp/motion-gallery-${width}.png` });
   }
@@ -92,7 +89,7 @@ try {
   await page.goto(baseUrl);
   await page.locator('#showcase').scrollIntoViewIfNeeded();
 
-  assert.equal(await page.locator('.marketing-example img').evaluateAll(xs => xs.every(x => x.src.endsWith('.jpg'))), true);
+  assert.equal(await page.locator('.marketing-example img').evaluateAll(xs => xs.every(x => !x.src.includes('/marketing/motion/'))), true);
   await page.locator('.workflow-showcase').scrollIntoViewIfNeeded();
   assert.equal(await page.locator('.motion-tile').evaluateAll(xs => xs.every(x => x.getAnimations().length === 0)), true, 'Reduced motion disables layout animations');
   assert.equal(await page.locator('.workflow-showcase').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
@@ -105,6 +102,6 @@ try {
   await page.getByRole('link', { name: '返回映芽首页', exact: true }).click();
   await page.locator('#marketing-title').waitFor();
   assert.deepEqual(errors, []);
-  console.log('Marketing QA passed: centered reference layout, selected theme artwork, 12 WebPs, six-card initial page, icon expansion/collapse, removed controls, concise four-step workflow, 12 dialog conversions, full intro, focus/copy, responsive widths, reduced motion, GitHub and login.');
+  console.log('Marketing QA passed: centered reference layout, selected theme artwork, original covers and ordering, all 12 examples visible, removed controls, concise four-step workflow, 12 dialog conversions, full intro, focus/copy, responsive widths, reduced motion, GitHub and login.');
   await context.close();
 } finally { await browser.close(); }

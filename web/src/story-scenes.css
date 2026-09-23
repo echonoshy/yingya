@@ -1,0 +1,277 @@
+/* Static Chinese landscape scenes: illustration stays in the lower margin;
+   controls, real media and reading surfaces retain their own opaque canvas. */
+.studio-shell--home .home-main,
+.studio-shell--library .home-main,
+.asset-library-layout .asset-main--library,
+.asset-library-layout .asset-catalog,
+.asset-library-layout .asset-voice-content,
+.account-shell .usage-page,
+.account-shell .billing-page,
+.admin-shell .admin-main,
+.login-screen.studio-shell--login,
+main.admin-login,
+.creation-pending,
+div.public-share,
+.workspace.knowledge-workspace .timeline,
+.workspace.knowledge-workspace .canvas-content {
+  background-color: var(--story-paper);
+  background-image: var(--story-scene);
+  background-position: right bottom;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.studio-shell--home .home-main,
+.creation-pending {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 48%, transparent), color-mix(in srgb, var(--story-paper) 48%, transparent)), url("./assets/scenery/journey.webp");
+}
+.studio-shell--library .home-main,
+div.public-share {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 42%, transparent), color-mix(in srgb, var(--story-paper) 42%, transparent)), url("./assets/scenery/harbor.webp");
+}
+.asset-library-layout .asset-main--library {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 48%, transparent), color-mix(in srgb, var(--story-paper) 48%, transparent)), url("./assets/scenery/bamboo.webp");
+}
+.account-shell .usage-page,
+.account-shell .billing-page,
+.admin-shell .admin-main {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 70%, transparent), color-mix(in srgb, var(--story-paper) 70%, transparent)), url("./assets/scenery/courtyard.webp");
+}
+.login-screen.studio-shell--login,
+main.admin-login {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 40%, transparent), color-mix(in srgb, var(--story-paper) 40%, transparent)), url("./assets/scenery/courtyard.webp");
+}
+.workspace.knowledge-workspace .timeline {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 84%, transparent), color-mix(in srgb, var(--story-paper) 84%, transparent)), url("./assets/scenery/bamboo.webp");
+}
+.workspace.knowledge-workspace .canvas-content {
+  --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 84%, transparent), color-mix(in srgb, var(--story-paper) 84%, transparent)), url("./assets/scenery/clouds.webp");
+}
+
+.studio-shell .home-scroll,
+.studio-shell .home-project-list,
+.asset-library-layout .asset-library-header,
+.asset-library-layout .asset-media-tabs {
+  background: transparent;
+}
+
+/* Warm paper surfaces keep content readable without bright white cutouts. */
+.account-shell,
+.admin-shell,
+.login-screen,
+main.admin-login,
+div.public-share,
+.creation-pending {
+  --canvas: var(--story-paper);
+  --background: var(--story-surface);
+  --surface: var(--story-surface);
+  --surface-inset: var(--story-surface);
+  --line: var(--story-line);
+  --line-strong: var(--story-line-strong);
+  --text: var(--story-ink);
+  --primary: var(--story-ink);
+  --muted: var(--story-muted);
+  --dim: var(--story-dim);
+  --surface-hover: var(--story-hover);
+  color: var(--text);
+}
+
+.studio-shell .home-project-list > article,
+.asset-library-layout .asset-card-open,
+.account-shell .usage-table-wrap,
+.account-shell .usage-metrics,
+.account-shell .usage-notes,
+.billing-panel .billing-summary,
+.admin-shell .admin-table-scroll,
+.workspace.knowledge-workspace .knowledge-plan {
+  background: var(--story-panel);
+  border-radius: var(--radius-control);
+}
+.studio-shell .home-project-list > article {
+  border: 1px solid var(--story-line);
+  border-radius: var(--radius-panel);
+}
+
+/* A readable document, including its preparing and empty states. The panel
+   owns scrolling so lengthy plans never disappear under the canvas edge. */
+.workspace.knowledge-workspace .canvas-content > .knowledge-plan {
+  flex: 0 1 auto;
+  width: calc(100% - 48px);
+  max-width: 960px;
+  min-height: 0;
+  margin: 24px auto;
+  padding: 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--story-line);
+  border-radius: var(--radius-panel);
+}
+.workspace.knowledge-workspace .knowledge-plan > header {
+  align-items: flex-start;
+  gap: 12px 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--story-line);
+}
+.workspace.knowledge-workspace .knowledge-plan > header > div { flex: 1 1 200px; min-width: 0; }
+.workspace.knowledge-workspace .knowledge-plan > header h2 {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: var(--text-title);
+  font-weight: var(--weight-medium);
+}
+.workspace.knowledge-workspace .knowledge-plan > header [role="status"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  background: var(--story-surface);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-ui);
+}
+.workspace.knowledge-workspace .knowledge-plan > header [role="status"] svg { flex-shrink: 0; }
+.workspace.knowledge-workspace .plan-empty { padding: 24px 0 12px; color: var(--muted); }
+.workspace.knowledge-workspace .plan-empty p { margin: 0 0 8px; color: var(--text); }
+.workspace.knowledge-workspace .plan-empty small { display: block; line-height: var(--leading-body); }
+.workspace.knowledge-workspace .plan-confirm { margin-top: 20px; }
+.workspace.knowledge-workspace .project-library-section > .workbench-empty { background: transparent; }
+@media (max-width: 800px) {
+  .workspace.knowledge-workspace .canvas-content > .knowledge-plan {
+    width: calc(100% - 24px);
+    margin-block: 12px;
+    padding: 16px;
+  }
+}
+.studio-shell .home-project-open {
+  gap: 0;
+  padding: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+.studio-shell .home-project-open:is(:hover, :focus-visible) { background: var(--story-surface); }
+.studio-shell .home-project-cover {
+  border: 0;
+  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+}
+.studio-shell .home-project-copy { padding: 12px 44px 14px 14px; }
+.studio-shell .home-project-menu-button { right: 6px; bottom: 28px; }
+.studio-shell--home .composer--hero .send-button:disabled {
+  opacity: 1;
+  background: var(--story-line);
+  color: var(--muted);
+}
+.asset-library-layout .asset-card-open { border: 1px solid var(--story-line); padding-bottom: 10px; }
+.asset-library-layout .asset-card-open > :is(b, small, em) { margin-inline: 10px; }
+.asset-library-layout .asset-card-image { border-radius: var(--radius-control) var(--radius-control) 0 0; }
+.account-shell :is(.usage-metrics, .usage-notes, .usage-table-wrap) { padding-inline: 16px; }
+.account-shell .usage-notes { padding-block: 12px; }
+
+/* Book headings and a small handwritten voice for descriptive copy.
+   Conversation, document body, fields, controls and metadata stay in UI sans. */
+.app-navigation-surface .home-brand b,
+.app-navigation-surface .home-new-button,
+.app-navigation-surface .app-primary-navigation > button,
+.studio-shell .home-project-heading h1,
+.studio-shell .creation-intro h1,
+.asset-library-header h1,
+.usage-heading h1,
+.billing-panel .admin-page-heading h1 {
+  font-family: var(--font-book);
+  font-weight: var(--weight-medium);
+  letter-spacing: .015em;
+}
+.workspace.knowledge-workspace .plan-sections article > header h3 {
+  font-family: var(--font-book);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-ui);
+}
+.studio-shell .creation-intro p,
+.studio-shell .home-project-empty > span,
+.asset-library-layout .asset-empty-state > p,
+.login-screen .login-intro,
+.workspace.knowledge-workspace .plan-empty > p,
+.workspace.knowledge-workspace .plan-expression {
+  font-family: var(--font-story);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+.studio-shell .creation-intro p { text-wrap: balance; }
+
+/* Editorial rhythm: retain the open writing canvas, with a shorter path
+   from the invitation to the controls and quieter document surfaces. */
+.studio-shell--home .home-create { max-width: 1100px; }
+.studio-shell--home .creation-intro { margin-bottom: 72px; }
+.studio-shell--home .creation-intro h1 { font-size: clamp(28px, 2.4vw, 34px); }
+.studio-shell--home .home-create .composer.composer--hero textarea { min-height: 220px; }
+.workspace.knowledge-workspace .thread-footer { background: var(--story-paper); }
+.workspace.knowledge-workspace .thread-footer .composer { background: var(--story-paper); }
+.workspace.knowledge-workspace .plan-brief { background: var(--story-surface); }
+@media (max-width: 800px) {
+  .studio-shell--home .creation-intro { margin-bottom: 40px; }
+  .studio-shell--home .creation-intro h1 { font-size: var(--text-title); }
+  .studio-shell--home .home-create .composer.composer--hero textarea { min-height: 200px; }
+}
+@media (max-width: 360px) {
+  .studio-shell--home .creation-intro h1 { font-size: 20px; }
+}
+.app-navigation-surface .home-brand b { letter-spacing: .08em; }
+.studio-shell .app-primary-navigation > button.active {
+  background: var(--story-paper);
+  border-color: var(--story-line);
+  box-shadow: none;
+}
+div.public-share > footer,
+.marketing-page .workshop-showcase { background: var(--story-paper); }
+.studio-shell .studio-art img,
+.usage-page .studio-art img,
+.billing-page .studio-art img,
+.admin-main .studio-art img,
+div.public-share .studio-art img { mix-blend-mode: multiply; }
+.studio-art.studio-art--empty img { mix-blend-mode: normal; }
+
+/* The public introduction belongs to the same world, retaining its original
+   title, characters and real customer video examples. */
+.marketing-page.workshop-home {
+  background-color: var(--story-paper);
+  background-image: url("./assets/scenery/journey.webp");
+  background-size: max(1100px, 100%) auto;
+  background-position: right top;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 800px) {
+  /* Keep the boat and its passenger in the narrow crop. */
+  .studio-shell--library .home-main,
+  div.public-share { background-position: 58% bottom; }
+}
+
+/* Match the public ink film crew while keeping the working canvas quiet. */
+.creation-workflow { display: flex; align-items: center; justify-content: flex-end; gap: 18px; list-style: none; margin: 24px 0 0; padding: 0; color: var(--muted); font-size: var(--text-caption); }
+.creation-workflow li { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.creation-workflow li > span { font-variant-numeric: tabular-nums; color: var(--dim); }
+.creation-workflow svg { width: 14px; height: 14px; margin-right: 10px; color: var(--dim); }
+.studio-shell .home-project-heading { align-items: center; min-height: 80px; }
+.studio-shell .home-project-heading > .studio-art { width: 64px; height: 72px; margin-right: 12px; }
+.studio-shell--home .creation-intro .studio-art { width: 80px; height: 84px; }
+.studio-shell--login .login-content > .studio-art { width: 96px; height: 100px; margin-bottom: 20px; }
+.studio-shell .studio-art img, .account-shell .studio-art img, .admin-shell .studio-art img, div.public-share .studio-art img { mix-blend-mode: normal; }
+.workspace.knowledge-workspace .project-header-brand > .studio-art { width: 24px; height: 30px; }
+@media (max-width: 800px) {
+  .studio-shell--home .creation-intro .studio-art { width: 48px; height: 56px; }
+  .studio-shell .home-project-heading > .studio-art { width: 44px; height: 52px; margin-right: 4px; }
+  .creation-workflow { justify-content: center; gap: 10px; margin-top: 20px; }
+  .creation-workflow li { gap: 5px; }
+  .creation-workflow svg { width: 12px; height: 12px; margin-right: 2px; }
+  .studio-shell--login .login-content > .studio-art { width: 76px; height: 80px; margin-bottom: 16px; }
+}
+@media (max-width: 800px) {
+  .studio-shell--home .home-main {
+    --story-scene: linear-gradient(color-mix(in srgb, var(--story-paper) 68%, transparent), color-mix(in srgb, var(--story-paper) 68%, transparent)), url("./assets/scenery/journey.webp");
+  }
+}

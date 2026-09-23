@@ -1,10 +1,20 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { useSavedState } from "../hooks/useSavedState";
 import { initialStudioTheme, studioTheme, type StudioArtworkVariant } from "../studioThemes";
-import { animateElement } from "./motion";
 
-const artworkUrls = import.meta.glob<string>(["../assets/comic/*.webp", "!../assets/comic/ghost-*.webp", "!../assets/comic/scene-*.webp"], { eager: true, query: "?url", import: "default" });
+import inkDirector from "../assets/scenery/ink-ai-director.webp";
+import inkHanging from "../assets/scenery/ink-ai-hanging.webp";
+import inkFilm from "../assets/scenery/ink-ai-film.webp";
+import marketingArtwork from "../assets/comic/marketing.webp";
+
+const inkArtwork = {
+  home: [inkDirector, 600, 623], projects: [inkDirector, 600, 623],
+  assets: [inkFilm, 900, 480], access: [inkDirector, 600, 623],
+  account: [inkDirector, 600, 623], workspace: [inkHanging, 400, 500],
+  empty: [inkFilm, 900, 480],
+} as const;
+
 const motionSchema = z.boolean();
 const MotionContext = createContext({ enabled: true, toggle: () => {} });
 
@@ -26,26 +36,9 @@ export const useStudioMotion = () => useContext(MotionContext);
 
 /** Real page-specific illustrations, independent of form state and customer media. */
 export function StudioArtwork({ variant, className = "" }: { variant: StudioArtworkVariant; className?: string }) {
-  const { enabled } = useStudioMotion();
-  const root = useRef<HTMLDivElement>(null);
-  const animation = useRef<Animation | undefined>(undefined);
-  const src = artworkUrls[`../assets/comic/${variant}.webp`];
-  useEffect(() => {
-    animation.current?.cancel();
-    if (!enabled || variant !== "home" || document.visibilityState === "hidden") return;
-    const element = root.current;
-    if (!element || element.closest("[hidden]")) return;
-    animation.current = animateElement(element, [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "translateY(0)" }], "--motion-slow");
-    return () => animation.current?.cancel();
-  }, [variant, enabled]);
-  // Interaction motion is a single short response, never an ambient loop.
-  const greet = () => {
-    const element = root.current;
-    if (!element || variant !== "home" || !enabled || element.closest(".home-create")?.querySelector(":focus-within") || document.visibilityState === "hidden") return;
-    animation.current?.cancel();
-    animation.current = animateElement(element, [{ transform: "translateY(0)" }, { transform: "translateY(-3px)", offset: .4 }, { transform: "translateY(0)" }], "--motion-slow");
-  };
-  return <div ref={root} className={`studio-art studio-art--${variant} ${className}`} data-theme={studioTheme.id} data-artwork={variant} aria-hidden="true" onPointerEnter={event => { if (event.pointerType === "mouse") greet(); }}>
-    <img key={src} src={src} alt="" draggable={false} decoding="async" width={variant === "home" || variant === "marketing" ? 2172 : 1536} height={variant === "home" || variant === "marketing" ? 724 : 1024} onError={event => { event.currentTarget.style.visibility = "hidden"; }}/>
+  const ink = variant === "marketing" ? null : inkArtwork[variant];
+  const src = ink?.[0] ?? marketingArtwork;
+  return <div className={`studio-art studio-art--${variant} ${className}`} data-theme={studioTheme.id} data-artwork={variant} aria-hidden="true">
+    <img key={src} src={src} alt="" draggable={false} decoding="async" width={ink?.[1] ?? 2172} height={ink?.[2] ?? 724} onError={event => { event.currentTarget.style.visibility = "hidden"; }}/>
   </div>;
 }

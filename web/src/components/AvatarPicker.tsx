@@ -2,12 +2,15 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "re
 import { Check, CircleNotch, Shuffle, UploadSimple, UserCircle, X } from "@phosphor-icons/react";
 import { z } from "zod";
 import { sessionFetch } from "../session";
-import comicAvatar from "../assets/comic/avatar.webp";
+import coralMonster from "../assets/avatars/monster-coral.webp";
+import mintMonster from "../assets/avatars/monster-mint.webp";
+import goldMonster from "../assets/avatars/monster-gold.webp";
+import blueMonster from "../assets/avatars/monster-blue.webp";
 import "../avatars.css";
 
 export const avatarPresets = [
-  { id: "cat", name: "捣蛋小鬼" }, { id: "bunny", name: "软软兔兔" },
-  { id: "fox", name: "小狐狸" }, { id: "panda", name: "熊猫团子" },
+  { id: "cat", name: "珊瑚豆豆", image: coralMonster }, { id: "bunny", name: "薄荷长耳", image: mintMonster },
+  { id: "fox", name: "暖黄方方", image: goldMonster }, { id: "panda", name: "雾蓝云朵", image: blueMonster },
 ] as const;
 const avatarSchema = z.object({ presetId: z.string().nullable(), url: z.string() });
 export type AccountAvatar = z.infer<typeof avatarSchema>;
@@ -52,7 +55,7 @@ export function useAccountAvatar(userId?: string) {
 
 export function AvatarImage({ url, className = "" }: { url?: string; className?: string }) {
   // Keep the persisted preset ID compatible; uploaded account photos retain their own URL.
-  const imageUrl = url === presetUrl("cat") ? comicAvatar : url;
+  const imageUrl = avatarPresets.find(preset => url === presetUrl(preset.id))?.image ?? url;
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [imageUrl]);
   return <span className={`account-avatar ${className}`} aria-hidden="true">
@@ -109,11 +112,11 @@ export function AvatarPicker({ current, loadError, onRetry, onSaved, onClose, re
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   }
   return <dialog className="avatar-picker" ref={dialog} aria-labelledby="avatar-picker-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <header><div><h2 id="avatar-picker-title">更换头像</h2><p>挑一个小伙伴，或用自己的照片。</p></div><button type="button" aria-label="关闭头像选择" disabled={busy} onClick={onClose}><X /></button></header>
+    <header><div><h2 id="avatar-picker-title">更换头像</h2><p>选一只小怪兽，或用自己的照片。</p></div><button type="button" aria-label="关闭头像选择" disabled={busy} onClick={onClose}><X /></button></header>
     <div className="avatar-picker-body">
       <div className="avatar-preview"><AvatarImage url={previewUrl} /><span>{selection === "custom" ? "自己的头像" : avatarPresets.find(item => item.id === selection)?.name}</span></div>
       {loadError ? <p className="avatar-error" role="alert">{loadError}<button type="button" onClick={onRetry}>重新读取</button></p> : null}
-      <div className="avatar-options" role="group" aria-label="可爱头像">
+      <div className="avatar-options" role="group" aria-label="小怪兽头像">
         {avatarPresets.map(item => <button type="button" key={item.id} disabled={busy || reading} aria-pressed={selection === item.id} onClick={() => choose(item.id)}><AvatarImage url={presetUrl(item.id)} /><span>{item.name}</span>{selection === item.id ? <Check className="avatar-check" aria-label="已选择" /> : null}</button>)}
       </div>
       <div className="avatar-actions">

@@ -7,6 +7,7 @@ export type VideoExample = {
   description: string;
   prompt: string;
   source: '映芽原创演示' | '第三方效果参考';
+  coverNote?: string;
 };
 export const featuredIntro: VideoExample = {
   id: 'yingya-intro-v4',

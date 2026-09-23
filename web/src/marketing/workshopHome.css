@@ -1,29 +1,40 @@
-@font-face { font-family: "Yingya Comic Title"; src: url("/marketing/fonts/yingya-comic-title-v1.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
-.workshop-home { --text-hero-comic: clamp(48px, 5.4vw, 76px); --font-hero: "Yingya Comic Title", var(--font-editorial); }
-.workshop-home .marketing-header { position: relative; border: 0; }
-.workshop-home .marketing-header-inner { max-width: 1372px; height: 92px; padding: 0 60px; gap: 36px; }
+@font-face { font-family: "Yingya Marker"; src: url("/marketing/fonts/yingya-marker-title-v1.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+.workshop-home {
+  --text-hero-comic: clamp(96px, 10.4vw, 156px);
+  --font-hero: "Yingya Marker", var(--font-ui);
+  background-color: var(--canvas);
+  background-image: url('../assets/comic/hero-grid.webp');
+  background-position: center top;
+  background-size: 100% 890px;
+  background-repeat: no-repeat;
+  background-attachment: local;
+}
+.workshop-home .marketing-header { position: relative; border: 0; background: transparent; }
+.workshop-home .marketing-header-inner { max-width: 1436px; height: 92px; padding: 0 84px 0 64px; gap: 36px; }
 .workshop-home .marketing-brand-toy { width: 126px; }
 .marketing-github { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; font-size: var(--text-body); }
 .marketing-github svg { width: 22px; height: 22px; }
-.workshop-home .marketing-login { min-width: 104px; background: var(--primary); color: var(--canvas); border: 1px solid var(--primary); }
-.workshop-home .marketing-hero { max-width: 1372px; min-height: 0; margin: auto; padding: 30px 0 0; display: block; }
+.workshop-home .marketing-login { min-width: 112px; background: var(--primary); color: var(--canvas); border: 1px solid var(--primary); }
+.workshop-home .marketing-hero { max-width: 1372px; min-height: 0; margin: auto; padding: 8px 0 0; display: block; }
 .workshop-home .marketing-hero-copy { position: relative; z-index: 1; width: 100%; text-align: center; padding: 0 24px; }
-.workshop-home .marketing-hero-copy h1 { font-size: var(--text-hero-comic); line-height: 1.4; font-family: var(--font-hero); font-weight: 500; font-synthesis: none; letter-spacing: .025em; text-wrap: balance; }
-.workshop-home #marketing-title { white-space: nowrap; }
-.workshop-home #marketing-title > span { display: inline-block; transform: rotate(-4deg); }
-.workshop-home #marketing-title > span:nth-child(2) { transform: translateY(-.08em) rotate(5deg); }
-.workshop-home #marketing-title > span:nth-child(3) { transform: translateY(.03em) rotate(-6deg); }
-.workshop-home #marketing-title > span:nth-child(4) { transform: translateY(-.06em) rotate(4deg); }
-.workshop-home #marketing-title > span:nth-child(5) { transform: rotate(-3deg); }
-.workshop-home #marketing-title > span:nth-child(6) { transform: translateY(-.08em) rotate(5deg); }
-.workshop-home #marketing-title > span:nth-child(7) { transform: rotate(-5deg); }
+.workshop-home .marketing-hero-copy h1 { font-size: var(--text-hero-comic); line-height: .96; font-family: var(--font-hero); font-weight: 400; font-synthesis: none; letter-spacing: -.02em; }
+.hero-title-line { display: block; white-space: nowrap; }
+.hero-title-line > span { position: relative; display: inline-block; transform: rotate(-4deg); isolation: isolate; -webkit-text-stroke: .04em currentColor; }
+.hero-title-line > span:nth-child(2) { transform: rotate(3deg); }
+.hero-title-line > span:nth-child(3) { transform: rotate(-3deg); }
+.hero-title-line > span:nth-child(4) { transform: rotate(3deg); }
+.hero-title-coral { color: var(--brand-coral); }
+.hero-title-teal { color: var(--brand-teal); }
+.hero-title-highlight::before { content: ''; position: absolute; z-index: -1; width: 1.55em; height: 1.35em; left: -.06em; top: -.3em; background: url('../assets/comic/hero-title-accent.webp') center / contain no-repeat; pointer-events: none; }
 .workshop-home .marketing-hero-copy > p { font-size: clamp(17px, 1.9vw, 26px); line-height: 1.6; margin: 16px auto 0; text-wrap: balance; }
 .workshop-home .marketing-hero-actions { justify-content: center; gap: 18px; margin-top: 26px; }
-.workshop-home .marketing-hero-actions > * { min-width: 172px; min-height: 50px; }
+.workshop-home .studio-marketing-art { width: min(1020px, 100%); margin: 8px auto 0; }
+.workshop-home .workshop-showcase.motion-showcase { padding-top: 0; }
+.workshop-home .marketing-hero-actions > * { min-width: 180px; min-height: 50px; }
 .workshop-home .workshop-watch { background: var(--canvas); border: 1px solid var(--line-strong); font-size: var(--text-body); }
 .workshop-home .workshop-watch:hover { background: var(--surface); }
 .studio-illustration { display: block; width: 100%; height: auto; margin: 8px auto 0; object-fit: contain; }
-.workshop-showcase { max-width: 1252px; margin: 0 auto; padding: 10px 40px 0; scroll-margin-top: 24px; }
+.workshop-showcase { max-width: 1304px; margin: 0 auto; padding: 10px 40px 0; scroll-margin-top: 24px; }
 .workshop-showcase .marketing-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
 .workshop-showcase .marketing-example-image { aspect-ratio: 640/474; border: 1px solid var(--line); border-radius: var(--radius-panel); overflow: hidden; }
 .workshop-showcase .marketing-example-image img { width: 100%; height: 100%; object-fit: contain; }
@@ -36,16 +47,19 @@
 .workshop-footer > div { display: flex; align-items: center; gap: 18px; }
 .workshop-footer p { font-size: var(--text-caption); }
 @media(max-width:767px) {
+  .workshop-home { --text-hero-comic: clamp(60px, 17.5vw, 108px); background-size: 100% 560px; }
   .workshop-home .marketing-header-inner { padding: 0 20px; height: 72px; gap: 18px; }
   .workshop-home .marketing-brand-toy { width: 92px; }
   .workshop-home .marketing-header nav { display: none; }
   .workshop-home .marketing-header .marketing-github { margin-left: auto; font-size: var(--text-control); }
   .workshop-home .marketing-login { min-width: 62px; }
-  .workshop-home .marketing-hero { padding-top: 24px; }
-  .workshop-home .marketing-hero-copy h1 { font-size: clamp(36px, 9vw, 56px); }
+  .workshop-home .marketing-hero { padding-top: 28px; }
   .workshop-home .marketing-hero-copy > p { font-size: var(--text-body); margin-top: 14px; }
   .workshop-home .marketing-hero-actions { gap: 12px; margin-top: 22px; }
   .workshop-home .marketing-hero-actions > * { min-width: 0; min-height: 46px; padding: 10px 18px; }
+  .workshop-home .studio-marketing-art { margin: 30px auto 20px; }
+  .workshop-home .workshop-showcase.motion-showcase { padding-top: 16px; }
+  .workshop-home .motion-gallery-heading { align-items: flex-start; }
   .studio-illustration { margin-top: 16px; }
   .workshop-showcase { padding: 16px 20px 0; }
   .workshop-showcase .marketing-gallery { gap: 12px; }
