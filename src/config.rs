@@ -17,7 +17,6 @@ pub struct AppPaths {
     pub projects: PathBuf,
     pub assets: PathBuf,
     pub codex_home: PathBuf,
-    pub hyperframes_home: PathBuf,
 }
 
 impl AppPaths {
@@ -55,7 +54,7 @@ impl AppPaths {
         let codex_home = env::var_os("YINGYA_CODEX_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| runtime.join("codex-home"));
-        let hyperframes_home = runtime.join("hyperframes-home");
+
         Ok(Self {
             resources,
             app_data,
@@ -64,7 +63,6 @@ impl AppPaths {
             projects,
             assets,
             codex_home,
-            hyperframes_home,
         })
     }
 }

@@ -42,25 +42,10 @@ walkthrough should differ in narrative and pacing. Preserve brand appearance.
 Use editable titles and callouts around actual screenshots. Never repaint a
 fake product interface to illustrate an unverified feature.
 
-When referenceExample is set, read the corresponding reusable sample under
-the product-video runtime pack (`dirname "$YINGYA_PRODUCT_VIDEO"`), including
-DESIGN.md and examples/<referenceExample>.json. Reuse its structure and motion where suitable;
-replace all Yingya-specific names, claims, URLs and screenshots with the user's
-verified material. This selection is not authorization to insert the sample
-brand into the customer's film. Custom compositions remain supported.
-
-For a new screenshot-led composition, `node "$YINGYA_PRODUCT_VIDEO" --project .`
-builds from the project's scenes.json and assets.json after DESIGN.md is written.
-It supports productLayout hero/split/focus/steps/closing, supportingText,
-brandName and footer on the existing scene objects. It reads aspectRatio from
-.yingya/manifest.json; standalone sources can pass --aspect-ratio 16:9|9:16|1:1.
-Review the composition at the requested ratio before rendering. Register real image assets
-and optional audio assets with measured durationSeconds. Defaults containing
-Yingya must be replaced for another product. Rebuild uses a source fingerprint
-and refuses to overwrite manually edited or custom index.html files. The
-`--example ID` option is only for explicitly producing Yingya's own sample; it
-must not be used as a shortcut for another product's film. Inspect and customize
-the source as needed for an approved design rather than forcing the builder.
+Compose screenshots and editable overlays as React scenes. Reuse the chosen sample's
+narrative where suitable, replacing its names, claims, URLs and screenshots with
+verified customer material. Build with the Remotion runtime; use measured audio
+and scene frames. Review the requested aspect ratio before rendering.
 
 ## Single-scene revision contract
 

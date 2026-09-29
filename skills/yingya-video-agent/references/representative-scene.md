@@ -25,7 +25,7 @@ Do not order every scene's media before validating a shared uncertain look.
 Work within the approved composition and stable scene IDs. Keep one authoritative
 schedule in `scenes.json`; testing a portion must not silently shorten the
 requested deliverable or change the user-approved sequence. Use the existing
-HyperFrames preview/check tools to inspect the passage over time and at relevant
+Remotion preview/check tools to inspect the passage over time and at relevant
 frames. When a short render is necessary, use the production runner with its
 actual supported arguments and a separate internal output path; do not assume
 trim flags exist or publish the experiment as the complete review draft.

@@ -93,6 +93,9 @@ def build(args):
     run(['python3', root / 'scripts/setup-python.py', '--resources', root,
          '--store', args.runtime / 'python'])
     run(['npm', 'ci'], cwd=root)
+    run(['npm', 'run', 'browser:ensure'], cwd=root)
+    run(['python3', root / 'scripts/setup-remotion.py', '--resources', root,
+         '--store', args.runtime / 'remotion-downloads'])
     run(['npm', 'run', 'typecheck'], cwd=root)
     run(['npm', 'run', 'web:build'], cwd=root)
     # Compile from the immutable sources, but share rebuildable Cargo intermediates
@@ -100,9 +103,6 @@ def build(args):
     target = args.runtime / 'release-build'
     run(['cargo', 'build', '--locked', '--release', '--target-dir', target], cwd=root)
     shutil.copy2(target / 'release/yingya-server', root / 'yingya-server')
-    # Browser binaries are machine-local tooling, not mutable release source.
-    (root / '.runtime').mkdir(exist_ok=True)
-    (root / '.runtime/hyperframes-home').symlink_to(args.runtime / 'hyperframes-home', target_is_directory=True)
     manifest = {'id': args.release, 'binary': str(root / 'yingya-server'), 'resources': str(root)}
     atomic_json(root / 'release.json', manifest)
     print(root / 'release.json')

@@ -35,8 +35,8 @@ curl -b /tmp/yingya-cookies -X POST http://127.0.0.1:8797/api/codex/threads/THRE
 Each returned image has two paths:
 
 - `url`, such as `/assets/u/USER_ID/generated/ID.png`, for `<img src>` in the frontend.
-- `hyperframesPath`, such as `assets/generated/ID.png`, for media elements in a
-  HyperFrames composition.
+- `projectPath`, such as `assets/generated/ID.png`, for media elements in a
+  Remotion composition.
 
 Use the upload response's `url` as the reference image; only server-managed
 asset paths belonging to the signed-in user are accepted. Generated
@@ -83,164 +83,49 @@ sound effects, import a selected result, inspect project audio, and assign an
 effect to a scene. The Skill calls the local Yingya API and never reads or
 exposes the HeyGen credential.
 
-## HyperFrames tooling
+## Remotion runtime and browser
 
-HyperFrames CLI is pinned as a project dependency. Its core skills are installed
-only into the isolated Codex home under `.runtime/`. The installer also gives
-HyperFrames its own isolated `HOME`, because its underlying skills installer does
-not use `CODEX_HOME` when choosing agent integration directories.
+Remotion, Player, bundler and renderer are pinned to the same version. The backend
+uses `runtime/remotion/cli.mjs` for project initialization, build, check and render.
+Prepare Chromium and the native renderer after installing npm dependencies:
 
 ```bash
-npm run hyperframes:version
-npm run hyperframes:info
-npm run hyperframes:doctor
-npm run hyperframes:browser:ensure
-npm run hyperframes:browser:path
-npm run hyperframes:skills:install
+npm run browser:ensure
+npm run browser:path
+python3 scripts/setup-remotion.py
+npm run test:remotion
+npm run test:remotion:browser
 ```
 
-The pinned Chrome Headless Shell is stored under
-`.runtime/hyperframes-home/.cache/`. The Rust backend discovers that executable
-at startup and passes it to Codex app-server as `HYPERFRAMES_BROWSER_PATH`.
-Live composition previews are served through a short-lived,
-read-only Yingya preview URL tied to the login session. No public Studio port is
-started. The standalone Studio editor is not exposed in this mode.
+Browser discovery uses Playwright's pinned Chromium, or `YINGYA_BROWSER_PATH`.
+The backend resolves its executable before entering the user sandbox and mounts
+it read-only. The sandbox passes the configured wrapper to Remotion and Playwright.
+Agent turns do not install browsers or shared dependencies. Previews use the native
+Remotion Player inside an opaque, read-only iframe; no public Studio port is opened.
 
-Upgrades are explicit and update the pinned package versions and lockfile:
+See [Remotion runtime contract](REMOTION_MIGRATION.md) for source files, frame
+scheduling, media declarations and the actual scope of validation.
 
-```bash
-npm run codex:upgrade
-npm run hyperframes:upgrade
-```
+## React component sources
 
-Normal app-server runs disable automatic HyperFrames CLI and skill updates.
-
-## Component library and video animation
-
-`$YINGYA_COMPONENT_LIBRARY` is the video Agent's unified entrypoint for local
-scene packs and public React Bits / Magic UI components. `catalog` (alias `list`)
-reads the installed scene catalog without a project. Select an existing
-implementation before importing or building another effect; install only the
-pack needed for the scene. The catalog is the maintained source of truth for
-component availability, provenance and configuration.
-
-Anime.js supplies text, linear process and numerical comparison scenes. The
-Magic UI `beam-network` pack handles branching and converging connections;
-Three.js `model-stage` displays a supplied local GLB/glTF model with lighting,
-camera movement and supported animation. It does not generate a new 3D model or
-provide a cloud model marketplace. The public registries cover additional
-effects; their separately licensed Pro products are not integrated.
-
-Yingya installs a pinned shadcn CLI with the application and configures its MCP
-in each user's isolated Codex runtime. `runtime/component-registry/components.json`
-declares the `@react-bits` and `@magicui` registry endpoints. Discovery covers
-their public registries rather than a fixed list of cached effects.
-Configuration belongs to the Yingya runtime and does not alter the host user's
-personal Codex settings.
-
-The managed server is named `yingya_shadcn`. `src/component_library.rs` supplies
-the release-local Node/shadcn command and the read-only working directory
-`runtime/component-registry/`; that directory's `components.json` declares the
-registry. `src/codex.rs` reapplies this configuration when the user's app-server
-starts or restarts. The sandbox exposes `$YINGYA_COMPONENT_LIBRARY` and forwards
-its existing egress proxy to the MCP process.
-
-The video Agent inspects the local catalog, then uses registry search and source
-import when the chosen scene needs another implementation:
+`$YINGYA_COMPONENT_LIBRARY` searches/imports editable React Bits and Magic UI
+sources using the pinned shadcn CLI and its user-isolated MCP. Commands are
+`init`, `search`, `view`, `add`, `diagnose` and `build`, with an explicit `--project`.
+Registry imports retain sources, dependency locks and attribution in
+`component-library/`. Build output and used assets belong in the source snapshot.
 
 ```bash
-node "$YINGYA_COMPONENT_LIBRARY" catalog
-node "$YINGYA_COMPONENT_LIBRARY" view --component model-stage
-node "$YINGYA_COMPONENT_LIBRARY" install --project . --component beam-network
 node "$YINGYA_COMPONENT_LIBRARY" search --project . --registry all --query text
-node "$YINGYA_COMPONENT_LIBRARY" view --project . --component @react-bits/Aurora-TS-CSS
+node "$YINGYA_COMPONENT_LIBRARY" view --project . --component @magicui/animated-beam
 node "$YINGYA_COMPONENT_LIBRARY" add --project . --component @magicui/animated-beam
 node "$YINGYA_COMPONENT_LIBRARY" diagnose --project . --component @magicui/animated-beam
-node "$YINGYA_COMPONENT_LIBRARY" build --project . --entry component-library/entry.tsx --out assets/components
 ```
 
-These examples run from a video project with Yingya's runtime environment, not
-from the application repository. `search --registry` accepts `@react-bits`,
-`@magicui` or `all` (the default). Local pack installation copies offline resources
-into `assets/yingya-components/`, or `assets/animejs/` for Anime.js. The legacy
-Anime installer remains compatible. Registry imports use `component-library/`
-for source, project-local dependencies, locks and attribution; the build places
-bundled JS/CSS in `assets/components/`, including compiled Tailwind styles when
-used. These locations serve different roles and are retained in each snapshot.
-
-These commands are available choices, not a mandatory sequence. The Agent can
-reuse existing source, select a known pack or search for another implementation.
-`add` returns static import diagnostics alongside retained source: `needs-repair`
-identifies missing packages/assets or source errors, while `imports-resolved`
-only confirms JavaScript/TypeScript imports resolve. `diagnose` rechecks an
-existing import after edits, restoring locked dependencies if needed. Neither
-status verifies CSS resources, runtime URLs, video timing or rendered output.
-Optional npm dependencies follow npm's precedence rules; packages omitted on
-the current platform do not prevent collecting notices for installed packages.
-
-Validated registry `css`/`cssVars` pass through shadcn's stylesheet updater;
-registry environment-variable changes are rejected. Bare Magic UI dependencies
-such as Bento Grid's `button` resolve to the official shadcn `new-york-v4`
-registry. This source is dependency-only: public search and direct import remain
-React Bits and Magic UI. The importer keeps each source URL, hash and MIT notice,
-and the bundle includes dependency licenses. Required scaffold dependencies and
-neutral semantic-color fallbacks are supplied without global element resets;
-the video can override inherited theme variables such as `--primary`.
-
-Magic UI and Three.js packs share the `YingyaComponents.createScene` API and a
-clock driven by HyperFrames/Yingya preview `hf-seek` events. `ready` covers initial
-resources; a promise returned by `renderAt(globalSeconds)` covers that frame's
-commit and is awaited through `hf-seek.waitUntil`. React adapters can commit
-synchronously with `flushSync` or return that precise commit promise. Components
-also expose disposal. Anime.js
-continues to use `YingyaAnime` and `window.__hfAnime` without a second clock
-registration. The existing GSAP composition timeline owns scene visibility,
-transitions and media timing. For raw registry source, the Agent authors the
-mounting and time adapter; importing or bundling alone does not make scroll,
-pointer, wall-clock or simulation effects seekable.
-
-The production skill prefers reusing and composing original implementations.
-It preserves each video's approved aesthetics, including shader, particle and
-3D effects, and checks deterministic seeking and decoded MP4 frames. Source,
-dependency locks, licenses, adaptation code and built assets belong in the
-immutable draft snapshot. Models include their source license, buffers and
-textures, with project-relative resource paths. The model pack supports ordinary
-local GLB/glTF; Draco, Meshopt and KTX2 decoding are not bundled. Required resource
-failures must be resolved before rendering. Project-local component dependencies
-are permitted; installing or upgrading shared CLIs during a video turn remains
-prohibited.
-
-Conversation and asset-library upload APIs accept GLB/glTF as general attachments.
-Prefer a self-contained GLB: uploads assign generated filenames and do not
-rewrite glTF buffer/texture references. Multi-file glTF assets must be assembled
-inside the project with their dependency directory and relative URIs intact.
-The upload request limit remains 25 MiB; the model renderer's separate loading
-limit does not increase the API upload limit. There is no separate model-market
-or model-library UI.
-
-See the maintained Agent instructions in
-[`reusable-motion.md`](../skills/yingya-video-agent/references/reusable-motion.md)
-for installed packs and
-[`third-party-components.md`](../skills/yingya-video-agent/references/third-party-components.md)
-for registry imports, timing adaptation, license handling and verification.
-Registry discovery follows [React Bits](https://reactbits.dev/),
-[Magic UI](https://magicui.design/) and [shadcn MCP](https://ui.shadcn.com/docs/mcp).
-Read the selected source's license: public Magic UI uses MIT; React Bits includes
-Commons Clause restrictions on redistribution of the components themselves.
-Retain the actual version's notices with the imported files.
-
-Run `npm run test:components` for local import/build and browser asset checks.
-Set `YINGYA_COMPONENT_LIVE_TESTS=1` for the same suite to also search, download,
-build and reconstruct real registry components, including Magic UI keyframes,
-default shadcn dependencies and their browser styles. `npm run test:components:live
--- /absolute/path/to/fresh-fixture` imports Aurora and SplitText, adapts their
-timing and checks deterministic browser seeking; run HyperFrames check/render
-on that fixture separately to verify the MP4 output. Reuse its source with
-`--verify-only` when repeating browser checks.
-`npm run test:components:showcase -- /absolute/path/to/fresh-fixture` generates
-the three-scene local-pack fixture; use the same path plus `--verify-only` to
-check resource loading and seeking. Run HyperFrames check/render separately on
-that fixture to verify the actual MP4.
+Adapt imported effects to Remotion frames before using them in a video. Static
+import diagnostics do not prove repeatable seeking or rendered output. Preserve
+licenses, CSS and resource paths; declared audio/video remain in `remotion.json`.
+Read [component adaptation](../skills/yingya-video-agent/references/third-party-components.md)
+for the authoring contract. `npm run test:components` checks the source importer.
 
 ## Video design references
 
@@ -266,8 +151,7 @@ bundle from release resources. Publish changes through the normal release
 workflow and verify the active worker's reference files; a developer's local
 skill installation does not update website tasks. Run `npm run test:design` for
 offline provenance and reference-link integrity, plus the skill validator and
-actual controlled video tasks for behavioral validation. See the
-[historical integration record](archive/VIDEO_DESIGN_SKILLS_INTEGRATION.md) for the original scope and acceptance. Current plan review includes real keyframes before approval, as specified in the [current product contract](YINGYA_NEXT_PRODUCT_DIRECTION.md).
+actual controlled video tasks for behavioral validation. Current plan review includes real keyframes before approval, as specified in the [current product contract](YINGYA_NEXT_PRODUCT_DIRECTION.md).
 
 ## VoxCPM2 speech service
 

@@ -1,6 +1,6 @@
 ---
 name: faceless-explainer
-description: Direct and produce a polished Chinese faceless explainer from a topic, source text, or script using HyperFrames, generated or user media, VoxCPM2 narration, and timed captions.
+description: Direct and produce a polished Chinese faceless explainer from a topic, source text, or script using Remotion, generated or user media, VoxCPM2 narration, and timed captions.
 ---
 
 # Faceless Explainer
@@ -15,7 +15,7 @@ Use this specialization inside `yingya-video-agent`. That skill owns planning, c
 4. Translate the topic or manuscript into visible subjects and changes. Choose illustration, generated imagery, supplied media, editable diagrams, objects and typography for the story. Generated assets can carry the main visuals; fully procedural animation is also valid. Avoid turning paragraphs into repeated text cards by default.
 5. Follow the approved visual system and references; do not impose a preset palette. Keep clear hierarchy and mobile-safe captions. Avoid presenter faces unless the user explicitly requests them.
 6. When narration is requested, use the exact saved `.yingya/voice.json` voice with VoxCPM2. Measure final audio before fixing scene duration and derive captions from that audio. Reuse unchanged speech; omit TTS for explicitly silent videos.
-7. Follow the outer workflow's representative dynamic passage and visual review before delivering the complete film. Build a valid HyperFrames `index.html`, then use its single `hyperframes check --snapshots --json` gate and actual MP4 review. Do not duplicate checks or add another preview approval.
+7. Follow the outer workflow's representative dynamic passage and visual review before delivering the complete film. Build the React/Remotion source, then use the durable check/render commands and actual MP4 review. Do not duplicate checks or add another preview approval.
 8. Reuse clean upstream assets. For a single-scene revision, rebuild only that scene’s assets, narration, composition dependencies, and downstream render.
 
 ## Planning output

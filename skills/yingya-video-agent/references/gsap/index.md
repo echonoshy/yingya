@@ -2,7 +2,7 @@
 
 Use this reference when implementing or repairing GSAP choreography, character
 reveals, SVG drawing/morphing or path-following motion. Continue the approved
-film and existing production workflow. This pack supplements HyperFrames;
+film and existing production workflow. This pack supplies optional effects for Remotion;
 the upstream web examples are API reference, not a second workflow or a reason
 to replace an existing working effect.
 
@@ -37,64 +37,23 @@ node "$CODEX_HOME/skills/yingya-video-agent/scripts/install-gsap.mjs" --project 
 
 The installer verifies pinned bytes, copies scripts plus the license and
 provenance into `assets/gsap-3.14.2/`, and refuses to overwrite modified files.
-It does not edit HTML. Reuse the existing project's GSAP if compatible, or
-replace its core script reference with the copied core; never load two GSAP
-cores. Load selected plugin scripts after core and register them before use:
+It does not edit generated preview HTML. Import the installed GSAP package from
+React source; load optional local plugins once before constructing the effect.
+Preserve the copied provenance and separate GSAP license in the project snapshot.
 
-```html
-<script src="assets/gsap-3.14.2/gsap.min.js"></script>
-<script src="assets/gsap-3.14.2/DrawSVGPlugin.min.js"></script>
-<script>
-  gsap.registerPlugin(DrawSVGPlugin);
-  const tl = gsap.timeline({ paused: true });
-  tl.fromTo('#route', { drawSVG: '0%' }, {
-    drawSVG: '100%', duration: 1.2, ease: 'power2.inOut'
-  }, 0.3);
-  window.__timelines = window.__timelines || {};
-  window.__timelines.main = tl;
-</script>
-```
+## Adapt GSAP to Remotion frames
 
-These are GSAP **3.14.2** scripts, matched to Yingya's existing scaffold.
-Copy only what the project uses; no npm/network install is required during a
-video task. Keep the returned provenance with the project, including immutable
-versions. Record the reference commit from [PROVENANCE.json](PROVENANCE.json)
-in `DESIGN.md` when used. Upstream skills retain their [MIT license](upstream/LICENSE);
-the GSAP runtime uses the separate license shipped with its scripts.
+Create a finite paused timeline after its DOM and required fonts exist. Inside a
+React layout effect, seek it to `useCurrentFrame() / fps`; dispose it on unmount.
+Use a ref for the timeline and target elements. Delay render readiness during
+async font/plugin initialization. Never call `play()` or depend on wall-clock
+callbacks. Remotion owns composition duration, scene sequences and all media.
 
-## Adapt web animation to video time
-
-- Build a finite paused timeline and register it **after all its tweens exist**,
-  keyed by the root's `data-composition-id`. HyperFrames seeks it; do not call
-  `play()` or require scrolling, hovering, clicking, timers or animation frames.
-  Set render length in the root's static `data-duration`.
-- Preserve existing scaffold content, but replace its empty timeline registration
-  when constructing the real one. Never publish an empty placeholder while
-  waiting for font-dependent construction to finish.
-- Prefer synchronous setup when no font/layout dependency exists. For SplitText
-  or measurements that depend on fonts, await local fonts first, build once,
-  then register and call `window.__hfForceTimelineRebind?.()`. This follows the
-  installed HyperFrames determinism reference's async readiness contract;
-  older blanket prohibitions on all async setup are not the current contract.
-  Do not return a GSAP timeline directly from a Promise callback: it is thenable.
-- Use explicit start/end values for later-scene `fromTo` tweens, and set
-  `immediateRender: false` where a later tween would overwrite an earlier state.
-  Do not mutate DOM or create new animations in playback callbacks. Child
-  tweens must participate in the parent clock; do not leave them paused when
-  adding them. HyperFrames-owned subcompositions are registered separately,
-  not also manually nested.
-- No unseeded `gsap.utils.random()`, random strings, shuffle or random stagger
-  for rendered state. Precompute and save values or use a fixed seed. A random
-  choice once per page still changes between parallel render workers.
-- SVG path properties (`drawSVG`, `morphSVG`, `motionPath`, `strokeDashoffset`)
-  are valid animation targets. Prefer transforms over layout changes when
-  possible; an old property allowlist must not be interpreted as banning SVG.
-  HyperFrames owns timed clip visibility; animate inner wrappers for fades.
-- Keep finite repeats within the scene interval. Do not kill offscreen tweens
-  as an optimization: a later backward seek may need them again.
-- Website reduced-motion and responsive preferences must not silently change
-  the approved exported film. Use its fixed output canvas and motion brief;
-  accessibility preferences still apply to the surrounding product interface.
+Set explicit start/end states so direct, reverse and repeated seeks are identical.
+Avoid DOM mutations in playback callbacks, unseeded randomness and independently
+running child timelines. Keep finite repeats within the scene duration. SVG drawing,
+morphing and path-following remain valid; test the actual rendered result.
+Use `interpolate`/`spring` for ordinary transitions when no GSAP-specific API is needed.
 
 ## Plugin-specific checks
 

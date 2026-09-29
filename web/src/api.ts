@@ -1,6 +1,6 @@
 import { explanationPlanSchema, type PlanReceipt } from "./explanationPlan";
 import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
-import { assetRoleSchema, workbenchSchema, sceneEditResultSchema, feedbackAssetSchema } from "./schemas";
+import { assetRoleSchema, workbenchSchema, feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
 import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
@@ -53,7 +53,7 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
 
 const modelListSchema = z.object({ data: z.array(codexModelSchema) });
 const uploadSchema = z.object({ path: z.string(), name: z.string() });
-const imageUploadSchema = z.object({ url: z.string(), hyperframesPath: z.string() });
+const imageUploadSchema = z.object({ url: z.string(), projectPath: z.string() });
 const threadStartedSchema = z.object({ threadId: z.string() });
 
 export const api = {
@@ -84,7 +84,6 @@ export const api = {
   uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
   getWorkbench: (id: string, versionId?: string) => request(`/api/agent-projects/${id}/workbench${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""}`, workbenchSchema),
   setAssetRole: (id: string, path: string, role: import("./types").AssetRole) => request(`/api/agent-projects/${id}/asset-roles`, z.object({ assetRoles: z.array(z.object({ path: z.string(), role: assetRoleSchema })) }), { method: "PATCH", body: JSON.stringify({ path, role }) }),
-  editScene: (id: string, sceneId: string, input: { baseVersionId: string; expectedScenesRevision: string; patch: { title?: string; recipe?: string; focus?: { rect: { x: number; y: number; width: number; height: number } } } }) => request(`/api/agent-projects/${id}/editorial/scenes/${encodeURIComponent(sceneId)}`, sceneEditResultSchema, { method: "PATCH", body: JSON.stringify(input) }),
   getProjectMedia: (id: string) => request(`/api/agent-projects/${id}/media`, agentMediaSchema),
   eventLog: (id: string, before?: number, limit = 500) => request(`/api/agent-projects/${id}/event-log?${new URLSearchParams({ ...(before ? { before: String(before) } : {}), limit: String(limit) })}`, eventPageSchema),
   readProjectFile: (id: string, path: string) => requestText(`/api/agent-projects/${id}/files/${path.split("/").map(encodeURIComponent).join("/")}`),

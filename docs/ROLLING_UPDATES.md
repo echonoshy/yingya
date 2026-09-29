@@ -21,7 +21,7 @@ Worker。所有服务均运行在具名 tmux 会话中。开发用的 `dev-servi
 ## 安装和首次切换
 
 需要 Linux、本机文件系统、tmux、Nginx、Python 3、Rust/Node 构建工具，以及原有
-Bubblewrap、FFmpeg、Codex 登录和 HyperFrames 浏览器。使用普通仓库用户运行，
+Bubblewrap、FFmpeg、Codex 登录和 Chromium 浏览器。使用普通仓库用户运行，
 不用 systemd，也不修改系统 Nginx 配置。入口默认只监听 `127.0.0.1:8797`，外部
 HTTPS 网关继续代理到此端口。
 

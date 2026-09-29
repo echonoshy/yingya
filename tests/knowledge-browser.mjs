@@ -7,7 +7,7 @@ const out='/tmp/yingya-knowledge-ui';await mkdir(out,{recursive:true});
 const browser=await chromium.launch({headless:true});
 const seed={...structuredClone(detail),title:'单摆：摆长如何影响周期',aspectRatio:'16:9',queue:[],queueDepth:0,queuePaused:false};
 const plan={checkpointId:'checkpoint-1',revision:'plan-revision-1',ready:true,markdown:'',document:{title:'单摆：摆长如何影响周期',audience:'第一次接触单摆的同学',question:'为什么长摆摆得更慢？',takeaway:'小角度时，周期与摆长的平方根成正比。',durationSeconds:90,aspectRatio:'16:9',narration:'中文旁白',materials:['单摆示意图'],missingMaterials:[],sections:['从生活观察开始','解释摆长与周期','回到例子总结'].map((title,index)=>({id:`scene-${index}`,title,summary:'通过比较两种摆长，解释周期变化与公式的关系。',expression:'保持相同的时间尺度，并排展示运动和周期。',keyframe:{status:'ready',path:'plans/frame.jpg',sourcePath:'index.html',timeSeconds:index*30}}))}};
-seed.messages.push({id:'confirmed-technical-message',status:'completed',role:'user',text:'当前制作方案已经确认。内部测试标记 HyperFrames check --snapshots --json',context:['checkpoint:plan-old','plan-revision:'+ 'f'.repeat(64)],attachments:[],feedback:[],createdAt:Date.now()});
+seed.messages.push({id:'confirmed-technical-message',status:'completed',role:'user',text:'当前制作方案已经确认。内部测试标记 Remotion check --snapshots --json',context:['checkpoint:plan-old','plan-revision:'+ 'f'.repeat(64)],attachments:[],feedback:[],createdAt:Date.now()});
 let failPlan=false,confirmation,submitted;const errors=[],requests=[];
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(new URL(r.url()).pathname));

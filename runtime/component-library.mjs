@@ -8,7 +8,6 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { listComponents as animeCatalog, installComponents as installAnime } from './animejs/cli.mjs';
 
 const exec = promisify(execFile);
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -18,10 +17,10 @@ const LIBRARY = 'component-library';
 const MARKER = 'yingya-component-library:v1';
 const registryUrl = 'https://reactbits.dev/r/{name}.json';
 const providers = {
-  '@react-bits': { url: registryUrl, license: 'components/react-bits-LICENSE.md', licenseSource: 'https://github.com/DavidHDev/react-bits/blob/main/LICENSE.md' },
-  '@magicui': { url: 'https://magicui.design/r/{name}.json', license: 'components/magic-beam/magic-ui-LICENSE.md', licenseSource: 'https://github.com/magicuidesign/magicui/blob/main/LICENSE.md' },
+  '@react-bits': { url: registryUrl, license: 'component-registry/react-bits-LICENSE.md', licenseSource: 'https://github.com/DavidHDev/react-bits/blob/main/LICENSE.md' },
+  '@magicui': { url: 'https://magicui.design/r/{name}.json', license: 'component-registry/magic-ui-LICENSE.md', licenseSource: 'https://github.com/magicuidesign/magicui/blob/main/LICENSE.md' },
 };
-const shadcnDependency = { id: '@shadcn-dependency', url: 'https://ui.shadcn.com/r/styles/new-york-v4/{name}.json', license: 'components/shadcn-LICENSE.md', licenseSource: 'https://github.com/shadcn-ui/ui/blob/main/LICENSE.md' };
+const shadcnDependency = { id: '@shadcn-dependency', url: 'https://ui.shadcn.com/r/styles/new-york-v4/{name}.json', license: 'component-registry/shadcn-LICENSE.md', licenseSource: 'https://github.com/shadcn-ui/ui/blob/main/LICENSE.md' };
 const shadcnDependencyPattern = /^https:\/\/ui\.shadcn\.com\/r\/styles\/new-york-v4\/([a-z][a-z0-9-]*)\.json$/;
 // Default shadcn dependencies expect semantic colors from their scaffold.
 // Use fallbacks instead of element resets or :root values so the video's own
@@ -186,7 +185,6 @@ export async function searchComponents({ project, query = '', limit = 20, offset
 }
 
 export async function viewComponent({ project, component }) {
-  if (!component?.startsWith('@')) return viewPack(component);
   componentName(component);
   const { library } = await initLibrary({ project });
   return parseOutput((await cli(['view', component], library)).stdout, 'view');
@@ -568,59 +566,14 @@ export async function buildComponents({ project, entry = `${LIBRARY}/entry.tsx`,
   });
 }
 
-export async function listPacks({ query = '' } = {}) {
-  const catalog = JSON.parse(await fs.readFile(path.join(here, 'components/catalog.json'), 'utf8'));
-  if (query) catalog.components = catalog.components.filter(item => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()));
-  return catalog;
-}
-
-export async function viewPack(component) {
-  const catalog = await listPacks();
-  const item = catalog.components.find(item => item.id === component);
-  check(item, `Unknown local component: ${component}. Use catalog to choose a supported id.`);
-  if (item.pack === 'animejs') {
-    const anime = await animeCatalog();
-    return { ...item, commonSchema: anime.commonSchema, details: anime.components.find(entry => entry.id === component) };
-  }
-  return { ...item, documentation: await fs.readFile(path.join(here, 'components', item.guide), 'utf8') };
-}
-
-export async function installPack({ project, component }) {
-  const item = (await listPacks()).components.find(item => item.id === component);
-  check(item, `Unknown local component: ${component}. Use catalog first; use add for an upstream @provider/item.`);
-  if (item.pack === 'animejs') return { component, ...await installAnime(project) };
-  const root = await rootPath(project);
-  const out = 'assets/yingya-components';
-  const payload = new Map();
-  for (const file of ['clock.js', 'catalog.json', 'README.md']) payload.set(file, await fs.readFile(path.join(here, 'components', file)));
-  const packRoot = path.join(here, 'components', item.pack);
-  for (const file of await filesIn(packRoot)) payload.set(`${item.pack}/${file}`, await fs.readFile(path.join(packRoot, file)));
-  const manifest = { generator: MARKER, component, version: '1.0.0', files: Object.fromEntries([...payload].map(([file, bytes]) => [file, hash(bytes)])) };
-  payload.set(`install-${item.pack}.json`, Buffer.from(json(manifest)));
-  // Check the entire payload before writing anything. Subsequent installs share
-  // the identical clock, and refuse to mix an edited or different pack version.
-  const pending = [];
-  for (const [file, bytes] of payload) {
-    const target = await projectPath(root, `${out}/${file}`);
-    if (await exists(target)) check((await fs.stat(target)).isFile() && hash(await fs.readFile(target)) === hash(bytes), `Installed component file differs: ${out}/${file}; preserving existing edits.`);
-    else pending.push([target, bytes]);
-  }
-  for (const [target, bytes] of pending) {
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    try { await fs.writeFile(target, bytes, { flag: 'wx' }); }
-    catch (error) { if (error.code !== 'EEXIST' || hash(await fs.readFile(target)) !== hash(bytes)) throw error; }
-  }
-  return { component, project: root, directory: out, clock: `${out}/clock.js`, script: `${out}/${item.script}`, module: item.module || false, styles: item.stylesheet ? `${out}/${item.stylesheet}` : null, guide: `${out}/${item.guide}`, manifest: `${out}/install-${item.pack}.json`, note: 'Read the installed guide. createScene registers the component with the shared video clock; raw source imports still need adaptation.' };
-}
-
 export async function main(argv = process.argv.slice(2)) {
   const [command, ...flags] = argv;
   if (!command || command === '--help' || command === 'help' || flags.includes('--help')) {
-    console.log('Usage: node "$YINGYA_COMPONENT_LIBRARY" catalog|view|install|init|search|add|diagnose|build\ncatalog/list: [--query TEXT] [--json] (offline, no project needed)\nview: --component local-id (offline), or --component @provider/item --project PATH\ninstall: --component local-id --project PATH (offline, preserves edits)\nsearch: --project PATH --registry all|@react-bits|@magicui --query TEXT --limit 20 --offset 0\nadd: --project PATH --component @react-bits/Name-TS-CSS|@magicui/name (includes static import diagnostics)\ndiagnose: --project PATH --component @provider/item (recheck existing source; restores locked dependencies if needed)\nbuild: --project PATH --entry component-library/entry.tsx --out assets/components\nPublic source registries require timeline adaptation. Tailwind v4 imports are compiled at build time. Imported playback dependencies are bundled; runtime URLs and rendered output still require verification.');
+    console.log('Usage: node "$YINGYA_COMPONENT_LIBRARY" view|init|search|add|diagnose|build\nview: --component @provider/item --project PATH\nsearch: --project PATH --registry all|@react-bits|@magicui --query TEXT --limit 20 --offset 0\nadd: --project PATH --component @react-bits/Name-TS-CSS|@magicui/name (includes static import diagnostics)\ndiagnose: --project PATH --component @provider/item (recheck existing source; restores locked dependencies if needed)\nbuild: --project PATH --entry component-library/entry.tsx --out assets/components\nPublic source registries require timeline adaptation. Tailwind v4 imports are compiled at build time. Imported playback dependencies are bundled; runtime URLs and rendered output still require verification.');
     return;
   }
   const options = {};
-  const allowed = { catalog: ['query'], list: ['query'], install: ['component'], init: [], search: ['query', 'limit', 'offset', 'registry'], view: ['component'], add: ['component'], diagnose: ['component'], build: ['entry', 'out'] };
+  const allowed = { init: [], search: ['query', 'limit', 'offset', 'registry'], view: ['component'], add: ['component'], diagnose: ['component'], build: ['entry', 'out'] };
   check(Object.hasOwn(allowed, command), `Unknown command: ${command}`);
   for (let i = 0; i < flags.length; i += 2) {
     if (flags[i] === '--json') { i -= 1; continue; }
@@ -628,8 +581,8 @@ export async function main(argv = process.argv.slice(2)) {
     check(flags[i].startsWith('--') && ['project', ...allowed[command]].includes(key) && flags[i + 1] !== undefined && !Object.hasOwn(options, key), `Invalid or duplicate option: ${flags[i]}`);
     options[key] = flags[i + 1];
   }
-  if (!['catalog', 'list'].includes(command) && !(command === 'view' && !options.component?.startsWith('@'))) check(options.project, '--project PATH is required.');
-  const operation = { catalog: listPacks, list: listPacks, install: installPack, init: initLibrary, search: searchComponents, view: viewComponent, add: addComponent, diagnose: diagnoseComponent, build: buildComponents }[command];
+  check(options.project, '--project PATH is required.');
+  const operation = { init: initLibrary, search: searchComponents, view: viewComponent, add: addComponent, diagnose: diagnoseComponent, build: buildComponents }[command];
   console.log(json(await operation(options)).trimEnd());
 }
 

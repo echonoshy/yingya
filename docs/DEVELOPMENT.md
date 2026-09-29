@@ -10,8 +10,8 @@
 - `tmux` for the development services, and FFmpeg for media processing.
 - Host-side model credentials and the user runtime configuration described in
   [user sandboxes and usage](USER_SANDBOX.md).
-- A HyperFrames browser for video previews and rendering; see
-  [HyperFrames tooling](INTEGRATIONS.md#hyperframes-tooling). Speech generation
+- A Chromium browser for video previews and rendering; see
+  [Remotion tooling](INTEGRATIONS.md#remotion-runtime-and-browser). Speech generation
   additionally requires the [VoxCPM2 service](INTEGRATIONS.md#voxcpm2-speech-service).
 
 On a new checkout, copy `.env.example` to `.env` and configure the values needed
@@ -24,7 +24,7 @@ All shell commands below run from the repository root.
 ## Start locally
 
 The application backend is implemented in Rust. The browser application uses
-React and Vite; Node.js also provides the pinned Codex and HyperFrames binaries.
+React and Vite; Node.js also provides the pinned Codex and Remotion binaries.
 
 ```bash
 # Run from the repository root.
@@ -72,7 +72,7 @@ The retired homepage prototype is no longer shipped.
 ## Production runtime
 
 The Yingya video Agent workspace uses the following flow. A new video
-project creates an isolated HyperFrames workspace under
+project creates an isolated Remotion workspace under
 `data/users/<user-id>/projects/<project-id>/`; its Codex thread is created lazily when the
 first queued turn starts. The browser uses `/api/agent-projects`, loads recent
 events in pages, follows incremental updates over SSE, and renders artifacts
@@ -84,11 +84,7 @@ The project-owned `yingya-video-agent` skill enforces a production-plan
 checkpoint before composition work and a draft checkpoint before final render.
 Planning includes a text scene outline in `scenes.json`; production measures
 narration before aligning scene timing and captions. Local revisions reuse
-unaffected media. One HyperFrames `check` gate covers lint, runtime, layout,
-motion, and contrast before durable Draft snapshots are registered. The backend
-installs the complete workflow and explainer skill bundles, including their
-references, at startup. Agent projects are the application's single supported
-project model.
+unaffected media. The Remotion check covers build freshness, browser startup and managed media ranges. Layout, contrast and visual meaning still require explicit review of real frames and the exported MP4.
 
 ## Development services
 
@@ -154,8 +150,8 @@ The main runtime overrides are:
   `<app-data>/users/<user-id>/`; legacy shared-directory overrides do not
   relocate signed-in users' data.
 - `YINGYA_CODEX_BIN`, `YINGYA_CODEX_MODEL`, and
-  `YINGYA_HYPERFRAMES_BROWSER_PATH`: Codex and HyperFrames integration settings.
-- `YINGYA_CODEX_TURN_TIMEOUT_SECS`: inactivity timeout for Codex/HyperFrames
+  `YINGYA_BROWSER_PATH`: Codex and Remotion integration settings.
+- `YINGYA_CODEX_TURN_TIMEOUT_SECS`: inactivity timeout for Codex/Remotion
   work; defaults to 3600 seconds. Activity renews the deadline, so it is not a
   total production-time limit.
 - `YINGYA_CODEX_NETWORK_ACCESS`: defaults to `true`, allowing workspace-write
@@ -182,8 +178,8 @@ npm run test:marketing
 ```
 
 Integration checks are available through `npm run test:heygen`,
-`npm run test:tts`, `npm run test:services`, and `npm run test:hyperframes`.
-The HyperFrames smoke check needs the local browser and rendering dependencies.
+`npm run test:tts`, `npm run test:services`, and `npm run test:remotion:browser`.
+The Remotion smoke check needs the local browser and rendering dependencies.
 
 ## Repository layout
 
@@ -192,7 +188,7 @@ The HyperFrames smoke check needs the local browser and rendering dependencies.
 - `skills/`: project-owned Codex skills; these are source files.
 - `scripts/`: development and skill installation utilities.
 - `deploy/`: machine-service lifecycle scripts and operational documentation.
-- `tests/fixtures/`: deterministic test inputs, including the HyperFrames smoke composition.
+- `tests/fixtures/`: deterministic test inputs, including controlled media for Remotion tests.
 - `data/`: local uploads, generated assets, and video projects; ignored by Git.
 - `.runtime/`: credentials, models, tool homes, caches, and local service state; ignored by Git.
 
@@ -264,7 +260,7 @@ the host Python/browser tooling to have been provisioned.
 
 Every Agent turn receives the actual sandbox Python/browser configuration.
 `node "$YINGYA_RUNTIME_TOOLS" --probe-browser` performs a bounded, read-only
-check. Playwright must use `HYPERFRAMES_BROWSER_PATH` and `YINGYA_NODE_MODULES`;
+check. Playwright must use `YINGYA_BROWSER_PATH` and `YINGYA_NODE_MODULES`;
 it must not guess host cache paths or install another browser. Browser absence
 and WebGL absence have different fallbacks, documented in
 `skills/yingya-video-agent/references/runtime-tools.md`.

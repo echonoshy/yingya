@@ -31,7 +31,7 @@ logos or photography. An upstream font suggestion is not a supplied font file.
 
 | Presentation mechanism | Video implementation |
 | --- | --- |
-| CSS transition started by `.visible` or IntersectionObserver | Equivalent transform/opacity/filter tween scheduled on the paused GSAP timeline |
+| CSS transition started by `.visible` or IntersectionObserver | Equivalent transform/opacity/filter state derived from Remotion frames |
 | Click, slide navigation, hover or scrolling | Planned change at a scene-local time derived from the actual narration/source |
 | Infinite bobbing, particles or procedural background | Finite motion determined by video time; fixed seed if random state affects pixels |
 | Full-page raster slide | Use as a composition/style reference or approved image asset; author important editable text/diagrams as separate layers |
@@ -42,13 +42,7 @@ of seekable rendered animation. Avoid stacking several systems that animate
 the same properties. Keep a complete initial and final state, including a
 readable hold, and test direct/backward seeking with the existing renderer.
 
-Reuse the scaffold's **real GSAP** implementation. If a fresh entry has no local
-GSAP asset, the installed editorial tool has a release-owned copy at
-`vendor/gsap-3.14.2.min.js` beside `$YINGYA_EDITORIAL_ASSEMBLER`, with
-`vendor/GSAP-LICENSE`. Copy both into the project's assets and load the script
-before registering the timeline. This needs no package or network installation.
-Do not fabricate a `window.gsap` object or no-op timeline to satisfy lint: the
-renderer calls real timeline APIs and must drive actual visual properties.
+Use native Remotion frame interpolation or the [GSAP frame adapter](../gsap/index.md). Generated preview HTML is build output, never the authoring entry.
 
 ## Keep revisions local
 

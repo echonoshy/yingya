@@ -39,7 +39,7 @@ npm ci
 cp .env.example .env
 ```
 
-Follow the [installation guide](docs/DEVELOPMENT.md) to configure your environment, host model credentials, and initial account. Set up the HyperFrames browser using the [integration guide](docs/INTEGRATIONS.md). Speech, music, and image generation require their respective service configurations. Keep your existing `.env` when updating an installation.
+Follow the [installation guide](docs/DEVELOPMENT.md) to configure your environment, host model credentials, and initial account. Set up the Chromium browser using the [integration guide](docs/INTEGRATIONS.md). Speech, music, and image generation require their respective service configurations. Keep your existing `.env` when updating an installation.
 
 ```shell
 npm run web:build

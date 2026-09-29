@@ -88,7 +88,7 @@ pub struct CodexConfig {
     pub workspace: PathBuf,
     pub model: String,
     pub network_access: bool,
-    pub hyperframes_browser: Option<PathBuf>,
+    pub browser_path: Option<PathBuf>,
     pub video_agent_skill: Option<PathBuf>,
     pub turn_timeout: Duration,
 }
@@ -984,8 +984,6 @@ fn spawn_app_server(
         ))
         .current_dir(&config.workspace)
         .env("CODEX_HOME", &config.home)
-        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
-        .env("HYPERFRAMES_SKIP_SKILLS", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1013,9 +1011,9 @@ fn spawn_app_server(
         }
     }
     if config.sandbox.is_none()
-        && let Some(browser) = &config.hyperframes_browser
+        && let Some(browser) = &config.browser_path
     {
-        command.env("HYPERFRAMES_BROWSER_PATH", browser);
+        command.env("YINGYA_BROWSER_PATH", browser);
     }
     let mut child = command.spawn().map_err(CodexError::Spawn)?;
     let stdin = child.stdin.take().ok_or(CodexError::MissingStdin)?;
@@ -1159,7 +1157,7 @@ for line in sys.stdin:
                 workspace: root.clone(),
                 model: "test".into(),
                 network_access: true,
-                hyperframes_browser: None,
+                browser_path: None,
                 video_agent_skill: None,
                 turn_timeout: Duration::from_secs(10),
             })
@@ -1231,7 +1229,7 @@ for line in sys.stdin:
             network_access: false,
             sandbox: None,
             accounting: None,
-            hyperframes_browser: None,
+            browser_path: None,
             video_agent_skill: None,
             turn_timeout: Duration::from_secs(10),
         })
@@ -1344,7 +1342,7 @@ for line in sys.stdin:
                 workspace: root.clone(),
                 model: "test".into(),
                 network_access: false,
-                hyperframes_browser: None,
+                browser_path: None,
                 video_agent_skill: None,
                 turn_timeout: Duration::from_secs(10),
             })
@@ -1497,7 +1495,7 @@ for line in sys.stdin:
                 workspace: root.clone(),
                 model: "test".into(),
                 network_access: false,
-                hyperframes_browser: None,
+                browser_path: None,
                 video_agent_skill: None,
                 turn_timeout: Duration::from_secs(10),
             };
@@ -1556,7 +1554,7 @@ for line in sys.stdin:
             workspace: Path::new("/tmp").to_path_buf(),
             model: "test".to_owned(),
             network_access: false,
-            hyperframes_browser: None,
+            browser_path: None,
             video_agent_skill: None,
             turn_timeout: Duration::from_secs(300),
         };
@@ -1601,7 +1599,7 @@ for line in sys.stdin:
             workspace: root.clone(),
             model: "audit".into(),
             network_access: false,
-            hyperframes_browser: None,
+            browser_path: None,
             video_agent_skill: None,
             turn_timeout: Duration::from_secs(10),
         };

@@ -90,7 +90,7 @@ pub async fn prepare(
     // Revisions create new media; existing versions keep their original files.
     let mut protected_files = BTreeMap::new();
     for asset in &assets {
-        if let Some(path) = asset["hyperframesPath"].as_str() {
+        if let Some(path) = asset["projectPath"].as_str() {
             protected_files.insert(path.into(), file_hash(root, path).await?);
         }
     }
@@ -163,9 +163,7 @@ impl Guard {
                 .iter()
                 .find(|a| a["id"] == old["id"])
                 .ok_or("原素材登记被删除")?;
-            if old["hyperframesPath"] != new["hyperframesPath"]
-                || old["mediaType"] != new["mediaType"]
-            {
+            if old["projectPath"] != new["projectPath"] || old["mediaType"] != new["mediaType"] {
                 return Err("原素材路径或类型被修改，请为替换素材登记新 ID".into());
             }
         }
@@ -222,15 +220,14 @@ fn check_asset_references(
             .iter()
             .find(|a| a["id"] == *id)
             .ok_or("原素材引用丢失")?;
-        if old["hyperframesPath"] != new["hyperframesPath"] || old["mediaType"] != new["mediaType"]
-        {
+        if old["projectPath"] != new["projectPath"] || old["mediaType"] != new["mediaType"] {
             return Err("未授权的素材引用发生变化".into());
         }
     }
     if request.kind == "image"
         && !new_assets.iter().any(|a| {
             new_ids.contains(&a["id"])
-                && a["hyperframesPath"].as_str() == request.replacement_path.as_deref()
+                && a["projectPath"].as_str() == request.replacement_path.as_deref()
                 && a["mediaType"]
                     .as_str()
                     .is_some_and(|t| t.starts_with("image/"))
@@ -392,9 +389,9 @@ mod tests {
         let old = json!({"assetIds":["image","voice"]});
         let new = json!({"assetIds":["replacement","voice"]});
         let assets = vec![
-            json!({"id":"image","mediaType":"image/png","hyperframesPath":"assets/old.png"}),
-            json!({"id":"voice","mediaType":"audio/wav","hyperframesPath":"assets/voice.wav"}),
-            json!({"id":"replacement","mediaType":"image/png","hyperframesPath":"assets/new.png"}),
+            json!({"id":"image","mediaType":"image/png","projectPath":"assets/old.png"}),
+            json!({"id":"voice","mediaType":"audio/wav","projectPath":"assets/voice.wav"}),
+            json!({"id":"replacement","mediaType":"image/png","projectPath":"assets/new.png"}),
         ];
         let mut req = request("image", "new.png");
         req.replacement_path = Some("assets/new.png".into());
@@ -413,7 +410,7 @@ mod tests {
             .is_err()
         );
         let mut redirected = assets.clone();
-        redirected[1]["hyperframesPath"] = json!("assets/new-voice.wav");
+        redirected[1]["projectPath"] = json!("assets/new-voice.wav");
         assert!(check_asset_references(&req, &old, &new, &assets, &redirected).is_err());
     }
 
@@ -429,9 +426,8 @@ mod tests {
             .unwrap();
         let before = vec![json!({"id":"s1","onScreenText":"A","assetIds":["image"]})];
         let after = vec![json!({"id":"s1","onScreenText":"B","assetIds":["image"]})];
-        let assets = vec![
-            json!({"id":"image","mediaType":"image/png","hyperframesPath":"assets/image.png"}),
-        ];
+        let assets =
+            vec![json!({"id":"image","mediaType":"image/png","projectPath":"assets/image.png"})];
         let guard = Guard {
             request: request("text", "B"),
             scenes: before,

@@ -55,18 +55,22 @@ class RollingRuntime(unittest.TestCase):
         (root / 'node_modules/.bin').mkdir(parents=True)
         shutil.copy2(REPO / 'tests/fixtures/rolling/codex.py', root / 'node_modules/.bin/codex')
         (root / 'node_modules/.bin/codex').chmod(0o755)
-        hyperframes = root / 'node_modules/.bin/hyperframes'
-        hyperframes.write_text('''#!/usr/bin/python3
-from pathlib import Path
-import sys, time, json
-mode = Path('.yingya/production-fixture-mode')
-if not mode.exists() or sys.argv[1] != 'check': sys.exit(1)
-with Path('.yingya/check-executions').open('a') as f: f.write('check\\n')
-print('harmless stderr warning', file=sys.stderr, flush=True)
-time.sleep(32 if mode.read_text() == 'PRODUCTION_YIELD' else 1)
-print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'ok':True},'contrast':{'ok':True,'enabled':True}}))
-''')
-        hyperframes.chmod(0o755)
+        (root / 'runtime/remotion/cli.mjs').write_text("""import {readFileSync,appendFileSync,existsSync,writeFileSync,mkdirSync} from 'node:fs';
+if(process.argv[2]==='init'){
+ mkdirSync('src',{recursive:true});mkdirSync('assets',{recursive:true});
+ writeFileSync('remotion.json',JSON.stringify({schemaVersion:1,engine:'remotion',entry:'src/Video.tsx',composition:{id:'main',width:1920,height:1080,fps:30,durationInFrames:300},media:[]}));
+ writeFileSync('src/Video.tsx','export default function Video(){return null;}');
+ writeFileSync('index.html','<html data-yingya-engine="remotion"><body>fixture</body></html>');
+ writeFileSync('remotion-build.json','{}');writeFileSync('assets/remotion-preview.js','');
+ console.log(JSON.stringify({ok:true,engine:'remotion'}));process.exit(0);
+}
+const file='.yingya/production-fixture-mode';
+if (!existsSync(file) || process.argv[2] !== 'check') process.exit(1);
+appendFileSync('.yingya/check-executions','check\\n');
+console.error('harmless stderr warning');
+await new Promise(resolve=>setTimeout(resolve,readFileSync(file,'utf8')==='PRODUCTION_YIELD'?32000:1000));
+console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media'}));
+""")
         (root / 'web-dist/static').mkdir(parents=True)
         if not broken:
             (root / 'web-dist/index.html').write_text(f'<!doctype html><title>{name}</title>')
@@ -126,8 +130,9 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
         source = root / '.yingya/versions' / version
         source.mkdir(parents=True)
         (source / 'index.html').write_text('<main data-composition-id="main" data-start="0" data-duration="0.2">render fixture</main>')
-        report = {'ok': True, **{gate: {'ok': True, 'errorCount': 0} for gate in ['lint', 'runtime', 'layout', 'contrast']}}
-        report['contrast']['enabled'] = True
+        config = dict(schemaVersion=1,engine='remotion',entry='src/Video.tsx',composition=dict(id='main',width=320,height=180,fps=30,durationInFrames=6),media=[])
+        (source / 'remotion.json').write_text(json.dumps(config))
+        report = {'ok':True,'engine':'remotion','scope':'build-runtime-media'}
         (source / 'check.json').write_text(json.dumps(report))
         (root / 'index.html').write_text('<html><body>persistent preview</body></html>')
         manifest_path = root / '.yingya/manifest.json'
@@ -139,7 +144,7 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
         output = root / f'.yingya/exports/{version}-landscape-30fps-{job}.mp4'
         output.parent.mkdir(exist_ok=True)
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-            'color=c=black:s=16x16:d=0.2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(source / 'preview.mp4')], check=True)
+            'color=c=black:s=320x180:d=0.2:r=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(source / 'preview.mp4')], check=True)
         temporary = output.parent / '.tmp' / (job + '.partial.mp4')
         temporary.parent.mkdir(exist_ok=True)
         cli = ['python3', str(REPO / 'runtime/production-task.py')]
@@ -153,6 +158,7 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
             log_dir.mkdir(parents=True)
             for name in ['stdout', 'stderr']:
                 (log_dir / (name + '.log')).write_text('')
+            (log_dir / 'stdout.log').write_text(json.dumps({'yingyaRemotion':dict(schemaVersion=1,engine='remotion',composition=config['composition'],renderedFrames=6,media=[],outputSha256=hashlib.sha256(temporary.read_bytes()).hexdigest())}))
             result = json.loads(subprocess.check_output(cli + ['verify'] + binding + [
                 '--input', str(temporary.relative_to(root)), '--source-fingerprint', before['sourceFingerprint'],
                 '--stdout', str((log_dir / 'stdout.log').relative_to(root)),
@@ -160,7 +166,7 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
             self.assertTrue(result['ok'])
         temporary.rename(output)
         # Simulate the crash window after output rename and before completion
-        # registration. A rerender would fail: the fixture HyperFrames exits 1.
+        # registration. A rerender would fail: the fixture Remotion CLI exits 1.
         (root / '.yingya/render-jobs.json').write_text(json.dumps([{
             'id': job, 'versionId': version, 'status': 'running', 'quality': 'high',
             'resolution': 'landscape', 'fps': 30, 'progress': 96, 'attempts': 1,
@@ -342,11 +348,23 @@ print(json.dumps({'ok':True,'lint':{'ok':True},'runtime':{'ok':True},'layout':{'
         manifest.update(phase='plan_review', checkpoint={
             'id': 'content-plan', 'kind': 'plan', 'title': '方案', 'summary': '素材与要求', 'artifactIds': []})
         manifest_path.write_text(json.dumps(manifest))
-        self.request(prefix + '/checkpoint', {})
+        (root / 'plans').mkdir()
+        shutil.copy2(REPO / 'tests/fixtures/media/explainer.jpg',root / 'plans/frame.jpg')
+        (root / 'plans/keyframe.tsx').write_text('export default function Frame(){return null;}')
+        plan = dict(title='品牌故事',audience='新用户',question='如何开始',takeaway='理解功能',narration='静音',aspectRatio='16:9',durationSeconds=10,
+            sections=[dict(id='one',title='开始',summary='展示素材',expression='图文解释',keyframe=dict(status='ready',path='plans/frame.jpg',sourcePath='plans/keyframe.tsx'))])
+        (root / 'plans/plan.json').write_text(json.dumps(plan))
+        manifest['artifacts']=[dict(id='plan',kind='explanation-plan',label='方案',path='plans/plan.json')]
+        manifest['checkpoint']['artifactIds']=['plan']
+        manifest_path.write_text(json.dumps(manifest))
+        confirmed = self.request(prefix + '/plan')
+        self.request(prefix + '/checkpoint', {'checkpointId':confirmed['checkpointId'],'revision':confirmed['revision'],'clientRequestId':str(uuid.uuid4())})
         self.wait(lambda: (root / 'index.html').exists())
         self.assertFalse((root / 'style').exists())
         self.assertNotIn('style/tokens.css', (root / 'index.html').read_text())
-        self.assertIn('window.__timelines["main"]', (root / 'index.html').read_text())
+        self.assertIn('data-yingya-engine="remotion"', (root / 'index.html').read_text())
+        self.assertEqual(json.loads((root / 'remotion.json').read_text())['engine'], 'remotion')
+        self.assertNotIn('videoEngine', manifest['outputSpec'])
         self.wait(lambda: len([x for x in self.log(project) if x['event'] == 'done']) >= 2)
         self.wait(lambda: not self.request(prefix)['activeTurnId'])
 

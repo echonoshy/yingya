@@ -39,7 +39,7 @@ npm ci
 cp .env.example .env
 ```
 
-按[安装指南](docs/DEVELOPMENT.md)配置环境、宿主模型登录和初始账号，再按[服务集成说明](docs/INTEGRATIONS.md)准备 HyperFrames 浏览器。配音、配乐和图像生成依赖相应服务配置。更新已有安装时保留原来的 `.env`。
+按[安装指南](docs/DEVELOPMENT.md)配置环境、宿主模型登录和初始账号，再按[服务集成说明](docs/INTEGRATIONS.md)准备 Chromium 浏览器。配音、配乐和图像生成依赖相应服务配置。更新已有安装时保留原来的 `.env`。
 
 ```shell
 npm run web:build

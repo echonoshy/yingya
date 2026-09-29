@@ -64,6 +64,7 @@ def production_fixture(thread, turn, prompt):
         return False
     marker.write_text(mode)
     (root / 'index.html').write_text('<main data-composition-id="main" data-start="0" data-duration="0.2">fixture</main>')
+    (root / 'remotion.json').write_text(json.dumps(dict(schemaVersion=1,engine='remotion',entry='src/Video.tsx',composition=dict(id='main',width=320,height=180,fps=30,durationInFrames=6),media=[])))
     path = root / '.yingya/manifest.json'
     manifest = json.loads(path.read_text())
     manifest.update(phase='production', dirty=True, studioEntry='index.html')

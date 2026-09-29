@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real subprocess/lock/report tests; fake HyperFrames never calls a provider."""
+"""Real subprocess/lock/report tests; isolated fake Remotion CLI never calls a provider."""
 import json
 import hashlib
 import importlib.util
@@ -25,10 +25,16 @@ class ProductionTask(unittest.TestCase):
         self.project = self.root / 'project'
         self.project.mkdir()
         (self.project / 'index.html').write_text('<main>fixture</main>')
-        binary = self.root / 'node_modules/.bin/hyperframes'
+        self.runner = self.root / 'runtime/production-task.py'
+        self.runner.parent.mkdir()
+        shutil.copy2(RUNNER, self.runner)
+        self.config = dict(schemaVersion=1, engine='remotion', entry='src/Video.tsx',
+            composition=dict(id='main', width=320, height=180, fps=30, durationInFrames=6), media=[])
+        self.save_config()
+        binary = self.root / 'runtime/remotion/fake.py'
         binary.parent.mkdir(parents=True)
         binary.write_text('''#!/usr/bin/python3
-import json, os, sys, time, subprocess, signal
+import json, os, sys, time, subprocess, signal, hashlib
 from pathlib import Path
 with open(os.environ['FAKE_COUNT'], 'a') as f: f.write(sys.argv[1] + '\\n')
 print('diagnostic warning', file=sys.stderr, flush=True)
@@ -46,34 +52,39 @@ if sys.argv[1] == 'check':
 else:
     output = sys.argv[sys.argv.index('--output') + 1]
     if os.environ.get('FAKE_ARGS'): Path(os.environ['FAKE_ARGS']).write_text(json.dumps(sys.argv))
-    if os.environ.get('FAKE_MEDIA_COUNT') is not None:
-        count = int(os.environ['FAKE_MEDIA_COUNT'])
-        print('[INFO] Compiled composition metadata ' + json.dumps({'renderJobId':'fixture', 'videoCount':count}), flush=True)
-        if not os.environ.get('FAKE_NO_EXTRACTION'):
-            print('[INFO] [Render:trace] ' + json.dumps({'renderJobId':'fixture', 'phase':'video_extract',
-                'status':'checkpoint','videoCount':count,
-                'extractedVideoCount':int(os.environ.get('FAKE_EXTRACTED_COUNT',str(count))),
-                'totalFramesExtracted':count*5,
-                'minVideoFrameCoverageRatio':float(os.environ.get('FAKE_COVERAGE','1'))}), flush=True)
     sizes = {'landscape':'1920x1080','portrait':'1080x1920','square':'1080x1080',
              'landscape-4k':'3840x2160','portrait-4k':'2160x3840','square-4k':'2160x2160'}
     resolution = sys.argv[sys.argv.index('--resolution')+1] if '--resolution' in sys.argv else None
-    size = os.environ.get('FAKE_SIZE') or sizes.get(resolution, os.environ.get('FAKE_NATIVE', '16x16'))
-    fps = sys.argv[sys.argv.index('--fps')+1] if '--fps' in sys.argv else '25'
+    config = json.loads(Path('remotion.json').read_text())
+    width = sys.argv[sys.argv.index('--width')+1] if '--width' in sys.argv else str(config['composition']['width'])
+    height = sys.argv[sys.argv.index('--height')+1] if '--height' in sys.argv else str(config['composition']['height'])
+    size = os.environ.get('FAKE_SIZE') or width+'x'+height
+    fps = sys.argv[sys.argv.index('--fps')+1] if '--fps' in sys.argv else str(config['composition']['fps'])
     command = ['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=s='+size+':d=0.2:r='+fps]
     if os.environ.get('FAKE_OUTPUT_AUDIO'):
         command += ['-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.2', '-c:a', 'aac']
     subprocess.run(command + ['-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', output], check=True)
+    receipt = dict(schemaVersion=1, engine='remotion', composition=config['composition'],
+        renderedFrames=config['composition']['durationInFrames'],
+        outputSha256=hashlib.sha256(Path(output).read_bytes()).hexdigest(),
+        media=[dict(id=c['id'],path=c['src'],sha256=hashlib.sha256(Path(c['src']).read_bytes()).hexdigest()) for c in config['media']])
+    if os.environ.get('FAKE_BAD_RECEIPT'): receipt['renderedFrames'] = 0
+    if not os.environ.get('FAKE_NO_RECEIPT'): print(json.dumps({'yingyaRemotion':receipt}), flush=True)
 sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
 ''')
         binary.chmod(0o755)
-        self.env = dict(os.environ, YINGYA_NODE_MODULES=str(binary.parents[1]), FAKE_COUNT=str(self.root / 'count'))
+        self.cli = binary.with_name('cli.mjs')
+        self.cli.write_text("import {spawnSync} from 'node:child_process'; import {fileURLToPath} from 'node:url'; const result=spawnSync('python3',[fileURLToPath(new URL('./fake.py',import.meta.url)),...process.argv.slice(2)],{stdio:'inherit'}); process.exit(result.status ?? 1);")
+        self.env = dict(os.environ, FAKE_COUNT=str(self.root / 'count'))
+
+    def save_config(self):
+        (self.project / 'remotion.json').write_text(json.dumps(self.config))
 
     def tearDown(self):
         self.temporary.cleanup()
 
     def command(self, kind='check', request='request', output='.yingya/reports/check-test.json'):
-        return ['python3', str(RUNNER), kind, '--project', str(self.project), '--request-id', request,
+        return ['python3', str(self.runner), kind, '--project', str(self.project), '--request-id', request,
                 *(['--output', output, '--continue-workflow'] if kind in ('check', 'render') else [])]
 
     def run_job(self, **env):
@@ -147,7 +158,7 @@ sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertTrue(report['ok'])
         self.assertTrue(report['requiresVisualReview'])
         self.assertEqual(report['sourceMedia']['declaredVideoCount'], 0)
-        self.assertFalse(report['compiledMedia']['known'])
+        self.assertEqual(report['engine'], 'remotion')
         self.assertEqual(report['outputSha256'], hashlib.sha256((self.project / 'renders/test.mp4').read_bytes()).hexdigest())
         self.assertGreaterEqual(len(report['frames']), 3)
         for frame in report['frames']:
@@ -159,60 +170,11 @@ sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertEqual((self.root / 'count').read_text().splitlines(), ['render'])
 
     def capture_command(self, output='renders/capture.mp4', resolution='landscape'):
-        return ['python3', str(RUNNER), 'capture', '--project', str(self.project),
+        return ['python3', str(self.runner), 'capture', '--project', str(self.project),
                 '--request-id', 'capture', '--output', output, '--resolution', resolution, '--fps', '30']
 
-    def test_resolution_plan_preserves_source_and_selects_supported_capture(self):
-        for size, resolution, mode, chosen in [
-                ((1280,720),'landscape','supersample-downsample','landscape-4k'),
-                ((720,1280),'portrait','supersample-downsample','portrait-4k'),
-                ((1920,1080),'landscape','direct','landscape'),
-                ((1280,720),'landscape-4k','direct','landscape-4k'),
-                ((3840,2160),'landscape','native-downsample',None),
-                ((2160,2160),'square','native-downsample',None),
-                ((1000,1000),'square','native-upscale',None)]:
-            with self.subTest(size=size, resolution=resolution):
-                (self.project/'index.html').write_text(f'<main data-composition-id="main" data-width="{size[0]}" data-height="{size[1]}"></main>')
-                before = (self.project/'index.html').read_bytes()
-                plan = RUNTIME.capture_plan(self.project, resolution)
-                self.assertEqual((plan['mode'], plan['captureResolution']), (mode, chosen))
-                self.assertEqual((self.project/'index.html').read_bytes(), before)
-        with self.assertRaisesRegex(ValueError, 'aspect ratio'):
-            RUNTIME.capture_plan(self.project, 'landscape')
 
-    def test_capture_720_to_1080_keeps_audio_source_and_complete_hf_diagnostics(self):
-        (self.project/'index.html').write_text('<main data-composition-id="main" data-width="1280" data-height="720"></main>')
-        output = self.project/'renders/capture.mp4'
-        before = RUNTIME.fingerprint(self.project, output)[0]
-        result = subprocess.run(self.capture_command(), env=dict(self.env, FAKE_OUTPUT_AUDIO='1',
-                                FAKE_MEDIA_COUNT='1', FAKE_ARGS=str(self.root/'args.json')), capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        args = json.loads((self.root/'args.json').read_text())
-        self.assertEqual(args[args.index('--resolution')+1], 'landscape-4k')
-        log = self.root/'render.log'
-        log.write_text(result.stdout)
-        diagnostics = RUNTIME.render_diagnostics([log])
-        evidence = diagnostics['capture']
-        self.assertEqual(diagnostics['extraction']['extractedVideoCount'], 1)
-        self.assertEqual(evidence['captureSize'], [3840,2160])
-        self.assertEqual(evidence['outputSize'], [1920,1080])
-        self.assertEqual(evidence['audioPolicy'], 'stream-copy')
-        self.assertEqual(evidence['outputAudioCount'], 1)
-        self.assertEqual(evidence['outputSha256'], RUNTIME.digest(output))
-        self.assertEqual(RUNTIME.fingerprint(self.project, output)[0], before)
-        self.assertFalse(Path(args[args.index('--output')+1]).exists())
 
-    def test_capture_native_downsample_and_wrong_actual_output_fail_safely(self):
-        (self.project/'index.html').write_text('<main data-composition-id="main" data-width="3840" data-height="2160"></main>')
-        result = subprocess.run(self.capture_command(), env=dict(self.env, FAKE_NATIVE='3840x2160',
-                                FAKE_ARGS=str(self.root/'args.json')), capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertNotIn('--resolution', json.loads((self.root/'args.json').read_text()))
-        result = subprocess.run(self.capture_command(output='renders/invalid.mp4'),
-                                env=dict(self.env, FAKE_SIZE='16x16'), capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('capture dimensions', result.stderr)
-        self.assertFalse((self.project/'renders/invalid.mp4').exists())
 
     def test_capture_cancellation_and_parent_loss_stop_owned_process_and_clean_temp(self):
         for parent_loss in (False, True):
@@ -235,14 +197,14 @@ sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
                     owner.kill() if parent_loss else owner.terminate()
                     owner.communicate(timeout=7)
                     self.assertFalse((self.project/output).exists())
-                    # Child stdout/stderr reaching EOF proves the capture/HF
+                    # Child stdout/stderr reaching EOF proves the capture/renderer
                     # descendants released the pipes after the owner died.
                 finally:
                     if owner.poll() is None: owner.kill()
                     owner.communicate()
                 (self.root/'count').unlink(missing_ok=True)
 
-    def test_capture_cancel_kills_group_after_hf_leader_exits_on_term(self):
+    def test_capture_cancel_kills_group_after_renderer_leader_exits_on_term(self):
         pidfile = self.root/'grandchild.pid'
         owner = subprocess.Popen(self.capture_command(), env=dict(self.env, FAKE_DELAY='30',
                                  FAKE_GRANDCHILD=str(pidfile)), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -266,190 +228,15 @@ sys.exit(int(os.environ.get('FAKE_EXIT', '0')))
                 except ProcessLookupError: pass
             owner.communicate()
 
-    def test_referenced_dynamic_slot_cannot_export_zero_compiled_videos(self):
-        (self.project / 'index.html').write_text('''<div data-composition-src="camera.html"></div>
-<template data-slot="screen"><video src="source.mp4"></video></template>''')
-        (self.project / 'camera.html').write_text('''<template><main>camera</main><script>
-document.querySelector('template[data-slot="screen"]');</script></template>''')
-        result = subprocess.run(self.command('render', output='renders/invalid.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='0'), capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        job = self.status()[0]
-        self.assertIn('videoCount=0', job['message'])
-        report = json.loads((self.project / job['renderVerification']).read_text())
-        self.assertFalse(report['ok'])
-        self.assertEqual(report['sourceMedia']['declaredVideoCount'], 1)
-        self.assertFalse((self.project / 'renders/invalid.mp4').exists())
 
-    def test_unused_templates_and_components_do_not_turn_animation_into_video_project(self):
-        (self.project / 'index.html').write_text('<main>animation</main><template data-slot="unused"><video src="unused.mp4"></video></template>')
-        (self.project / 'unused-component.html').write_text('<video src="unreferenced.mp4"></video>')
-        result = subprocess.run(self.command('render', output='renders/animation.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='0'), capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        report = json.loads((self.project / self.status()[0]['renderVerification']).read_text())
-        self.assertEqual(report['sourceMedia']['declaredVideoCount'], 0)
-        self.assertTrue(report['ok'])
 
-    def test_video_export_requires_known_complete_extraction_even_after_check_passes(self):
-        (self.project / 'index.html').write_text('<video src="source.mp4"></video>')
-        self.assertEqual(self.run_job().returncode, 0)
-        cases = [{}, {'FAKE_MEDIA_COUNT':'1', 'FAKE_NO_EXTRACTION':'1'},
-                 {'FAKE_MEDIA_COUNT':'1', 'FAKE_EXTRACTED_COUNT':'0'},
-                 {'FAKE_MEDIA_COUNT':'1', 'FAKE_COVERAGE':'.8'}]
-        for index, options in enumerate(cases):
-            with self.subTest(options=options):
-                result = subprocess.run(self.command('render', request='render'+str(index), output=f'renders/invalid-{index}.mp4'),
-                                        env=dict(self.env, **options), capture_output=True, text=True)
-                self.assertNotEqual(result.returncode, 0)
-                job = self.status('render'+str(index))[0]
-                self.assertFalse((self.project / f'renders/invalid-{index}.mp4').exists())
-                report = json.loads((self.project / job['renderVerification']).read_text())
-                self.assertFalse(report['ok'])
-                if not options:
-                    self.assertFalse(report['compiledMedia']['known'])
-                    self.assertIn('未知', job['message'])
 
-    def test_complete_video_extraction_creates_report_bound_to_real_mp4(self):
-        (self.project / 'index.html').write_text('<div data-composition-src="scene.html"></div>')
-        (self.project / 'scene.html').write_text('<template><video src="source.mp4"></video></template>')
-        result = subprocess.run(self.command('render', output='renders/media.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        job = self.status()[0]
-        report = json.loads((self.project / job['renderVerification']).read_text())
-        self.assertEqual(report['jobId'], job['id'])
-        self.assertEqual(report['requestId'], 'request')
-        self.assertEqual(report['sourceFingerprint'], job['sourceFingerprint'])
-        self.assertEqual(report['outputSha256'], job['outputSha256'])
-        self.assertEqual(report['compiledMedia']['extraction']['minVideoFrameCoverageRatio'], 1)
-        # Crash recovery cannot use a missing verification report to bless an MP4.
-        (self.project / job['renderVerification']).unlink()
-        job['status'] = 'publishing'
-        (self.project / '.yingya/production-jobs' / (job['id'] + '.json')).write_text(json.dumps(job))
-        self.assertEqual(self.status()[0]['status'], 'lost')
 
-    def write_source_bindings(self):
-        assets = self.project / 'assets/editorial'
-        assets.mkdir(parents=True)
-        source = assets / 'source.mp4'
-        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=s=16x16:d=0.2',
-                        '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', str(source)], check=True)
-        entry = self.project / 'index.html'
-        entry.write_text('<video id="clip-one" src="assets/editorial/source.mp4" data-start="0" '
-                         'data-duration="0.2" data-media-start="0" muted></video>')
-        scenes = json.dumps([{'id':'one', 'sourceClip':{'source':'assets/editorial/source.mp4',
-                              'sourceIn':0, 'sourceOut':.2, 'audioMode':'mute'}}]).encode()
-        (self.project / 'scenes.json').write_bytes(scenes)
-        (assets / 'scenes.snapshot.json').write_bytes(scenes)
-        sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-        binding = dict(schemaVersion=1, generator='yingya-editorial:v1', entry='index.html',
-            entrySha256=sha(entry), scenesFile='assets/editorial/scenes.snapshot.json',
-            scenesSha256=hashlib.sha256(scenes).hexdigest(), originScenesFile='scenes.json',
-            durationSeconds=.2, scenes=[dict(id='one', videoId='clip-one', startSeconds=0,
-                durationSeconds=.2, sourceIn=0, sourceOut=.2, audioMode='mute',
-                source={'path':'assets/editorial/source.mp4','sha256':sha(source)},
-                mediaSrc='assets/editorial/source.mp4')])
-        (self.project / 'source-bindings.json').write_text(json.dumps(binding))
-        return binding
 
-    def test_source_bindings_match_export_and_add_actual_scene_review_frames(self):
-        self.write_source_bindings()
-        result = subprocess.run(self.command('render', output='renders/bound.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        report = json.loads((self.project / self.status()[0]['renderVerification']).read_text())
-        self.assertEqual(report['sourceBindings']['scenes'][0]['sourceIn'], 0)
-        self.assertIn(.1, [frame['time'] for frame in report['frames']])
-        self.assertTrue(report['requiresVisualReview'])
 
-    def test_styled_entry_remains_editable_but_media_timing_cannot_drift(self):
-        binding = self.write_source_bindings()
-        entry = self.project / 'index.html'
-        entry.write_text('<style>body{font-family:sans-serif;color:#123456}</style>' + entry.read_text())
-        styled = subprocess.run(self.command('render', request='styled', output='renders/styled.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-        self.assertEqual(styled.returncode, 0, styled.stdout)
-        report = json.loads((self.project / self.status('styled')[0]['renderVerification']).read_text())
-        self.assertTrue(report['sourceBindings']['entryModified'])
-        self.assertEqual(report['sourceBindings']['assembledEntrySha256'], binding['entrySha256'])
-        self.assertEqual(report['sourceBindings']['currentEntrySha256'], hashlib.sha256(entry.read_bytes()).hexdigest())
-        entry.write_text(entry.read_text().replace('data-media-start="0"', 'data-media-start="0.1"'))
-        drift = subprocess.run(self.command('render', request='drift', output='renders/drift.mp4'),
-                               env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-        self.assertNotEqual(drift.returncode, 0, drift.stdout)
-        self.assertIn('data-media-start', self.status('drift')[0]['message'])
 
-    def test_stale_bindings_cannot_validate_a_new_render(self):
-        binding = self.write_source_bindings()
-        cases = [
-            ('entry', lambda: (self.project / 'index.html').write_text('<main>changed entry</main>')),
-            ('source', lambda: (self.project / 'assets/editorial/source.mp4').write_bytes(b'changed source')),
-            ('scenes', lambda: (self.project / 'scenes.json').write_text('[]')),
-            ('snapshot', lambda: (self.project / 'assets/editorial/scenes.snapshot.json').write_text('[]')),
-            ('node-time', lambda: binding['scenes'][0].update(sourceIn=.05, sourceOut=.25)),
-        ]
-        files = {p: p.read_bytes() for p in self.project.rglob('*') if p.is_file()}
-        for name, mutate in cases:
-            with self.subTest(name=name):
-                for path, value in files.items():
-                    path.write_bytes(value)
-                binding = json.loads((self.project / 'source-bindings.json').read_text())
-                mutate()
-                if name == 'node-time':
-                    (self.project / 'source-bindings.json').write_text(json.dumps(binding))
-                result = subprocess.run(self.command('render', request=name, output=f'renders/{name}.mp4'),
-                                        env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-                self.assertNotEqual(result.returncode, 0, result.stdout)
-                self.assertFalse((self.project / f'renders/{name}.mp4').exists())
-                job = self.status(name)[0]
-                self.assertEqual(job['status'], 'failed')
-                self.assertFalse(json.loads((self.project / job['renderVerification']).read_text())['ok'])
 
-    def test_preserved_audio_uses_paired_audio_node_and_must_exist_in_export(self):
-        binding = self.write_source_bindings()
-        source = self.project / 'assets/editorial/source.mp4'
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=s=16x16:d=0.2',
-                        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.2', '-c:a', 'aac',
-                        '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', str(source)], check=True)
-        entry = self.project / 'index.html'
-        entry.write_text(entry.read_text() + '<audio id="one-audio" src="assets/editorial/source.mp4" '
-                         'data-start="0" data-duration="0.2" data-media-start="0"></audio>')
-        binding['entrySha256'] = hashlib.sha256(entry.read_bytes()).hexdigest()
-        binding['scenes'][0]['source']['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
-        binding['scenes'][0]['audioMode'] = 'preserve'
-        (self.project / 'source-bindings.json').write_text(json.dumps(binding))
-        result = subprocess.run(self.command('render', request='with-audio', output='renders/with-audio.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='1', FAKE_OUTPUT_AUDIO='1'), capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        report = json.loads((self.project / self.status('with-audio')[0]['renderVerification']).read_text())
-        self.assertEqual(report['sourceBindings']['expectedAudioCount'], 1)
-        missing = subprocess.run(self.command('render', request='missing-audio', output='renders/missing-audio.mp4'),
-                                 env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-        self.assertNotEqual(missing.returncode, 0)
-        self.assertIn('实际导出没有音轨', self.status('missing-audio')[0]['message'])
 
-    def test_long_audio_container_does_not_extend_short_video_source_range(self):
-        binding = self.write_source_bindings()
-        source = self.project / 'assets/editorial/short-video.mkv'
-        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=s=16x16:d=0.2',
-                        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.6', '-c:a', 'aac',
-                        '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', str(source)], check=True)
-        probe = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(source)]))
-        self.assertNotIn('duration', next(s for s in probe['streams'] if s['codec_type'] == 'video'))
-        self.assertGreater(float(probe['format']['duration']), .5)
-        entry = self.project / 'index.html'
-        entry.write_text('<video id="clip-one" src="assets/editorial/short-video.mkv" data-start="0" '
-                         'data-duration="0.4" data-media-start="0" muted></video>')
-        binding['entrySha256'] = hashlib.sha256(entry.read_bytes()).hexdigest()
-        binding['durationSeconds'] = .4
-        binding['scenes'][0].update(durationSeconds=.4, sourceOut=.4, mediaSrc='assets/editorial/short-video.mkv')
-        binding['scenes'][0]['source'] = {'path':'assets/editorial/short-video.mkv', 'sha256':hashlib.sha256(source.read_bytes()).hexdigest()}
-        (self.project / 'source-bindings.json').write_text(json.dumps(binding))
-        result = subprocess.run(self.command('render', output='renders/too-long.mp4'),
-                                env=dict(self.env, FAKE_MEDIA_COUNT='1'), capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('超过实际源视频时长', self.status()[0]['message'])
 
     def test_cancel_also_stops_export_decode_and_does_not_publish(self):
         tools = self.root / 'tools'
@@ -481,7 +268,7 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
             child.stdout.close()
 
     def ui_command(self, kind, request='ui-export'):
-        return ['python3', str(RUNNER), kind, '--project', str(self.project), '--source', '.',
+        return ['python3', str(self.runner), kind, '--project', str(self.project), '--source', '.',
                 '--output', 'renders/ui.mp4', '--request-id', request]
 
     def prepare_ui_export(self, **options):
@@ -493,7 +280,7 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
         temporary = self.project / 'renders/pending.mp4'
         temporary.parent.mkdir()
         with (logs / 'stdout.log').open('w') as stdout, (logs / 'stderr.log').open('w') as stderr:
-            subprocess.run([self.env['YINGYA_NODE_MODULES'] + '/.bin/hyperframes', 'render', '--output', str(temporary)],
+            subprocess.run(['node', str(self.cli), 'render', '--output', str(temporary)],
                            cwd=self.project, env=dict(self.env, **options), stdout=stdout, stderr=stderr, check=True)
         return value
 
@@ -537,16 +324,6 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
         self.assertEqual((self.project / before['before']).read_bytes(), original)
         self.assertFalse((self.project / 'renders/ui.mp4').exists())
 
-    def test_standalone_verify_rejects_zero_video_and_rechecks_changed_logs(self):
-        (self.project / 'index.html').write_text('<video src="source.mp4"></video>')
-        before = self.prepare_ui_export(FAKE_MEDIA_COUNT='1')
-        self.assertEqual(self.verify_ui(before).returncode, 0)
-        log = self.project / '.yingya/reports/render-jobs/ui-export/stdout.log'
-        log.write_text('[INFO] Compiled composition metadata ' + json.dumps({'renderJobId':'fixture', 'videoCount':0}))
-        result = self.verify_ui(before)
-        self.assertNotEqual(result.returncode, 0, result.stdout)
-        self.assertIn('videoCount=0', result.stdout)
-        self.assertFalse((self.project / 'renders/ui.mp4').exists())
 
     def test_standalone_recovery_requires_original_before_receipt(self):
         before = self.prepare_ui_export()
@@ -596,7 +373,7 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
         with self.assertRaisesRegex(ValueError, '不一致'):
             RUNTIME.frozen_requirements(self.project, snapshot, binding)
 
-    def test_export_enforces_duration_mute_and_marked_caption_requirements(self):
+    def test_export_enforces_duration_and_mute_requirements(self):
         with self.assertRaisesRegex(ValueError, '目标秒数'):
             RUNTIME.normalize_requirements({'durationMode':'exact'})
         declarations = dict(videos=[], audios=[], captions=[])
@@ -612,13 +389,6 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
         with self.assertRaisesRegex(ValueError, '音轨'):
             RUNTIME.validate_requirements(self.project, RUNTIME.normalize_requirements({'audioMode':'mute'}),
                 declarations, None, dict(streams=[dict(codec_type='audio')]), 4, 30)
-        (self.project / 'index.html').write_text('<div class="editorial-caption">新增说明</div><svg data-editorial-overlay="screen-callout"></svg>')
-        with self.assertRaisesRegex(ValueError, '说明字幕'):
-            RUNTIME.validate_requirements(self.project, RUNTIME.normalize_requirements({'subtitles':'none'}),
-                RUNTIME.source_media(self.project), None, silent, 4, 30)
-        (self.project / 'index.html').write_text('<h1>用户明确标题</h1><svg data-editorial-overlay="screen-callout"></svg>')
-        RUNTIME.validate_requirements(self.project, RUNTIME.normalize_requirements({'subtitles':'none'}),
-            RUNTIME.source_media(self.project), None, silent, 4, 30)
 
     def test_custom_snapshot_manifest_freezes_requirements_and_invalidates_reuse(self):
         snapshot = self.project / '.yingya/versions/custom-1'
@@ -660,7 +430,9 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
         with self.assertRaisesRegex(ValueError, '尚未完成'):
             RUNTIME.validate_requirements(self.project, req, dict(videos=[], audios=[], captions=[]), None, media, 4, 30)
         (self.project / 'voice.wav').write_bytes(b'not actual audio')
-        (self.project / 'index.html').write_text('<audio id="voice" src="voice.wav" data-editorial-audio-role="narration" data-duration="1"></audio>')
+        self.config['media'] = [dict(id='voice',type='audio',src='voice.wav',from_=0, durationInFrames=30,trimBefore=0,volume=1,role='narration')]
+        self.config['media'][0]['from'] = self.config['media'][0].pop('from_')
+        self.save_config()
         with self.assertRaisesRegex(ValueError, '没有可读取音轨'):
             RUNTIME.validate_requirements(self.project, req, RUNTIME.source_media(self.project), None, media, 4, 30)
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1',
@@ -705,6 +477,48 @@ document.querySelector('template[data-slot="screen"]');</script></template>''')
         path.write_text(json.dumps(job))
         self.assertEqual(next(j for j in self.status() if j['id'] == job['id'])['status'], 'lost')
         self.assertEqual((self.root / 'count').read_text().splitlines(), ['check'])
+
+    def test_missing_or_unknown_engine_never_starts_renderer(self):
+        for engine in (None, 'unsupported'):
+            if engine is None:
+                (self.project / 'remotion.json').unlink()
+            else:
+                self.config['engine'] = engine
+                self.save_config()
+            result = self.run_job()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'count').exists())
+
+    def test_native_capture_scales_without_mutating_source_and_rejects_wrong_size(self):
+        before = (self.project / 'remotion.json').read_bytes()
+        plan = RUNTIME.capture_plan(self.project, 'landscape')
+        self.assertEqual(plan['target'], [1920,1080])
+        self.assertEqual(plan['mode'], 'remotion')
+        with self.assertRaisesRegex(ValueError, 'aspect ratio'):
+            RUNTIME.capture_plan(self.project, 'portrait')
+        result = subprocess.run(self.capture_command(), env=dict(self.env, FAKE_SIZE='16x16'), capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('capture dimensions', result.stderr)
+        self.assertFalse((self.project / 'renders/capture.mp4').exists())
+        self.assertEqual((self.project / 'remotion.json').read_bytes(), before)
+
+    def test_export_requires_matching_renderer_receipt(self):
+        for flag in ['FAKE_NO_RECEIPT', 'FAKE_BAD_RECEIPT']:
+            result = subprocess.run(self.command('render',request=flag,output='renders/'+flag+'.mp4'),
+                env=dict(self.env, **{flag:'1'}), capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.project / ('renders/'+flag+'.mp4')).exists())
+            self.assertIn('Remotion renderer completion', self.status(flag)[0]['message'])
+
+    def test_remotion_media_schedule_is_the_only_source_of_media(self):
+        (self.project / 'index.html').write_text('<video src="unused.mp4"></video>')
+        self.config['media'] = [dict(id='clip',type='video',src='assets/source.mp4',
+            durationInFrames=6,trimBefore=3,volume=0,muted=True,**{'from':0})]
+        self.save_config()
+        media = RUNTIME.source_media(self.project)
+        self.assertEqual(media['declaredVideoCount'], 1)
+        self.assertEqual(media['videos'][0]['sources'], ['assets/source.mp4'])
+        self.assertEqual(media['videos'][0]['attributes']['data-media-start'], .1)
 
 
 if __name__ == '__main__':

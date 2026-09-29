@@ -161,7 +161,7 @@ test('real React/CSS/assets bundle is self-contained and remains usable after no
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
-  const browser = await chromium.launch({ headless: true, ...(process.env.HYPERFRAMES_BROWSER_PATH ? { executablePath: process.env.HYPERFRAMES_BROWSER_PATH } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await chromium.launch({ headless: true, ...(process.env.YINGYA_BROWSER_PATH ? { executablePath: process.env.YINGYA_BROWSER_PATH } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   t.after(() => browser.close());
   const page = await browser.newPage();
   const errors = [];
@@ -340,7 +340,7 @@ flushSync(() => createRoot(document.getElementById('root')!).render(<main>
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
-  const browser = await chromium.launch({ headless: true, ...(process.env.HYPERFRAMES_BROWSER_PATH ? { executablePath: process.env.HYPERFRAMES_BROWSER_PATH } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+  const browser = await chromium.launch({ headless: true, ...(process.env.YINGYA_BROWSER_PATH ? { executablePath: process.env.YINGYA_BROWSER_PATH } : {}), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];

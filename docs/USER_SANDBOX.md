@@ -86,7 +86,7 @@ cargo run -- admin-create admin admin@yingya.local
 
 ## 执行隔离
 
-本版使用 Linux Bubblewrap（`bwrap`），不要求 Docker 守护进程。宿主机需允许非特权用户命名空间，并已安装 Node.js、Codex、HyperFrames 和浏览器依赖。
+本版使用 Linux Bubblewrap（`bwrap`），不要求 Docker 守护进程。宿主机需允许非特权用户命名空间，并已安装 Node.js、Codex、Remotion 和浏览器依赖。
 
 每个账号独立启动 Codex app-server。Agent 与渲染命令运行在私有文件系统、PID 和网络命名空间中：只挂载本用户的数据，可只读访问已安装的系统工具、项目依赖和浏览器。不会挂载整个仓库、其他用户目录、宿主 `.env` 或个人 Codex home。缺少隔离能力时运行环境启动失败，不降级为宿主直接执行。
 
@@ -100,7 +100,7 @@ VoxCPM2 只应监听 `127.0.0.1:8791`。自定义音色在服务端加用户命�
 
 ## 预览
 
-多用户工作台展示当前 composition 的实时预览，自动适配画布大小，并支持播放和暂停。独立窗口入口为只读预览，不启动可公开直连的 HyperFrames Studio 编辑器端口。
+多用户工作台展示当前 composition 的实时预览，自动适配画布大小，并支持播放和暂停。独立窗口入口为只读预览，不启动可公开直连的 Remotion Studio 编辑器端口。
 
 预览 URL 带不可猜测的只读令牌，只能读取对应项目文件，30 分钟有效，工作台心跳续期。它与创建它的登录会话绑定，退出登录后失效。URL 属于访问凭据，不应分享。后端对 HTML 设置 CSP sandbox、禁止表单提交与 referrer，生成页面无法读取父页面、账号 Cookie 或工作台 API。普通下载与项目文件 API 仍检查登录和归属。
 

@@ -1,7 +1,7 @@
 # Yingya project structure
 
-Yingya uses Codex to author self-contained HyperFrames projects and uses
-HyperFrames to validate, preview, and render them. The repository separates
+Yingya uses Codex to author self-contained Remotion projects and uses
+Remotion to validate, preview, and render them. The repository separates
 application source, mutable user data, reproducible outputs, and machine-local
 runtime dependencies.
 
@@ -17,7 +17,7 @@ runtime dependencies.
 | `examples/` | Composition examples used by runtime tooling/tests | Product source | Track |
 | `tests/fixtures/` | Automated test inputs | Test source | Track |
 | `data/` | Yingya and its users | Mutable runtime data | Ignore |
-| `.runtime/` | Codex, HyperFrames, models, caches | Machine-local state | Ignore |
+| `.runtime/` | Codex, Remotion, models, caches | Machine-local state | Ignore |
 | `target/` | Cargo | Reproducible build output | Ignore |
 | `node_modules/` | npm | Installed dependencies | Ignore |
 | `web-dist/` | Vite | Reproducible browser build, including public media | Ignore |
@@ -30,14 +30,14 @@ state with different cleanup rules:
 | Path | Purpose | Cleanup rule |
 | --- | --- | --- |
 | `codex-home/` | Isolated Codex credentials, task history, skills, plugins, and caches | Keep credentials/history; caches and copied generated images may be regenerated |
-| `hyperframes-home/` | HyperFrames configuration and pinned Chrome | Keep while the local renderer is expected to work without reinstalling; skill staging is removed after installation |
+| `remotion-downloads/` | Pinned native renderer compatibility archives | Reusable when preparing releases |
 | `models/VoxCPM2/` | VoxCPM2 model weights and tokenizer source | Keep; these are runtime inputs, not download leftovers |
 | `voxcpm2-vllm/.venv/` | Python, PyTorch, CUDA libraries, vLLM dependencies | Keep; required by the speech service |
 | `voxcpm2-vllm/src/` | Locally built vLLM and vLLM-Omni code plus native extensions | Keep; added to `PYTHONPATH` by the service launcher |
 | `huggingface/` | Regenerated Transformers dynamic-module cache | Safe to remove while the service is stopped; recreated on startup |
 | `voxcpm2/` | Saved voice samples and possible legacy PID/log files | Keep saved voices; current service output lives in tmux `yingya-voxcpm2` |
 
-## HyperFrames project boundaries
+## Remotion project boundaries
 
 Agent-created videos live in `data/users/<user-id>/projects/<project-id>/`.
 Accounts and usage are stored in `data/yingya.sqlite`; each user's assets,
@@ -56,15 +56,16 @@ project advances:
 ├── messages.json            # durable conversation history
 ├── queue.json               # queued user turns
 ├── events.jsonl             # incremental Agent event log
-├── index.html               # HyperFrames entry point, once authored
-├── index.motion.json        # animation contract, when required
+├── index.html               # generated Remotion Player entry
+├── src/Video.tsx            # editable React composition
 ├── DESIGN.md                # visual specification, once authored
-├── hyperframes.json         # HyperFrames configuration, once authored
+├── remotion.json            # composition and managed media frame schedule
+├── remotion-build.json      # source/build hashes
 ├── transcript.json          # when narration or source audio is present
 ├── assets/
 │   ├── inbox/
 │   └── generated/
-├── compositions/
+├── src/
 ├── artifacts/               # project-local review media
 └── .yingya/
     ├── manifest.json        # UI workflow and version manifest
@@ -88,9 +89,8 @@ makes a project straightforward to preview, render, export, or delete.
 
 ## Test fixtures and outputs
 
-`tests/fixtures/hyperframes-smoke/` contains the minimal deterministic
-composition used to verify HyperFrames integration. Its HTML, design contract,
-motion assertions, and configuration are source files.
+`tests/remotion.test.mjs` and `tests/remotion-browser.test.mjs` create isolated
+React compositions to verify build freshness, seeking, managed media and MP4 export.
 
 Rendered MP4 files and inspection snapshots are outputs. Product projects keep
 them inside their own ignored `data/users/<user-id>/projects/<project-id>/` directory.
@@ -113,7 +113,7 @@ Safe to regenerate:
 - `.runtime/huggingface/`
 - `.runtime/models/VoxCPM2/.cache/`
 - `.runtime/codex-home/cache/`, `tmp/`, and copied `generated_images/`
-- test-fixture HyperFrames renders and inspection snapshots
+- test-fixture Remotion renders and inspection snapshots
 
 Review before removing:
 
@@ -129,9 +129,7 @@ Review before removing:
 
 `web/src/knowledgeExamples.json` is the app sample manifest. Only its content-hashed
 media belong in `web/public/knowledge-examples/`. Browser test inputs belong in
-`tests/fixtures/media/`; they are not shipped as product examples. Internal
-`runtime/editor/` and `runtime/product-video/` remain production authoring tools,
-not user-facing editor or template-picker interfaces.
+`tests/fixtures/media/`; they are not shipped as product examples. `runtime/remotion/` provides the native composition, preview and renderer.
 
 ## Preventing unused product code
 

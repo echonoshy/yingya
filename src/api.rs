@@ -1,5 +1,3 @@
-#[path = "editor_api.rs"]
-mod editor_api;
 #[path = "editorial_api.rs"]
 mod editorial_api;
 #[path = "tenancy.rs"]
@@ -72,7 +70,6 @@ struct AppState {
     heygen: HeyGenClient,
     assets: AssetStore,
     root: Arc<PathBuf>,
-    hyperframes_home: Arc<PathBuf>,
     agent_projects: AgentProjectStore,
     agent_events: broadcast::Sender<AgentEvent>,
     agent_jobs: AgentJobCoordinator,
@@ -158,7 +155,7 @@ struct AssetStore {
 struct ImageAsset {
     id: String,
     url: String,
-    hyperframes_path: String,
+    project_path: String,
     mime_type: String,
     revised_prompt: Option<String>,
 }
@@ -184,7 +181,7 @@ struct ImageLibraryMetadata {
 struct ImageLibraryAsset {
     id: String,
     url: String,
-    hyperframes_path: String,
+    project_path: String,
     mime_type: String,
     prompt: Option<String>,
     source_name: Option<String>,
@@ -202,7 +199,7 @@ struct ImageLibraryResponse {
 struct AssetLibraryItem {
     id: String,
     url: String,
-    hyperframes_path: String,
+    project_path: String,
     mime_type: String,
     category: String,
     prompt: Option<String>,
@@ -253,7 +250,7 @@ struct TurnResponse {
 #[serde(rename_all = "camelCase")]
 struct UploadResponse {
     url: String,
-    hyperframes_path: String,
+    project_path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -350,12 +347,11 @@ async fn user_router(
     }
     let root = paths.resources.clone();
     let video_agent_skill = install_bundled_video_agent_skill(&root, &paths.codex_home).await?;
-    let hyperframes_browser =
-        discover_hyperframes_browser(&root, &root.join(".runtime/hyperframes-home")).await;
+    let browser_path = discover_browser_path(&root).await;
     let sandbox = Sandbox::new(
         paths.app_data.clone(),
         root.clone(),
-        hyperframes_browser.clone(),
+        browser_path.clone(),
         service_token,
         service_base,
     )
@@ -369,7 +365,7 @@ async fn user_router(
         workspace: paths.app_data.clone(),
         model: env::var("YINGYA_CODEX_MODEL").unwrap_or_else(|_| "gpt-5.6-terra".to_owned()),
         network_access: env_bool("YINGYA_CODEX_NETWORK_ACCESS", true),
-        hyperframes_browser,
+        browser_path,
         video_agent_skill: Some(video_agent_skill),
         // This is an inactivity timeout, not a cap on the total production time.
         turn_timeout: Duration::from_secs(env_u64("YINGYA_CODEX_TURN_TIMEOUT_SECS", 3600)),
@@ -389,11 +385,7 @@ async fn user_router(
     let web_dist = root.join("web-dist");
     let web_index = web_dist.join("index.html");
     let render_jobs = RenderJobStore::new(paths.projects.clone());
-    let studio_sessions = StudioSessionManager::new(
-        root.join("node_modules/.bin/hyperframes"),
-        paths.hyperframes_home.clone(),
-        paths.projects.clone(),
-    );
+    let studio_sessions = StudioSessionManager::new(paths.projects.clone());
     let state = AppState {
         user,
         accounts,
@@ -403,7 +395,6 @@ async fn user_router(
         heygen,
         assets,
         root: Arc::new(root.clone()),
-        hyperframes_home: Arc::new(paths.hyperframes_home.clone()),
         agent_projects,
         agent_events,
         agent_jobs: AgentJobCoordinator::default(),
@@ -414,9 +405,6 @@ async fn user_router(
     };
     audit_existing_project_workflows(&state).await;
     reconcile_render_jobs(&state).await;
-    if let Err(error) = state.studio_sessions.adopt_existing().await {
-        warn!(%error, "failed to adopt existing HyperFrames Studio sessions");
-    }
     // Resume accepted, undispatched work without waiting for a browser visit.
     let recovery_state = state.clone();
     let recovery_work = state.control.enter();
@@ -561,20 +549,12 @@ async fn user_router(
             get(get_agent_media),
         )
         .route(
-            "/api/agent-projects/{project_id}/composition",
-            get(editor_api::get).post(editor_api::mutate),
-        )
-        .route(
             "/api/agent-projects/{project_id}/workbench",
             get(editorial_api::workbench),
         )
         .route(
             "/api/agent-projects/{project_id}/asset-roles",
             patch(editorial_api::set_asset_role),
-        )
-        .route(
-            "/api/agent-projects/{project_id}/editorial/scenes/{scene_id}",
-            patch(editorial_api::edit_scene),
         )
         .route(
             "/api/agent-projects/{project_id}/heygen/audio",
@@ -615,9 +595,36 @@ async fn install_bundled_video_agent_skill(
     resources: &FilePath,
     codex_home: &FilePath,
 ) -> Result<PathBuf, std::io::Error> {
+    // Remove retired application-installed engine skills, including nested references.
+    let skill_root = codex_home.join("skills");
+    fs::create_dir_all(&skill_root).await?;
+    let mut entries = fs::read_dir(&skill_root).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == "hyperframes" || name.starts_with("hyperframes-") || name == "media-use" {
+            if entry.file_type().await?.is_dir() {
+                fs::remove_dir_all(entry.path()).await?;
+            } else {
+                fs::remove_file(entry.path()).await?;
+            }
+        }
+    }
     // Copy complete bundles so progressively loaded references are available
     // in the isolated runtime, and keep the specialization in sync as well.
-    for name in ["yingya-video-agent", "faceless-explainer"] {
+    for name in [
+        "yingya-video-agent",
+        "faceless-explainer",
+        "heygen-audio",
+        "voxcpm2-tts",
+    ] {
+        if !resources.join("skills").join(name).is_dir() {
+            continue;
+        }
+        let destination = skill_root.join(name);
+        if destination.exists() {
+            fs::remove_dir_all(&destination).await?;
+        }
         let mut pending = vec![(
             resources.join("skills").join(name),
             codex_home.join("skills").join(name),
@@ -1400,7 +1407,7 @@ async fn confirm_agent_checkpoint(
             "final_render".to_owned()
         };
         if checkpoint.kind == "plan" {
-            scaffold_files = ensure_hyperframes_scaffold(
+            scaffold_files = ensure_video_scaffold(
                 &state,
                 &project_id,
                 &detail.project.aspect_ratio,
@@ -1442,7 +1449,7 @@ async fn confirm_agent_checkpoint(
         }))
     } else {
         let text = if checkpoint.kind == "plan" {
-            "当前制作方案已经确认。请复用方案与 scenes.json，按批准的视觉方向制作主体素材和动画；新的视觉表达先按 representative-scene.md 完成有实际内容与运动的代表片段，审阅和修正后再扩展全片，已有验证结果可复用。需要旁白时使用已选音色并实测时长，再对齐分镜和字幕。完整草稿完成一次 HyperFrames check --snapshots --json，并按 visual-review.md 审阅实际 MP4 的构图、素材一致性、动画、剪辑与声音，记录问题、修正及证据后封存版本、写入 draft checkpoint。不要重新询问风格或增加中间确认。"
+            "当前制作方案已经确认。请复用方案与 scenes.json，按批准的视觉方向制作主体素材和动画；新的视觉表达先按 representative-scene.md 完成有实际内容与运动的代表片段，审阅和修正后再扩展全片，已有验证结果可复用。需要旁白时使用已选音色并实测时长，再对齐分镜和字幕。完整草稿通过 YINGYA_PRODUCTION_TASK 完成当前引擎的检查，并按 visual-review.md 审阅实际 MP4 的构图、素材一致性、动画、剪辑与声音，记录问题、修正及证据后封存版本、写入 draft checkpoint。不要重新询问风格或增加中间确认。"
         } else {
             "当前草稿已经明确确认。请执行最终质量检查并渲染高质量 MP4；成功后把最终视频写入 manifest artifacts，清除 checkpoint 和 dirty，并将 phase 设置为 completed。"
         };
@@ -1475,7 +1482,15 @@ async fn confirm_agent_checkpoint(
     accepted
 }
 
-async fn ensure_hyperframes_scaffold(
+fn requested_video_engine(output_spec: &Value) -> Result<&'static str, ApiError> {
+    match output_spec.get("videoEngine") {
+        None => Ok("remotion"),
+        Some(Value::String(engine)) if engine == "remotion" => Ok("remotion"),
+        _ => Err(ApiError::Validation("仅支持 Remotion 视频引擎".into())),
+    }
+}
+
+async fn ensure_video_scaffold(
     state: &AppState,
     project_id: &str,
     aspect_ratio: &str,
@@ -1485,88 +1500,77 @@ async fn ensure_hyperframes_scaffold(
         .agent_projects
         .project_dir(project_id)
         .map_err(ApiError::Project)?;
-    write_hyperframes_scaffold(&project_dir, project_id, aspect_ratio, output_spec).await
-}
-
-async fn write_hyperframes_scaffold(
-    project_dir: &FilePath,
-    project_id: &str,
-    aspect_ratio: &str,
-    output_spec: &Value,
-) -> Result<Vec<PathBuf>, ApiError> {
-    let (width, height) = match aspect_ratio {
-        "9:16" => (1080, 1920),
-        "1:1" => (1080, 1080),
-        _ => (1920, 1080),
-    };
-    let duration = output_spec
-        .get("durationSeconds")
-        .or_else(|| output_spec.get("duration"))
-        .and_then(Value::as_f64)
-        .filter(|value| value.is_finite() && *value > 0.0)
-        .unwrap_or(10.0);
-    let config = format!(
-        "{}\n",
-        serde_json::to_string_pretty(&json!({
-            "$schema": "https://hyperframes.heygen.com/schema/hyperframes.json",
-            "paths": {
-                "blocks": "compositions",
-                "components": "compositions/components",
-                "assets": "assets"
-            },
-            "media": { "autoProxy": true }
-        }))
-        .map_err(|error| ApiError::External(error.to_string()))?
-    );
-    let metadata = format!(
-        "{}\n",
-        serde_json::to_string_pretty(&json!({
-            "id": project_id,
-            "name": project_id,
-            "createdAt": unix_millis(SystemTime::now())
-        }))
-        .map_err(|error| ApiError::External(error.to_string()))?
-    );
-    let html = format!(
-        r#"<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width={width}, height={height}" />
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <style>
-      * {{ box-sizing: border-box; }}
-      html, body {{ margin: 0; width: {width}px; height: {height}px; overflow: hidden; background: #000; }}
-    </style>
-  </head>
-  <body>
-    <div id="root" data-composition-id="main" data-start="0" data-duration="{duration}" data-width="{width}" data-height="{height}"></div>
-    <script>
-      window.__timelines = window.__timelines || {{}};
-      window.__timelines["main"] = gsap.timeline({{ paused: true }});
-    </script>
-  </body>
-</html>
-"#
-    );
-    let mut created = Vec::new();
-    for (name, contents) in [
-        ("hyperframes.json", config),
-        ("meta.json", metadata),
-        ("index.html", html),
-    ] {
-        let path = project_dir.join(name);
-        if fs::metadata(&path).await.is_err() {
-            if let Err(error) = fs::write(&path, contents).await {
-                for created_path in &created {
-                    let _ = fs::remove_file(created_path).await;
-                }
-                return Err(ApiError::Io(error));
-            }
-            created.push(path);
-        }
+    // Never overwrite existing source; only Remotion projects can resume production.
+    if project_dir.join("remotion.json").exists() {
+        return Ok(vec![]);
     }
-    Ok(created)
+    if project_dir.join("index.html").exists() {
+        return Err(ApiError::Validation(
+            "旧版 HTML 工程已停止制作，请新建 Remotion 项目".into(),
+        ));
+    }
+    match requested_video_engine(output_spec)? {
+        "remotion" => {
+            let (width, height) = match aspect_ratio {
+                "9:16" => (1080, 1920),
+                "1:1" => (1080, 1080),
+                _ => (1920, 1080),
+            };
+            let duration = output_spec
+                .get("durationSeconds")
+                .or_else(|| output_spec.get("duration"))
+                .and_then(Value::as_f64)
+                .filter(|d| d.is_finite() && *d > 0.0 && *d <= 3600.0)
+                .unwrap_or(10.0);
+            let fps = output_spec
+                .get("fps")
+                .and_then(Value::as_u64)
+                .filter(|f| (1..=120).contains(f))
+                .unwrap_or(30);
+            let output = tokio::time::timeout(
+                Duration::from_secs(120),
+                state
+                    .sandbox
+                    .command("node")
+                    .arg(state.root.join("runtime/remotion/cli.mjs"))
+                    .arg("init")
+                    .arg("--project")
+                    .arg(&project_dir)
+                    .args([
+                        "--width",
+                        &width.to_string(),
+                        "--height",
+                        &height.to_string(),
+                        "--fps",
+                        &fps.to_string(),
+                        "--duration",
+                        &duration.to_string(),
+                    ])
+                    .current_dir(&project_dir)
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            .map_err(|_| ApiError::External("Remotion 初始化超时".into()))??;
+            if !output.status.success() {
+                return Err(ApiError::External(format!(
+                    "Remotion 初始化失败：{}",
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+            Ok([
+                "remotion.json",
+                "src/Video.tsx",
+                "index.html",
+                "assets/remotion-preview.js",
+                "remotion-build.json",
+            ]
+            .iter()
+            .map(|p| project_dir.join(p))
+            .collect())
+        }
+        _ => unreachable!("validated engine"),
+    }
 }
 
 async fn render_agent_video(
@@ -1865,7 +1869,7 @@ async fn run_render_job(
         )?;
         update_render_job(&state, &project_id, &job_id, "render/progress", |job| {
             job.progress = 12;
-            job.message = "正在捕获 HyperFrames 画面".to_owned();
+            job.message = "正在捕获 Remotion 画面".to_owned();
         })
         .await?;
         run_render_command(
@@ -1996,7 +2000,7 @@ async fn run_render_job(
                 &state,
                 &project_id,
                 &job_id,
-                "HyperFrames 未生成预期的视频文件",
+                "Remotion 未生成预期的视频文件",
             )
             .await;
         }
@@ -2069,7 +2073,7 @@ async fn preflight_render_source(
     source_dir: &FilePath,
 ) -> Result<(), String> {
     reject_source_symlinks(source_dir).await?;
-    for name in ["index.html", "hyperframes.json", "meta.json"] {
+    for name in ["index.html", "remotion.json", "remotion-build.json"] {
         let path = source_dir.join(name);
         match fs::symlink_metadata(&path).await {
             Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -2079,9 +2083,8 @@ async fn preflight_render_source(
                 return Err(format!("草稿源文件无效：{name}"));
             }
             Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound && name != "index.html" => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Err("草稿版本缺少 index.html".to_owned());
+                return Err(format!("草稿版本缺少 {name}"));
             }
             Err(error) => return Err(error.to_string()),
         }
@@ -2098,7 +2101,7 @@ async fn preflight_render_source(
         job.message = "正在检查视频结构、画面与动效".to_owned();
     })
     .await?;
-    // check includes lint and all browser audits in one browser session.
+    // Validate the native build, browser runtime, and declared media before rendering.
     let report = run_preflight_command(state, "check", source_dir).await?;
     atomic_write_bytes(&report_dir.join("check.json"), report.as_bytes()).await?;
     Ok(())
@@ -2141,22 +2144,25 @@ async fn run_preflight_command(
     command: &str,
     source_dir: &FilePath,
 ) -> Result<String, String> {
+    if !source_dir.join("remotion.json").is_file() {
+        return Err("旧版 HTML 工程已停止制作，请新建 Remotion 项目".into());
+    }
+    let mut engine_command = state.sandbox.command("node");
+    engine_command
+        .arg(state.root.join("runtime/remotion/cli.mjs"))
+        .arg(command)
+        .arg("--project")
+        .arg(source_dir);
     let output = tokio::time::timeout(
         Duration::from_secs(600),
-        state
-            .sandbox
-            .command(state.root.join("node_modules/.bin/hyperframes"))
-            .arg(command)
-            .arg(source_dir)
+        engine_command
             .arg("--json")
             .current_dir(source_dir)
-            .env("HOME", state.hyperframes_home.as_ref())
-            .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
             .kill_on_drop(true)
             .output(),
     )
     .await
-    .map_err(|_| format!("HyperFrames {command} 检查超时"))?
+    .map_err(|_| format!("视频引擎 {command} 检查超时"))?
     .map_err(|error| error.to_string())?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
@@ -2197,7 +2203,7 @@ fn validate_preflight_report(
             stderr
         };
         return Err(format!(
-            "HyperFrames {command} 检查未通过（需成功退出且 JSON 报告 ok 为 true）：{}",
+            "Remotion {command} 检查未通过（需成功退出且 JSON 报告 ok 为 true）：{}",
             truncate_status(detail, 320)
         ));
     }
@@ -2386,8 +2392,6 @@ async fn run_render_command(
         .args(["--resolution", resolution])
         .args(["--fps", &fps.to_string()])
         .current_dir(&project_dir)
-        .env("HOME", state.hyperframes_home.as_ref())
-        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
@@ -2441,7 +2445,7 @@ async fn run_render_command(
         while let Some(result) = readers.join_next().await {
             result.map_err(|error| format!("无法保存完整渲染日志：{error}"))??;
         }
-        status.ok_or_else(|| "HyperFrames 渲染进程没有退出状态".to_owned())
+        status.ok_or_else(|| "视频渲染进程没有退出状态".to_owned())
     }).await.map_err(|_| "视频渲染超时".to_owned())??;
     if status.success() {
         Ok(())
@@ -2450,7 +2454,7 @@ async fn run_render_command(
             .into_iter()
             .rev()
             .find(|line| !line.trim().is_empty())
-            .unwrap_or_else(|| format!("HyperFrames 渲染进程退出：{status}")))
+            .unwrap_or_else(|| format!("Remotion 渲染进程退出：{status}")))
     }
 }
 
@@ -2542,7 +2546,7 @@ async fn rollback_agent_version(
         .find(|version| version.id == version_id)
         .ok_or_else(|| ApiError::NotFound("unknown draft version".to_owned()))?;
     let text = format!(
-        "请回退到 {}（{}）。从该版本快照恢复源码和 manifest 指针，不要删除后续版本；恢复后运行相关 HyperFrames 检查，并把结果作为新的稳定 Draft 提交审阅。",
+        "请回退到 {}（{}）。从该版本快照恢复源码和 manifest 指针，不要删除后续版本；恢复后运行相关 Remotion 检查，并把结果作为新的稳定 Draft 提交审阅。",
         version.label, version.id
     );
     post_agent_turn(
@@ -2975,7 +2979,7 @@ async fn upload_agent_asset(
                     id: Uuid::new_v4().to_string(),
                     name: original.clone(),
                     url: format!("/api/agent-projects/{project_id}/files/{relative}"),
-                    hyperframes_path: relative.clone(),
+                    project_path: relative.clone(),
                     kind: extension.to_owned(),
                     source: "conversation".to_owned(),
                     media_type: mime_type.clone(),
@@ -3081,7 +3085,7 @@ async fn import_agent_heygen_audio(
         id: Uuid::new_v4().to_string(),
         name: sound.name,
         url: format!("/api/agent-projects/{project_id}/files/{relative}"),
-        hyperframes_path: relative,
+        project_path: relative,
         kind: extension.to_owned(),
         source: "heygen".to_owned(),
         media_type: Some(audio_type.to_owned()),
@@ -3626,7 +3630,7 @@ async fn run_agent_turn(
         format!("\n当前反馈上下文：{}", queued.context.join(" · "))
     };
     let dirty_note = if manifest.dirty {
-        "\nHyperFrames Studio 或上次中断留下了未验证改动。先检查当前工作区，再决定复用或修复；不要覆盖用户的手动修改。"
+        "\n视频工作区 或上次中断留下了未验证改动。先检查当前工作区，再决定复用或修复；不要覆盖用户的手动修改。"
     } else {
         ""
     };
@@ -3635,7 +3639,7 @@ async fn run_agent_turn(
         project.voice_id
     );
     let prompt = format!(
-        "用户请求：{}{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 HyperFrames 核心能力或说明 fallback。",
+        "用户请求：{}{}{}{}{}\n所有工作必须限制在当前项目目录。按照 yingya-video-agent skill 管理 checkpoint、manifest、质量检查与版本。不得在项目 turn 中安装或更新任何 skill、plugin、CLI 或全局依赖；缺少可选能力时直接使用已安装的 Remotion 核心能力或说明 fallback。",
         queued.text, attachment_note, context_note, dirty_note, voice_note
     );
     let prompt = format!(
@@ -4218,12 +4222,7 @@ async fn run_agent_turn(
 
 fn production_command(item: &Value) -> bool {
     let command = item["command"].as_str().unwrap_or_default();
-    // Legacy direct invocations can supply completion evidence, but status
-    // probes containing just 'hyperframes' cannot trigger model retries.
-    command.contains("hyperframes check")
-        || command.contains("hyperframes render")
-        || command.contains("production-task.py")
-        || command.contains("YINGYA_PRODUCTION_TASK")
+    command.contains("production-task.py") || command.contains("YINGYA_PRODUCTION_TASK")
 }
 
 async fn read_production_jobs(
@@ -4721,7 +4720,7 @@ async fn upload_image(
             .await?;
         return Ok(Json(UploadResponse {
             url: format!("/assets/{relative}"),
-            hyperframes_path: format!("assets/{relative}"),
+            project_path: format!("assets/{relative}"),
         }));
     }
 
@@ -4813,7 +4812,7 @@ async fn upload_library_asset(
     Ok(Json(AssetLibraryItem {
         id,
         url: format!("/assets/{relative}"),
-        hyperframes_path: format!("assets/{relative}"),
+        project_path: format!("assets/{relative}"),
         category: library_category(&mime_type, &source_name).to_owned(),
         mime_type,
         prompt: None,
@@ -4920,7 +4919,7 @@ async fn import_library_asset(
         .find(|asset| asset.provider_id.as_deref() == Some(&provider_id))
     {
         return Ok(Json(AgentUploadResponse {
-            path: existing.hyperframes_path.clone(),
+            path: existing.project_path.clone(),
             name: existing.name.clone(),
         }));
     }
@@ -4946,7 +4945,7 @@ async fn import_library_asset(
                 id: Uuid::new_v4().to_string(),
                 name: name.clone(),
                 url: format!("/api/agent-projects/{project_id}/files/{relative}"),
-                hyperframes_path: relative.clone(),
+                project_path: relative.clone(),
                 kind: item.category,
                 source: "library".to_owned(),
                 media_type: Some(item.mime_type),
@@ -5192,7 +5191,7 @@ impl AssetStore {
             assets.push(ImageAsset {
                 id: event.id,
                 url: format!("/assets/{relative}"),
-                hyperframes_path: format!("assets/{relative}"),
+                project_path: format!("assets/{relative}"),
                 mime_type: image_mime(extension).to_owned(),
                 revised_prompt: event.revised_prompt,
             });
@@ -5264,7 +5263,7 @@ impl AssetStore {
                         .map(|value| value.id.clone())
                         .unwrap_or_else(|| filename.clone()),
                     url: format!("/assets/{relative}"),
-                    hyperframes_path: format!("assets/{relative}"),
+                    project_path: format!("assets/{relative}"),
                     category: library_category(
                         &mime_type,
                         source_name.as_deref().unwrap_or(&filename),
@@ -5480,7 +5479,7 @@ impl AssetStore {
                         .map(|value| value.id.clone())
                         .unwrap_or_else(|| filename.clone()),
                     url: format!("/assets/{relative}"),
-                    hyperframes_path: format!("assets/{relative}"),
+                    project_path: format!("assets/{relative}"),
                     mime_type: image_mime(&extension).to_owned(),
                     prompt: metadata.as_ref().and_then(|value| value.prompt.clone()),
                     source_name: metadata
@@ -5679,30 +5678,19 @@ fn env_u64(name: &str, fallback: u64) -> u64 {
         .unwrap_or(fallback)
 }
 
-pub(crate) async fn discover_hyperframes_browser(
-    root: &FilePath,
-    hyperframes_home: &FilePath,
-) -> Option<PathBuf> {
-    if let Some(path) = env::var_os("YINGYA_HYPERFRAMES_BROWSER_PATH") {
-        return PathBuf::from(path)
-            .canonicalize()
-            .ok()
-            .filter(|path| path.is_file());
-    }
-
-    let output = tokio::process::Command::new(root.join("node_modules/.bin/hyperframes"))
-        .args(["browser", "path"])
-        .env("HOME", hyperframes_home)
-        .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
+pub(crate) async fn discover_browser_path(root: &FilePath) -> Option<PathBuf> {
+    let output = tokio::process::Command::new("node")
+        .arg(root.join("runtime/browser.mjs"))
         .output()
         .await
         .ok()?;
     if !output.status.success() {
         return None;
     }
-
-    let path = PathBuf::from(String::from_utf8(output.stdout).ok()?.trim());
-    path.canonicalize().ok().filter(|path| path.is_file())
+    PathBuf::from(String::from_utf8(output.stdout).ok()?.trim())
+        .canonicalize()
+        .ok()
+        .filter(|path| path.is_file())
 }
 
 #[derive(Debug)]
@@ -6096,6 +6084,33 @@ mod tests {
                 .unwrap(),
             "explainer v1"
         );
+        fs::create_dir_all(codex_home.join("skills/hyperframes-core"))
+            .await
+            .unwrap();
+        fs::write(
+            codex_home.join("skills/hyperframes-core/SKILL.md"),
+            "obsolete",
+        )
+        .await
+        .unwrap();
+        fs::create_dir_all(codex_home.join("skills/media-use"))
+            .await
+            .unwrap();
+        fs::write(codex_home.join("skills/media-use/SKILL.md"), "obsolete")
+            .await
+            .unwrap();
+        fs::write(
+            codex_home.join("skills/yingya-video-agent/references/obsolete.md"),
+            "obsolete",
+        )
+        .await
+        .unwrap();
+        fs::create_dir_all(codex_home.join("skills/custom"))
+            .await
+            .unwrap();
+        fs::write(codex_home.join("skills/custom/SKILL.md"), "keep")
+            .await
+            .unwrap();
         fs::write(
             resources.join("skills/faceless-explainer/SKILL.md"),
             "explainer v2",
@@ -6111,7 +6126,27 @@ mod tests {
                 .unwrap(),
             "explainer v2"
         );
+        assert!(!codex_home.join("skills/hyperframes-core").exists());
+        assert!(!codex_home.join("skills/media-use").exists());
+        assert!(
+            !codex_home
+                .join("skills/yingya-video-agent/references/obsolete.md")
+                .exists()
+        );
+        assert!(codex_home.join("skills/custom/SKILL.md").exists());
         fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[test]
+    fn new_projects_default_to_remotion_and_reject_other_engine_values() {
+        assert_eq!(requested_video_engine(&json!({})).unwrap(), "remotion");
+        assert_eq!(
+            requested_video_engine(&json!({"videoEngine":"remotion"})).unwrap(),
+            "remotion"
+        );
+        for engine in [json!("retired"), json!(""), json!(null), json!(1)] {
+            assert!(requested_video_engine(&json!({"videoEngine":engine})).is_err());
+        }
     }
 
     #[test]
@@ -6180,34 +6215,6 @@ mod tests {
         assert_eq!(lines.len(), 102);
         assert_eq!(lines.last().unwrap(), diagnostic);
         assert_eq!(fs::read(path).await.unwrap(), expected);
-        fs::remove_dir_all(root).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn scaffolds_hyperframes_after_plan_confirmation_without_overwriting_source() {
-        let root = env::temp_dir().join(format!("yingya-hyperframes-scaffold-{}", Uuid::new_v4()));
-        fs::create_dir_all(root.join("compositions")).await.unwrap();
-        let first_scaffold = write_hyperframes_scaffold(
-            &root,
-            "project-id",
-            "9:16",
-            &json!({ "durationSeconds": 18 }),
-        )
-        .await;
-        assert!(first_scaffold.is_ok());
-        let generated = fs::read_to_string(root.join("index.html")).await.unwrap();
-        assert!(generated.contains("data-duration=\"18\""));
-        assert!(generated.contains("data-width=\"1080\" data-height=\"1920\""));
-        fs::write(root.join("index.html"), "user-authored-composition")
-            .await
-            .unwrap();
-        let second_scaffold =
-            write_hyperframes_scaffold(&root, "project-id", "16:9", &json!({})).await;
-        assert!(second_scaffold.is_ok());
-        assert_eq!(
-            fs::read_to_string(root.join("index.html")).await.unwrap(),
-            "user-authored-composition"
-        );
         fs::remove_dir_all(root).await.unwrap();
     }
 
@@ -6365,7 +6372,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_and_clamps_hyperframes_render_progress() {
+    fn parses_and_clamps_render_progress() {
         assert_eq!(render_percent("Rendering frames 42%"), Some(42));
         assert_eq!(render_percent("Encoding 99.8%"), Some(95));
         assert_eq!(render_percent("Preparing renderer"), None);

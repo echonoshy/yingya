@@ -296,8 +296,8 @@ pub struct MediaAsset {
     pub name: String,
     #[serde(default)]
     pub url: String,
-    #[serde(alias = "path")]
-    pub hyperframes_path: String,
+    #[serde(alias = "path", alias = "hyperframesPath")]
+    pub project_path: String,
     pub kind: String,
     #[serde(default)]
     pub source: String,
@@ -1084,7 +1084,7 @@ impl AgentProjectStore {
             read_json_or_default(&directory.join("assets.json")).await?;
         for asset in &mut assets {
             if asset.name.is_empty() {
-                asset.name = Path::new(&asset.hyperframes_path)
+                asset.name = Path::new(&asset.project_path)
                     .file_name()
                     .and_then(|name| name.to_str())
                     .unwrap_or("未命名素材")
@@ -1093,7 +1093,7 @@ impl AgentProjectStore {
             if asset.url.is_empty() {
                 asset.url = format!(
                     "/api/agent-projects/{project_id}/files/{}",
-                    asset.hyperframes_path
+                    asset.project_path
                 );
             }
             if asset.source.is_empty() {
@@ -2728,7 +2728,7 @@ mod tests {
         let media = store.media(&project.id).await.unwrap();
         assert_eq!(media.assets.len(), 1);
         assert_eq!(media.assets[0].name, "narration.wav");
-        assert_eq!(media.assets[0].hyperframes_path, "assets/narration.wav");
+        assert_eq!(media.assets[0].project_path, "assets/narration.wav");
         assert!(media.assets[0].url.ends_with("/files/assets/narration.wav"));
         assert_eq!(media.assets[0].created_at, project.created_at);
         assert_eq!(
@@ -2765,7 +2765,7 @@ mod tests {
                 "/api/agent-projects/{}/files/assets/audio/pulse.mp3",
                 project.id
             ),
-            hyperframes_path: "assets/audio/pulse.mp3".to_owned(),
+            project_path: "assets/audio/pulse.mp3".to_owned(),
             kind: "audio".to_owned(),
             source: "heygen".to_owned(),
             media_type: Some("music".to_owned()),

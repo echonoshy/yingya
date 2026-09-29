@@ -18,13 +18,9 @@ according to the plan; retain its factual meaning and required content.
 A 3D model scene displays supplied models, not newly synthesized
 footage or a model generated from a prompt.
 
-For a shot that needs a recorded action, follow
-[existing-footage.md](existing-footage.md). The installed editorial assembler
-is an optional treatment for compatible footage shots, not the default film
-structure. Check its catalog before choosing a recipe and preserve source
-evidence when assembling or revising those shots.
+For a recorded action, follow [existing-footage.md](existing-footage.md) and declare measured source intervals in the Remotion media schedule.
 
-Reuse the app-provided `index.html` scaffold after plan confirmation; inspect it before editing. Do not reinitialize the project or overwrite a working entry. Create `DESIGN.md` from the approved plan with shared typography, colors, scene layout rules, motion timing, transitions, caption safe areas, and audio levels. Centralize these choices in composition styles / shared source.
+Reuse the app-provided `src/Video.tsx` and `remotion.json` scaffold after plan confirmation; inspect it before editing. Do not reinitialize the project or overwrite a working entry. Create `DESIGN.md` from the approved plan with shared typography, colors, scene layout rules, motion timing, transitions, caption safe areas, and audio levels. Centralize these choices in composition styles / shared source.
 
 If the plan used bundled design references, follow the applicable adaptation in
 [design/index.md](design/index.md). Carry its chosen structure into actual
@@ -55,25 +51,12 @@ does not require replacing the source voice. New narration leads timing only
 when it is the approved audio treatment. Do not silently speed up, stretch or
 mute original speech to fit an estimated scene length.
 
-Follow `.yingya/requirements.json` and the approved plan. The bounded footage
-assembler can preserve or mute source audio; it cannot synthesize narration,
-choose music or prove translation merely by writing HTML. Resolve any reported
-audio production tasks with actual tracks and matching timing before claiming
-completion. `subtitles: none` omits added subtitles; `zh-en` requires both real
-language texts and verified alignment. Original text burned into source footage
-remains part of that source. Do not call an explanatory label a transcript.
-
-For every project whose structured requirements request narration, replacement
-audio, or music (including custom and third-party compositions), add actual
-audible tracks and identify their purpose on the static audio node with
-`data-editorial-audio-role="narration"`, `"replacement"` or `"music"`.
-These tracks must be different from the preserved source recording and carry
-real measured timing. Role labels alone cannot satisfy the requirement: verify
-the files have audio, the rendered output contains it, and listen to confirm
-the content and mix. Keep the requirements snapshot with each immutable
-version, whether assembled or custom; do not change frozen requirements to bypass a
-failed export. Audio roles are evidence for technical checks, not proof that
-the wording, translation or music choice is correct.
+Follow `.yingya/requirements.json` and the approved plan. Add actual tracks in
+`remotion.json` with measured frame ranges and audio roles `narration`, `replacement`,
+`music`, `sfx` or `original`. Role labels alone do not prove audible content or
+semantic alignment. Listen to the rendered mix. Preserve requirements with the
+immutable source; never alter frozen requirements to bypass a failed export.
+`subtitles: none` omits added subtitles; `zh-en` needs both aligned language texts.
 
 For narration-led videos:
 
@@ -81,7 +64,7 @@ For narration-led videos:
 2. Read `.yingya/voice.json`. Use its exact `voiceId` in every VoxCPM2 call, including retries and revisions. Check the saved voice is available; a missing voice is not permission to substitute another.
 3. Synthesize by scene or natural sentence group, retaining consistent settings and tone. Reuse existing audio only when text, voice, and synthesis settings match. Use versioned filenames so earlier drafts retain their original audio.
 4. Measure each output with `ffprobe`. Record scene-local audio paths and measured durations in the scene fields. Use actual speech duration plus intentional pauses to set scene ends; never truncate a sentence to fit an earlier estimate.
-   Generate HTML audio start/duration and scene windows from these same fields. Ordinary section nesting does not add the section start to an audio element's zero start. Only real sub-composition offsets are inherited. For a single full narration track, obtain sentence/scene offsets from the recording before setting visual cuts; never keep estimated cuts and label them measured.
+   Generate Remotion media frame ranges and scene windows from these fields. For a full narration track, measure sentence/scene offsets before setting cuts.
 5. Derive captions from the resulting audio using an installed alignment / transcription capability. Check recognized text against the script. If only manual sentence alignment is available, describe it accurately and verify it by listening; do not claim word-level alignment.
 6. Keep caption times scene-local until assembly, then add the scene offset exactly once. Recompute offsets after duration changes. Hold the ending until narration and captions finish.
 
@@ -103,20 +86,25 @@ subject animation when the plan promises it; panning a still does not establish
 continuous character action. Resolve each shot's action and transition within
 the common measured scene schedule.
 
-Keep narration and generated media in `assets/`, scene sources in `compositions/` when needed, review media in `artifacts/`, and reports in `.yingya/reports/`. Use relative paths so immutable source snapshots can render independently. Register produced media in the existing `assets.json` shape before linking its ID to a scene. Preserve existing IDs and fields.
+Keep narration and generated media in `assets/`, scene sources in `src/` when needed, review media in `artifacts/`, and reports in `.yingya/reports/`. Use relative paths so immutable source snapshots can render independently. Register produced media in the existing `assets.json` shape before linking its ID to a scene. Preserve existing IDs and fields.
 
-Stable scene IDs connect `scenes.json`, HTML scene elements, assets, and feedback. Write scene-local animation times and assemble from the shared timeline. Do not maintain unrelated hand-written timing copies in captions and HTML. Check local media and fonts load and that the first and last frames contain the intended content.
+Stable scene IDs connect `scenes.json`, React scene components, assets, and feedback. Write scene-local animation times and assemble from the shared timeline. Do not maintain unrelated hand-written timing copies in captions and React. Check local media and fonts load and that the first and last frames contain the intended content.
 
 For GSAP API details or text/SVG/path effects, use [GSAP for video](gsap/index.md).
-Its offline plugin bundle and video adaptation supplement the installed
-HyperFrames references. Keep required scripts inside the project snapshot;
+Its offline plugin bundle and video adaptation follow the
+Remotion frame contract. Keep required scripts inside the project snapshot;
 verify direct, backward and repeated seeks as well as the exported MP4.
 
 Independent media preparation can run concurrently when tools support it; integration waits for required inputs. Keep one writer for shared scene timing and the root manifest. Do not start duplicate TTS, checks, or renders for an already-running operation.
 
 ## Review evidence
 
-The unified `hyperframes check --snapshots --json` is the final technical gate. Invoke it through `python3 "$YINGYA_PRODUCTION_TASK" check` with the current request ID and report path (see `runtime-tools.md`); use the same runner's `render` command for draft rendering. It preserves command status and separates JSON from stderr. Use installed CLI help for supported flags. Where default sampling misses a short scene or critical transition, use explicit timestamps / transition sampling. Review the opening, scene midpoints, important transitions, caption-dense frames, and ending; use additional snapshots only to close a specific coverage gap.
+Build with `node "$YINGYA_REMOTION" build --project .`, then check through
+`python3 "$YINGYA_PRODUCTION_TASK" check` using the request ID and report path
+in [runtime-tools.md](runtime-tools.md). Use the same runner for rendering.
+Review opening, scene midpoints, transitions, caption-dense frames and ending.
+The check covers build freshness, browser initialization and media intervals;
+layout, contrast and scene meaning need separate inspection.
 
 Apply [visual-review.md](visual-review.md) to the representative passage and the
 complete draft. Inspect composition, asset consistency, motion, editing and sound
@@ -125,15 +113,10 @@ review with this draft's source/output identity. Probe actual duration,
 dimensions, fps and expected audio streams as separate technical evidence.
 
 The render runner also records verification tied to the current source and MP4.
-Read that report and open the extracted MP4 frames. A browser can correctly play
-a dynamically inserted video while the offline compiler discovers zero media;
-check snapshots alone cannot validate the export. For footage scenes, verify
-both the original source identity/in-out and the resulting rendered action and
-result. Missing extraction, stale bindings or a readable MP4 containing the
-wrong source are failures, not successful drafts. No numeric visual score is
-needed; report concrete content, legibility and timing defects.
-
-Check each gate's enabled state and actual samples, not only top-level `ok`. For animation, repair invalid motion assertions using the installed CLI schema; deleting the assertion file is not a repair. Preserve scene, asset, style, font and audio dependencies inside the immutable version.
+Read that report and open the decoded MP4 frames. The receipt binds the source,
+managed media hashes, completed frame count and actual MP4. Verify that footage
+shows the selected action and source interval, and review motion and sound.
+Preserve scene, asset, style, font and audio dependencies inside each version.
 
 ## Revision dependency table
 

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 const python = spawnSync('python3', ['-c', 'import json,sys,importlib.util; print(json.dumps({"version":sys.version.split()[0],"executable":sys.executable,"libraries":{x:importlib.util.find_spec(x) is not None for x in ["requests","httpx","bs4","lxml","PIL","numpy","pandas","scipy","matplotlib","pypdf","docx","pptx","openpyxl"]}}))'], { encoding: 'utf8', timeout: 10000 });
 const result = { python: python.status === 0 ? JSON.parse(python.stdout) : { available: false },
-  browser: { configured: false, executablePath: process.env.HYPERFRAMES_BROWSER_PATH ?? null },
+  browser: { configured: false, executablePath: process.env.YINGYA_BROWSER_PATH ?? null },
   alternatives: { web: 'python3 requests + BeautifulSoup, or Node.js fetch', images: 'Pillow', video: 'ffprobe / ffmpeg', animation: 'HTML/CSS/SVG/GSAP; use Canvas 2D if WebGL is unavailable' } };
 try { await access(result.browser.executablePath); result.browser.configured = true; } catch { /* Optional capability. */ }
 if (process.argv.includes('--probe-browser') && result.browser.configured) {

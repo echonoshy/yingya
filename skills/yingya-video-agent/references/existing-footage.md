@@ -7,10 +7,7 @@ when the approved story benefits. Asset roles and protected content still apply;
 do not present generated additions as events captured in the original footage.
 An uploaded video is not automatically a screen-recording tutorial.
 
-The later assembler sections describe an optional, bounded route for shots that
-benefit from focus, highlight and callout camera treatments. Use a custom
-HyperFrames composition for other edits or mixed-media storytelling. The model
-chooses the story; the analysis cache and assembler do not certify semantics.
+The analysis cache does not certify semantics. Compose approved footage and overlays in React/Remotion.
 
 ## Inspect the source once
 
@@ -99,96 +96,17 @@ Extend the existing `scenes.json` root array. Preserve stable scene IDs and real
 ]
 ```
 
-Read the installed `catalog.json` next to `$YINGYA_EDITORIAL_ASSEMBLER` for
-available `recipe` values and their parameter requirements. Prefer the existing
-effects rather than rebuilding the same camera or highlight from scratch.
-All focus coordinates are
-normalized source-frame coordinates. Focus can also use
-`{"anchor":{"x":0.6,"y":0.1},"zoom":1.8}`. Use the actual control position,
-not the sample values. An optional `overview.resultFocus` can highlight the
-actual result at the end; otherwise the camera returns to overview.
+## Compile measured timing
 
-This first adapter supports consecutive, 1× source intervals: scene duration
-must equal `sourceOut - sourceIn`, starts must follow the preceding scene, and
-source out must fit the media. It rejects silent speed changes, gaps and
-overlaps. Choose better cut points or use another explicitly authored treatment
-when a real pause, retime or more complex edit is needed. `preserve` is the
-default audio choice; use `mute` for a user-requested silent recording treatment.
-Keep subtitles and annotations as editable overlays rather than baking them
-into the footage.
+Convert `startSeconds`, `durationSeconds` and source in/out to integer frames at
+`composition.fps`. Declare each video in `remotion.json.media` with `src`, `from`,
+`durationInFrames`, `trimBefore`, `volume` and `muted`. The host mounts these media
+nodes. Preserve original sound unless the user requests otherwise; additional
+narration/music use separate declared audio items and roles.
 
-The first adapter requires square-pixel footage, no rotation metadata, and a
-video stream starting at zero. The inspector can describe other formats, but
-assembly rejects them explicitly. If conversion is needed, preserve the
-original, create a normalized derivative with FFmpeg, inspect it, and bind the
-new source and its measured timestamps. Never silently relabel source times.
-Choose dimensions from the approved aspect ratio; portrait and square output
-need deliberate framing. Shorten overlong captions rather than clipping them.
-
-During planning, record these fields and explain which real action and result
-each interval proves. Do not generate the composition until the existing plan
-authorization permits production. This adds no new approval checkpoint.
-
-## Assemble after approval
-
-```sh
-node "$YINGYA_EDITORIAL_ASSEMBLER" --project . --scenes scenes.json --width 1920 --height 1080 --fps 30
-```
-
-Use the project's approved dimensions. Inspect the existing entry before use.
-The adapter can create a new entry or safely rebuild its unmodified generated
-files. It refuses to overwrite a custom composition or a manually edited
-generated file. If the only existing entry is the app's empty post-approval
-scaffold, `--replace` can replace that scaffold within the approved production
-task. Never use that flag to discard existing Studio/user edits; keep those
-changes and adapt the affected scene, or build in a separate output directory
-and deliberately integrate it.
-
-The tool emits editable composition files and `source-bindings.json`, linked to
-the scene source/hash, original media and generated file hashes. Keep this
-binding file with the entry and immutable source snapshot. It is derived
-evidence, not a second timeline to edit. Generated videos use statically
-discoverable media, a deterministic time-driven camera, and a caption area
-outside the footage. First show context, then the action, then its result;
-adjust focal positions and holds to the content rather than repeating an effect.
-
-The adapter is a bounded starting treatment, not a universal template. Reuse
-brand fonts, colors and approved design decisions when adapting the scene.
-Read installed core/animation instructions before extending the source. An
-adapted/generated file remains editable; preserve subsequent manual edits.
-The binding retains the original assembled entry hash as provenance. Styling
-edits can be verified against the current entry and are reported as modified;
-source media, clip intervals and audio nodes must still match the binding.
-Never refresh hashes by hand or delete the binding to hide a mismatch. Changes
-to source intervals need a deliberate scene update and reassembly that preserves
-existing custom edits. The render's own fingerprint always describes the actual
-current source, including custom styling.
-
-## Verify the exported result
-
-Run the normal durable `check` and `render` commands. A render receipt includes
-`renderVerification` and its hash. Open that report and its actual MP4 frame
-paths. The report binds the source fingerprint, output hash and media extraction
-to this render; browser check snapshots alone cannot prove the video is right.
-
-Check the beginning, action and result of each used interval. The compiler must
-discover the declared videos and extract their frames. Verify source bounds,
-caption readability, complete controls, original audio when required, and the
-last frame. A successful decode does not prove the correct footage appeared.
-Keep failed evidence, repair the cause and rerun affected checks; never remove
-media, assertions or source bindings merely to get a passing result.
-
-For a local text/focus change, edit only that scene in `scenes.json`, keep source
-paths/in-out/audio and other scene IDs intact, then regenerate only when the
-generated-file hashes still match. Compare unchanged scene geometry and actual
-output frames. Encoding can change pixel values without a semantic edit; do not
-claim exact pixel equality unless measured. Record the actual scope of revision.
-
-The workbench's controlled scene editor performs these bounded changes directly
-and refuses stale scene revisions or manually modified generated files. If it
-reports that a custom composition needs an Agent edit, preserve the custom code
-and make the smallest appropriate change; never reset it to regain editability.
-The current source preview can show a saved change immediately, while an older
-rendered MP4 remains unchanged until the next successful render. Explain which
-one is being reviewed. This is source reuse, not a claim of per-scene encoding
-or an incremental video-render cache.
+Use React/SVG overlays for focus, callouts and captions. Keep source video visible
+beneath them. Source intervals must fit the measured video stream. Current managed
+media has no looping or speed changes. Review cuts, speech, source identity and
+actual decoded MP4 frames; metadata alone cannot prove the right action appears.
+Preserve inspected source hashes, scene IDs, content index, requirements and media
+with the immutable version. Rebuild after every source/asset change.

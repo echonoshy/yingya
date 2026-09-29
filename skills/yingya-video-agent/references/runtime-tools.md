@@ -27,7 +27,7 @@ search its component registries; it is not general web search. Use known officia
 pages or user-supplied sources. Direct HTTP retrieval is not a search engine: disclose missing discovery
 capabilities when needed and never invent source content.
 
-When HYPERFRAMES_BROWSER_PATH is configured, pass it explicitly to Playwright:
+When YINGYA_BROWSER_PATH is configured, pass it explicitly to Playwright:
 
 Save this as a `.mjs` file and execute it with `node`, or use
 `node --input-type=module` for stdin:
@@ -38,7 +38,7 @@ import { join } from 'node:path';
 const fromRuntime = createRequire(join(process.env.YINGYA_NODE_MODULES, 'playwright/package.json'));
 const { chromium } = fromRuntime('playwright');
 const browser = await chromium.launch({
-  executablePath: process.env.HYPERFRAMES_BROWSER_PATH,
+  executablePath: process.env.YINGYA_BROWSER_PATH,
   headless: true,
   timeout: 8000,
   args: ['--no-sandbox', '--disable-dev-shm-usage'],
@@ -56,45 +56,23 @@ Report that limitation when it blocks delivery. If only WebGL is unavailable,
 use an approved HTML/CSS/SVG/Canvas 2D treatment or explain why the requested 3D
 result needs another runtime. Do not silently substitute a different result.
 
-HyperFrames uses the same configured browser. On a JavaScript initialization
+Remotion uses the same configured browser. On a JavaScript initialization
 error, inspect the first page error and generated source, then make a targeted
 fix; repeating check/render with the same source does not repair it. Plain
-Playwright can help distinguish a source error from HyperFrames bundling behavior.
+Playwright can help distinguish a source error from Remotion bundling behavior.
 
-## Unified component library
+## Component sources and footage
 
-`$YINGYA_COMPONENT_LIBRARY` is the installed entrypoint for local scene discovery
-and installation, React Bits / Magic UI registry search/import/diagnostics, and
-browser bundle builds. Use `node "$YINGYA_COMPONENT_LIBRARY" catalog` as needed; local
-`catalog` / `list` needs no project and can inform planning. Read
-[reusable-motion.md](reusable-motion.md) for installed packs or
-[third-party-components.md](third-party-components.md) for registry components.
-Those references contain the commands and timing contract; the catalog and
-installed pack README are the source of truth for available components and APIs.
+`$YINGYA_COMPONENT_LIBRARY` imports editable React Bits / Magic UI sources with
+project-local dependencies and licenses. Read [third-party-components.md](third-party-components.md)
+and drive all animation from Remotion frames. The host owns the pinned shadcn CLI;
+do not install a replacement shared CLI during a video task.
 
-The host owns the pinned shadcn CLI and each user's shadcn MCP. Project writes
-require an explicit `--project` destination. The legacy
-`$YINGYA_ANIME_COMPONENTS` installer remains available for existing Anime.js
-projects; new discovery uses the unified entrypoint. Do not run
-`npx ...@latest`, initialize a replacement app, or install a shared CLI inside a
-video task. Import success is not proof of a verified video.
-
-## Existing video analysis and assembly
-
-Two installed project tools are available without installing dependencies:
-
-```sh
-python3 "$YINGYA_MEDIA_ANALYSIS" --project . --source assets/inbox/recording.mp4 --json
-node "$YINGYA_EDITORIAL_ASSEMBLER" --project . --scenes scenes.json --width 1920 --height 1080 --fps 30
-```
-
-Read [existing-footage.md](existing-footage.md) for source selection, exact scene
-fields, original audio, supported timing and overwrite protection. Analysis
-caches validated keyframes and metadata by content/analysis version inside the
-project; it does not provide semantic recognition or transcription. Assembly
-uses the existing `scenes.json`, static media and an installed camera adapter.
-Inspect the actual source before choosing intervals. Analysis is allowed during
-intake; composition creation still follows the existing plan authorization.
+Inspect footage with `python3 "$YINGYA_MEDIA_ANALYSIS" --project . --source
+assets/inbox/recording.mp4 --json`. It caches measured metadata and keyframes;
+it does not provide semantic recognition or transcription. Read
+[existing-footage.md](existing-footage.md), inspect real frames, and declare the
+chosen source in/out in `remotion.json`.
 
 ## Audio and command results
 
@@ -113,7 +91,7 @@ python3 "$YINGYA_PRODUCTION_TASK" render --request-id REQUEST --source . --outpu
 python3 "$YINGYA_PRODUCTION_TASK" status --request-id REQUEST
 ```
 
-Pass extra supported check options after `--`. The runner prints a job ID before
+Build with `node "$YINGYA_REMOTION" build --project .` before checking. The runner prints a job ID before
 starting work, saves stdout/stderr separately, and publishes complete JSON/video
 atomically. Poll the original shell session; if its handle was lost, query `status`.
 `busy` means wait for the recorded job. A passed check is reusable only when source,
@@ -121,7 +99,7 @@ dependencies, options, and output hashes match. The runner refuses to overwrite 
 unrelated existing output: retain it and choose a new report/video filename.
 Successful rendering also returns `renderVerification` and
 `renderVerificationSha256`. Read that output-bound report and open its decoded
-MP4 frames before registering the draft. It verifies extraction and produces
+MP4 frames before registering the draft. It verifies the Remotion completion/media receipt and produces
 review evidence; `requiresVisualReview` means the model must still check the
 actual source content, framing and result, not merely quote a passing flag.
 Never redirect stderr into the report or use `; echo` to replace a failure exit code.
@@ -143,8 +121,7 @@ Yingya does not limit media generation by count. Token limits and disabled-accou
 checks still apply. Reuse valid existing narration on retries and visual-only
 edits; unlimited counts do not make repeated synthesis useful.
 
-Invoke the installed `hyperframes` command directly. Do not use `npx` to find or
-download it in a project. A CLI on PATH does not imply its packages can be imported
+Invoke `node "$YINGYA_REMOTION"` for build/init and the durable runner for check/render. Do not use `npx` to download another runtime. A CLI on PATH does not imply its packages can be imported
 from a project; use the explicit shared dependency path above for Playwright.
 Use `.mjs` with `import`, or `.cjs` with `require` and an async function; do not mix
 CommonJS `require` with top-level `await`. Run `node --check scripts/example.mjs`

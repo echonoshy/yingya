@@ -2501,7 +2501,7 @@ function ArtifactCanvas({
     assets: (view?.assets ?? []).map((asset) => {
       const path = sourceFilePath(
         view?.sourcePath ?? ".",
-        asset.hyperframesPath,
+        asset.projectPath,
       );
       return { ...asset, url: path ? api.fileUrl(project.id, path) : "" };
     }),

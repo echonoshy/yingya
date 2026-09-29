@@ -5,9 +5,10 @@
 | 文档 | 内容 |
 | --- | --- |
 | [安装与本地开发](DEVELOPMENT.md) | 环境准备、启动服务、运行配置、API 连通检查与测试 |
-| [服务集成](INTEGRATIONS.md) | Codex 图像生成、HeyGen 配乐音效、HyperFrames 工具与 VoxCPM2 语音 |
+| [服务集成](INTEGRATIONS.md) | Codex 图像生成、HeyGen 配乐音效、Remotion 工具与 VoxCPM2 语音 |
 | [新版设计与实施方案](YINGYA_NEXT_PRODUCT_DIRECTION.md) | 知识讲解定位、方案/视频工作区与版本反馈契约 |
-| [新版验收记录](YINGYA_KNOWLEDGE_ACCEPTANCE.md) | 工程测试、真实作品、发布及未验收事项 |
+| [Remotion 运行时](REMOTION_MIGRATION.md) | 单引擎契约、浏览器准备、检查边界与发布验证 |
+| [历史知识视频验收记录](YINGYA_KNOWLEDGE_ACCEPTANCE.md) | 工程测试、真实作品、发布及未验收事项 |
 | [产品定位](PRODUCT_POSITIONING.md) | 目标用户、制作场景、能力边界与产品表达 |
 | [用户沙箱与用量统计](USER_SANDBOX.md) | 内测登录、账号隔离、预览权限与用量口径 |
 | [不停机更新与任务恢复](ROLLING_UPDATES.md) | 单机滚动发布、独立 Worker、回滚与任务恢复边界 |
@@ -21,5 +22,4 @@
 - [VoxCPM2 运维说明](../deploy/voxcpm2/README.md)：语音服务生命周期、音色与请求示例。
 - [首页媒体来源](../web/public/marketing/SOURCES.md)：介绍视频与演示案例的素材出处。
 
-- [内部合成 API 与 MCP](EDITOR_API.md)：制作系统的工程命令，不提供用户编辑器。
 - [历史记录](archive/README.md)：已结束迭代的设计与核查证据。

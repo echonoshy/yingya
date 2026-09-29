@@ -1,20 +1,13 @@
+use serde::Serialize;
 use std::{
-    collections::{HashMap, HashSet},
-    future::Future,
+    collections::HashMap,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
-    pin::Pin,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
-
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tokio::{fs, process::Command, sync::Mutex};
+use tokio::{fs, sync::Mutex};
 use uuid::Uuid;
-
-const STUDIO_PORT_START: u16 = 8600;
-const STUDIO_PORT_END: u16 = 8799;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,71 +36,18 @@ impl StudioSession {
 
 #[derive(Clone)]
 pub struct StudioSessionManager {
-    private_preview: bool,
-    runner: Arc<dyn PreviewCommandRunner>,
     projects_root: Arc<PathBuf>,
     sessions: Arc<Mutex<HashMap<String, StudioSession>>>,
     operation_lock: Arc<Mutex<()>>,
 }
 
 impl StudioSessionManager {
-    pub fn new(cli: PathBuf, hyperframes_home: PathBuf, projects_root: PathBuf) -> Self {
+    pub fn new(projects_root: PathBuf) -> Self {
         Self {
-            private_preview: true,
-            runner: Arc::new(CliPreviewCommandRunner {
-                cli: Arc::new(cli),
-                hyperframes_home: Arc::new(hyperframes_home),
-            }),
             projects_root: Arc::new(projects_root),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             operation_lock: Arc::new(Mutex::new(())),
         }
-    }
-
-    #[cfg(test)]
-    fn with_runner(projects_root: PathBuf, runner: Arc<dyn PreviewCommandRunner>) -> Self {
-        Self {
-            private_preview: false,
-            runner,
-            projects_root: Arc::new(projects_root),
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-            operation_lock: Arc::new(Mutex::new(())),
-        }
-    }
-
-    pub async fn adopt_existing(&self) -> Result<usize, String> {
-        if self.private_preview {
-            return Ok(0);
-        }
-        let _guard = self.operation_lock.lock().await;
-        let sessions = self.list_managed().await?;
-        let root = fs::canonicalize(self.projects_root.as_ref())
-            .await
-            .unwrap_or_else(|_| self.projects_root.as_ref().clone());
-        let now = now_millis();
-        let mut adopted = 0;
-        let mut state = self.sessions.lock().await;
-        for listed in sessions {
-            let Some(project_dir) = listed.project_dir.clone() else {
-                continue;
-            };
-            let canonical = fs::canonicalize(&project_dir).await.unwrap_or(project_dir);
-            let Ok(relative) = canonical.strip_prefix(&root) else {
-                continue;
-            };
-            if relative.components().count() != 1 {
-                continue;
-            }
-            let project_id = relative.to_string_lossy().to_string();
-            if Uuid::parse_str(&project_id).is_err() {
-                continue;
-            }
-            let session =
-                studio_session_from_listed(project_id.clone(), canonical, listed, now).await?;
-            state.insert(project_id, session);
-            adopted += 1;
-        }
-        Ok(adopted)
     }
 
     pub async fn start(
@@ -120,84 +60,32 @@ impl StudioSessionManager {
         let canonical = fs::canonicalize(project_dir)
             .await
             .map_err(|error| error.to_string())?;
-        let project_root = fs::canonicalize(self.projects_root.as_ref())
+        let root = fs::canonicalize(self.projects_root.as_ref())
             .await
-            .map_err(|error| error.to_string())?;
-        if canonical.parent() != Some(project_root.as_path())
+            .map_err(|e| e.to_string())?;
+        if canonical.parent() != Some(root.as_path())
             || canonical.file_name().and_then(|name| name.to_str()) != Some(project_id)
         {
-            return Err(
-                "Studio project must be a direct child of the Yingya project root".to_owned(),
-            );
+            return Err("预览目录与项目不匹配".into());
         }
-
-        if self.private_preview {
-            let url = format!("/api/agent-projects/{project_id}/files/index.html");
-            let session = StudioSession {
-                state: "running".into(),
-                host: String::new(),
-                port: 0,
-                project_name: project_id.into(),
-                server_url: url.clone(),
-                preview_url: url.clone(),
-                storyboard_url: url,
-                last_seen_at: now_millis(),
-                project_id: project_id.into(),
-                project_dir: canonical.clone(),
-                source_fingerprint: source_fingerprint(&canonical).await?,
-            };
-            self.sessions
-                .lock()
-                .await
-                .insert(project_id.into(), session.clone());
-            return Ok(session);
-        }
-        let mut listed = self.list_managed().await?;
-        if let Some(existing) = listed
-            .iter()
-            .find(|item| {
-                item.ready
-                    && item.state == "running"
-                    && item.project_dir.as_deref() == Some(canonical.as_path())
-            })
-            .cloned()
-        {
-            if existing.host == "0.0.0.0" {
-                let session = studio_session_from_listed(
-                    project_id.to_owned(),
-                    canonical,
-                    existing,
-                    now_millis(),
-                )
-                .await?;
-                self.sessions
-                    .lock()
-                    .await
-                    .insert(project_id.to_owned(), session.clone());
-                return Ok(session);
-            }
-            self.run_preview(&canonical, &["--stop"]).await?;
-            listed = self.list_managed().await?;
-        }
-
-        let used_ports: HashSet<u16> = listed.iter().map(|item| item.port).collect();
-        let port = available_studio_port(&used_ports)
-            .await
-            .ok_or_else(|| "没有可用的 HyperFrames Studio 端口".to_owned())?;
-        let output = self
-            .run_preview(
-                &canonical,
-                &["--port", &port.to_string(), "--background", "--force-new"],
-            )
-            .await?;
-        let listed = parse_preview_result(&output)?;
-        let session =
-            studio_session_from_listed(project_id.to_owned(), canonical, listed, now_millis())
-                .await?;
+        let url = format!("/api/agent-projects/{project_id}/files/index.html");
+        let session = StudioSession {
+            state: "running".into(),
+            host: String::new(),
+            port: 0,
+            project_name: project_id.into(),
+            server_url: url.clone(),
+            preview_url: url.clone(),
+            storyboard_url: url,
+            last_seen_at: now_millis(),
+            project_id: project_id.into(),
+            project_dir: canonical.clone(),
+            source_fingerprint: source_fingerprint(&canonical).await?,
+        };
         self.sessions
             .lock()
             .await
-            .insert(project_id.to_owned(), session.clone());
+            .insert(project_id.into(), session.clone());
         Ok(session)
     }
 
@@ -213,12 +101,10 @@ impl StudioSessionManager {
     pub async fn stop(&self, project_id: &str) -> Result<bool, String> {
         let _guard = self.operation_lock.lock().await;
         let session = self.sessions.lock().await.get(project_id).cloned();
-        let Some(session) = session else {
+        let Some(_) = session else {
             return Ok(false);
         };
-        if !self.private_preview {
-            self.run_preview(&session.project_dir, &["--stop"]).await?;
-        }
+
         self.sessions.lock().await.remove(project_id);
         Ok(true)
     }
@@ -266,119 +152,6 @@ impl StudioSessionManager {
         }
         stopped
     }
-
-    async fn list_managed(&self) -> Result<Vec<ListedSession>, String> {
-        let output = self
-            .run_preview(self.projects_root.as_ref(), &["--list"])
-            .await?;
-        let sessions = output
-            .pointer("/result/sessions")
-            .and_then(Value::as_array)
-            .ok_or_else(|| "HyperFrames preview list 未返回会话列表".to_owned())?;
-        sessions.iter().map(parse_listed_session).collect()
-    }
-
-    async fn run_preview(&self, directory: &Path, arguments: &[&str]) -> Result<Value, String> {
-        self.runner
-            .run(
-                directory.to_path_buf(),
-                arguments.iter().map(|value| (*value).to_owned()).collect(),
-            )
-            .await
-    }
-}
-
-trait PreviewCommandRunner: Send + Sync {
-    fn run(
-        &self,
-        directory: PathBuf,
-        arguments: Vec<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<Value, String>> + Send>>;
-}
-
-struct CliPreviewCommandRunner {
-    cli: Arc<PathBuf>,
-    hyperframes_home: Arc<PathBuf>,
-}
-
-impl PreviewCommandRunner for CliPreviewCommandRunner {
-    fn run(
-        &self,
-        directory: PathBuf,
-        arguments: Vec<String>,
-    ) -> Pin<Box<dyn Future<Output = Result<Value, String>> + Send>> {
-        let cli = self.cli.clone();
-        let hyperframes_home = self.hyperframes_home.clone();
-        Box::pin(async move {
-            let output = tokio::time::timeout(
-                Duration::from_secs(30),
-                Command::new(cli.as_ref())
-                    .arg("preview")
-                    .args(arguments)
-                    .args(["--json", "--no-open"])
-                    .current_dir(&directory)
-                    .env("HOME", hyperframes_home.as_ref())
-                    .env("HYPERFRAMES_PREVIEW_HOST", "0.0.0.0")
-                    .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
-                    .kill_on_drop(true)
-                    .output(),
-            )
-            .await
-            .map_err(|_| "HyperFrames preview 命令超时".to_owned())?
-            .map_err(|error| error.to_string())?;
-            if !output.status.success() {
-                return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
-            }
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .rev()
-                .find_map(|line| serde_json::from_str(line).ok())
-                .ok_or_else(|| "HyperFrames preview 未返回 JSON".to_owned())
-        })
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ListedSession {
-    state: String,
-    #[serde(default)]
-    project_name: String,
-    #[serde(default)]
-    project_dir: Option<PathBuf>,
-    host: String,
-    port: u16,
-    server_url: String,
-    #[serde(default)]
-    studio_url: Option<String>,
-    #[serde(default)]
-    ready: bool,
-}
-
-fn parse_listed_session(value: &Value) -> Result<ListedSession, String> {
-    serde_json::from_value(value.clone()).map_err(|error| error.to_string())
-}
-
-fn parse_preview_result(value: &Value) -> Result<ListedSession, String> {
-    let result = value
-        .get("result")
-        .ok_or_else(|| "HyperFrames preview 未返回结果".to_owned())?;
-    parse_listed_session(result)
-}
-
-async fn available_studio_port(used_ports: &HashSet<u16>) -> Option<u16> {
-    for port in STUDIO_PORT_START..=STUDIO_PORT_END {
-        if used_ports.contains(&port) {
-            continue;
-        }
-        if tokio::net::TcpListener::bind(("0.0.0.0", port))
-            .await
-            .is_ok()
-        {
-            return Some(port);
-        }
-    }
-    None
 }
 
 fn expired_session_ids(
@@ -393,48 +166,12 @@ fn expired_session_ids(
         .collect()
 }
 
-async fn studio_session_from_listed(
-    project_id: String,
-    project_dir: PathBuf,
-    listed: ListedSession,
-    now: u64,
-) -> Result<StudioSession, String> {
-    let project_name = if listed.project_name.trim().is_empty() {
-        project_dir
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&project_id)
-            .to_owned()
-    } else {
-        listed.project_name
-    };
-    let preview_url = listed
-        .studio_url
-        .unwrap_or_else(|| format!("{}/#project/{project_name}", listed.server_url));
-    Ok(StudioSession {
-        state: listed.state,
-        host: listed.host,
-        port: listed.port,
-        storyboard_url: format!(
-            "{}/?view=storyboard#project/{project_name}",
-            listed.server_url
-        ),
-        preview_url,
-        server_url: listed.server_url,
-        project_name,
-        last_seen_at: now,
-        project_id,
-        source_fingerprint: source_fingerprint(&project_dir).await?,
-        project_dir,
-    })
-}
-
 async fn source_fingerprint(project_dir: &Path) -> Result<u64, String> {
     let mut entries = Vec::new();
     for name in [
         "index.html",
-        "index.motion.json",
-        "hyperframes.json",
+        "remotion-build.json",
+        "remotion.json",
         "meta.json",
         "DESIGN.md",
     ] {
@@ -442,6 +179,8 @@ async fn source_fingerprint(project_dir: &Path) -> Result<u64, String> {
     }
     collect_directory_fingerprint(project_dir, &project_dir.join("compositions"), &mut entries)
         .await?;
+    collect_directory_fingerprint(project_dir, &project_dir.join("src"), &mut entries).await?;
+    collect_directory_fingerprint(project_dir, &project_dir.join("assets"), &mut entries).await?;
     entries.sort();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     entries.hash(&mut hasher);
@@ -517,101 +256,6 @@ fn now_millis() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::VecDeque;
-
-    type PreviewCall = (PathBuf, Vec<String>);
-
-    #[derive(Default)]
-    struct MockPreviewRunner {
-        responses: Arc<Mutex<VecDeque<Result<Value, String>>>>,
-        calls: Arc<Mutex<Vec<PreviewCall>>>,
-    }
-
-    impl MockPreviewRunner {
-        fn with_responses(responses: Vec<Value>) -> Self {
-            Self {
-                responses: Arc::new(Mutex::new(
-                    responses.into_iter().map(Ok).collect::<VecDeque<_>>(),
-                )),
-                calls: Arc::new(Mutex::new(Vec::new())),
-            }
-        }
-    }
-
-    impl PreviewCommandRunner for MockPreviewRunner {
-        fn run(
-            &self,
-            directory: PathBuf,
-            arguments: Vec<String>,
-        ) -> Pin<Box<dyn Future<Output = Result<Value, String>> + Send>> {
-            let responses = self.responses.clone();
-            let calls = self.calls.clone();
-            Box::pin(async move {
-                calls.lock().await.push((directory, arguments));
-                responses
-                    .lock()
-                    .await
-                    .pop_front()
-                    .unwrap_or_else(|| Err("unexpected preview command".to_owned()))
-            })
-        }
-    }
-
-    fn listed_session(project_dir: &Path, port: u16) -> Value {
-        serde_json::json!({
-            "state": "running",
-            "projectName": project_dir.file_name().unwrap().to_string_lossy(),
-            "projectDir": project_dir,
-            "host": "0.0.0.0",
-            "port": port,
-            "serverUrl": format!("http://0.0.0.0:{port}"),
-            "studioUrl": format!("http://0.0.0.0:{port}/#project/test"),
-            "ready": true
-        })
-    }
-
-    #[test]
-    fn parses_managed_preview_session() {
-        let value = serde_json::json!({
-            "state": "running",
-            "projectName": "project",
-            "projectDir": "/tmp/project",
-            "host": "0.0.0.0",
-            "port": 8601,
-            "serverUrl": "http://0.0.0.0:8601",
-            "studioUrl": "http://0.0.0.0:8601/#project/project",
-            "ready": true
-        });
-        let parsed = parse_listed_session(&value).unwrap();
-        assert_eq!(parsed.port, 8601);
-        assert!(parsed.ready);
-    }
-
-    #[tokio::test]
-    async fn skips_ports_owned_by_other_projects() {
-        let used = HashSet::from([8600, 8601, 8603]);
-        let port = available_studio_port(&used).await.unwrap();
-        assert!(!used.contains(&port));
-    }
-
-    #[tokio::test]
-    async fn skips_ports_occupied_by_non_hyperframes_processes() {
-        let mut bound = None;
-        for port in STUDIO_PORT_START..=STUDIO_PORT_END {
-            if let Ok(listener) = tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
-                bound = Some((port, listener));
-                break;
-            }
-        }
-        let (occupied_port, listener) = bound.expect("an available Studio port");
-        let used = (STUDIO_PORT_START..=STUDIO_PORT_END)
-            .filter(|port| *port != occupied_port)
-            .collect();
-        assert_eq!(available_studio_port(&used).await, None);
-        drop(listener);
-        assert_eq!(available_studio_port(&used).await, Some(occupied_port));
-    }
-
     #[tokio::test]
     async fn private_preview_revision_tracks_each_source_change() {
         let root = std::env::temp_dir().join(format!("yingya-studio-revision-{}", Uuid::new_v4()));
@@ -621,7 +265,7 @@ mod tests {
         fs::write(project.join("index.html"), "first")
             .await
             .unwrap();
-        let manager = StudioSessionManager::new(PathBuf::new(), PathBuf::new(), root.clone());
+        let manager = StudioSessionManager::new(root.clone());
         let first = manager.start(&project_id, &project).await.unwrap();
         assert_eq!(
             first.source_revision(),
@@ -650,55 +294,6 @@ mod tests {
             previous = current;
         }
         manager.stop(&project_id).await.unwrap();
-        fs::remove_dir_all(root).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn reuses_the_exact_canonical_project_session() {
-        let root = std::env::temp_dir().join(format!("yingya-studio-reuse-{}", Uuid::new_v4()));
-        let project_id = Uuid::new_v4().to_string();
-        let project = root.join(&project_id);
-        fs::create_dir_all(&project).await.unwrap();
-        fs::write(project.join("index.html"), "composition")
-            .await
-            .unwrap();
-        let canonical = fs::canonicalize(&project).await.unwrap();
-        let runner = Arc::new(MockPreviewRunner::with_responses(vec![
-            serde_json::json!({ "result": { "sessions": [listed_session(&canonical, 8666)] } }),
-        ]));
-        let manager = StudioSessionManager::with_runner(root.clone(), runner.clone());
-
-        let session = manager.start(&project_id, &project).await.unwrap();
-
-        assert_eq!(session.port, 8666);
-        let calls = runner.calls.lock().await;
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].1, vec!["--list"]);
-        fs::remove_dir_all(root).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn stopping_a_project_cleans_up_its_managed_session() {
-        let root = std::env::temp_dir().join(format!("yingya-studio-stop-{}", Uuid::new_v4()));
-        let project_id = Uuid::new_v4().to_string();
-        let project = root.join(&project_id);
-        fs::create_dir_all(&project).await.unwrap();
-        fs::write(project.join("index.html"), "composition")
-            .await
-            .unwrap();
-        let canonical = fs::canonicalize(&project).await.unwrap();
-        let runner = Arc::new(MockPreviewRunner::with_responses(vec![
-            serde_json::json!({ "result": { "sessions": [] } }),
-            serde_json::json!({ "result": listed_session(&canonical, 8667) }),
-            serde_json::json!({ "result": { "stopped": true } }),
-        ]));
-        let manager = StudioSessionManager::with_runner(root.clone(), runner.clone());
-        manager.start(&project_id, &project).await.unwrap();
-
-        assert!(manager.stop(&project_id).await.unwrap());
-        assert!(manager.heartbeat(&project_id).await.is_err());
-        let calls = runner.calls.lock().await;
-        assert_eq!(calls.last().unwrap().1, vec!["--stop"]);
         fs::remove_dir_all(root).await.unwrap();
     }
 

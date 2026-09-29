@@ -190,7 +190,13 @@ function stringValue(value: unknown) { return typeof value === "string" ? value 
 function isRequest(event: AgentEvent, payload: JsonObject) { return payload.id !== undefined && (event.method.includes("requestApproval") || event.method.includes("requestUserInput") || event.method.includes("elicitation/request") || event.method === "execCommandApproval" || event.method === "applyPatchApproval"); }
 function requestTitle(method: string) { if (method.includes("requestUserInput")) return "需要你的输入"; if (method.includes("permissions")) return "需要权限"; return "等待批准"; }
 function commandStatus(item: JsonObject, method: string): TimelineActivity["status"] { const status = stringValue(item.status); if (status === "failed" || Number(item.exitCode) > 0) return "failed"; if (method === "item/completed" || status === "completed") return "completed"; return "running"; }
-function commandTitle(command: string) { if (/hyperframes\s+capture/.test(command)) return "抓取网站"; if (/hyperframes\s+(lint|validate|inspect|check)/.test(command)) return "检查 HyperFrames"; if (/hyperframes\s+render/.test(command)) return "渲染视频"; if (/hyperframes\s+skills/.test(command)) return "检查工作流能力"; if (/find\s|sed\s|rg\s/.test(command)) return "读取项目信息"; return "运行命令"; }
+function commandTitle(command: string) {
+  if (/(?:YINGYA_PRODUCTION_TASK|production-task\.py|YINGYA_REMOTION|remotion\/cli\.mjs)["']?\s+check\b/.test(command)) return "检查视频";
+  if (/(?:YINGYA_PRODUCTION_TASK|production-task\.py|YINGYA_REMOTION|remotion\/cli\.mjs)["']?\s+render\b/.test(command)) return "渲染视频";
+  if (/(?:YINGYA_REMOTION|remotion\/cli\.mjs)["']?\s+build\b/.test(command)) return "构建视频预览";
+  if (/find\s|sed\s|rg\s/.test(command)) return "读取项目信息";
+  return "运行命令";
+}
 function compactCommand(command: string) { return stripAnsi(command).replace(/^\/bin\/bash\s+-lc\s+/, "").replace(/^['"]|['"]$/g, "").replace(/\s+/g, " ").trim(); }
 function stripAnsi(value: string) { return value.replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, "").replace(/\r/g, ""); }
 function fileSummary(item: JsonObject) { const changes = Array.isArray(item.changes) ? item.changes : []; const paths = changes.map(change => stringValue(asObject(change).path)).filter(Boolean); return paths.length ? paths.slice(0, 3).join("、") + (paths.length > 3 ? ` 等 ${paths.length} 个文件` : "") : "项目文件已更新"; }

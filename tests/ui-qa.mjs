@@ -47,16 +47,16 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
   let projects = [seed];
   let current = structuredClone(seed);
   let nextTurnId = 0;
-  let libraryImages = [{ id: "image-1", url: "/brand/yingya-ghost.png", hyperframesPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
+  let libraryImages = [{ id: "image-1", url: "/brand/yingya-ghost.png", projectPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
   let assetFolders = [{ id: "folder-brand", name: "品牌素材", createdAt: now }];
   let libraryAssets = [
     { ...libraryImages[0], category: "image", folderId: "folder-brand" },
-    { id: "video-1", url: "/assets/uploads/product.mp4", hyperframesPath: "assets/uploads/product.mp4", mimeType: "video/mp4", category: "video", prompt: null, sourceName: "产品定格镜头.mp4", kind: "uploaded", folderId: "folder-brand", createdAt: now - 1 },
-    { id: "audio-1", url: "/assets/uploads/music.mp3", hyperframesPath: "assets/uploads/music.mp3", mimeType: "audio/mpeg", category: "audio", prompt: null, sourceName: "秋日背景音乐.mp3", kind: "uploaded", folderId: null, createdAt: now - 2 },
-    { id: "document-1", url: "/assets/uploads/brief.pdf", hyperframesPath: "assets/uploads/brief.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "品牌创作说明.pdf", kind: "uploaded", folderId: null, createdAt: now - 3 },
+    { id: "video-1", url: "/assets/uploads/product.mp4", projectPath: "assets/uploads/product.mp4", mimeType: "video/mp4", category: "video", prompt: null, sourceName: "产品定格镜头.mp4", kind: "uploaded", folderId: "folder-brand", createdAt: now - 1 },
+    { id: "audio-1", url: "/assets/uploads/music.mp3", projectPath: "assets/uploads/music.mp3", mimeType: "audio/mpeg", category: "audio", prompt: null, sourceName: "秋日背景音乐.mp3", kind: "uploaded", folderId: null, createdAt: now - 2 },
+    { id: "document-1", url: "/assets/uploads/brief.pdf", projectPath: "assets/uploads/brief.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "品牌创作说明.pdf", kind: "uploaded", folderId: null, createdAt: now - 3 },
   ];
   const media = { scenes: [], assets: [] };
-  await page.route("**/mock-hyperframes-storyboard*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body style='margin:0;background:#1d1d1f;color:white;font:16px sans-serif;display:grid;place-items:center;height:100vh'><main><b>HyperFrames 实时画面</b><p>Agent 正在更新 Composition</p></main></body></html>" }));
+  await page.route("**/mock-remotion-storyboard*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body style='margin:0;background:#1d1d1f;color:white;font:16px sans-serif;display:grid;place-items:center;height:100vh'><main><b>Remotion 实时画面</b><p>Agent 正在更新 Composition</p></main></body></html>" }));
   await page.route("**/assets/uploads/**", route => {
     const pathname = new URL(route.request().url()).pathname;
     const contentType = pathname.endsWith(".mp4") ? "video/mp4" : pathname.endsWith(".mp3") ? "audio/mpeg" : "application/octet-stream";
@@ -74,15 +74,15 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (pathname === "/api/codex/threads" && method === "POST") return json(route, { threadId: "image-thread-1" });
     if (pathname === "/api/codex/threads/image-thread-1/images" && method === "POST") {
       const input = request.postDataJSON();
-      libraryImages = [{ id: "image-2", url: "/brand/yingya-ghost.png", hyperframesPath: "assets/generated/image-2.png", mimeType: "image/png", prompt: input.prompt, sourceName: null, kind: "generated", createdAt: now + 1 }, ...libraryImages];
+      libraryImages = [{ id: "image-2", url: "/brand/yingya-ghost.png", projectPath: "assets/generated/image-2.png", mimeType: "image/png", prompt: input.prompt, sourceName: null, kind: "generated", createdAt: now + 1 }, ...libraryImages];
       libraryAssets = [{ ...libraryImages[0], category: "image", folderId: null }, ...libraryAssets];
-      return json(route, { threadId: "image-thread-1", turnId: "image-turn-1", status: "completed", text: "", images: [{ id: "image-2", url: libraryImages[0].url, hyperframesPath: libraryImages[0].hyperframesPath, mimeType: "image/png", revisedPrompt: input.prompt }] });
+      return json(route, { threadId: "image-thread-1", turnId: "image-turn-1", status: "completed", text: "", images: [{ id: "image-2", url: libraryImages[0].url, projectPath: libraryImages[0].projectPath, mimeType: "image/png", revisedPrompt: input.prompt }] });
     }
     if (pathname === "/api/assets/images" && method === "GET") return json(route, { images: libraryImages });
-    if (pathname === "/api/assets/images" && method === "POST") return json(route, { url: "/assets/uploads/reference.png", hyperframesPath: "assets/uploads/reference.png" });
+    if (pathname === "/api/assets/images" && method === "POST") return json(route, { url: "/assets/uploads/reference.png", projectPath: "assets/uploads/reference.png" });
     if (pathname === "/api/assets/library" && method === "GET") return json(route, { assets: libraryAssets });
     if (pathname === "/api/assets/library" && method === "POST") {
-      const created = { id: `upload-${libraryAssets.length}`, url: "/assets/uploads/uploaded.pdf", hyperframesPath: "assets/uploads/uploaded.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "活动执行方案.pdf", kind: "uploaded", folderId: assetFolders.at(-1)?.id ?? null, createdAt: now + 2 };
+      const created = { id: `upload-${libraryAssets.length}`, url: "/assets/uploads/uploaded.pdf", projectPath: "assets/uploads/uploaded.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "活动执行方案.pdf", kind: "uploaded", folderId: assetFolders.at(-1)?.id ?? null, createdAt: now + 2 };
       libraryAssets = [created, ...libraryAssets];
       return json(route, created);
     }
@@ -91,7 +91,7 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       const asset = libraryAssets.find(item => item.id === importMatch[1]);
       if (!asset) return json(route, { message: "素材不存在" }, 404);
       const path = `assets/inbox/${asset.id}`;
-      if (!media.assets.some(item => item.id === asset.id)) media.assets.push({ id: asset.id, name: asset.sourceName || asset.prompt, url: asset.url, hyperframesPath: path, kind: asset.category, source: "library", mediaType: asset.mimeType, createdAt: now });
+      if (!media.assets.some(item => item.id === asset.id)) media.assets.push({ id: asset.id, name: asset.sourceName || asset.prompt, url: asset.url, projectPath: path, kind: asset.category, source: "library", mediaType: asset.mimeType, createdAt: now });
       return json(route, { path, name: asset.sourceName || asset.prompt });
     }
     const folderMatch = pathname.match(/^\/api\/assets\/folders\/([^/]+)$/);
@@ -117,8 +117,8 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (pathname.endsWith("/feedback-results")) return json(route, {items:[]});
     if (pathname.endsWith("/event-log")) return json(route, {
       items: [
-        { seq: 1, projectId: seed.id, turnId: "turn-1", method: "item/started", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "hyperframes check" } } }, createdAt: now },
-        { seq: 2, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "hyperframes check", status: "completed", aggregatedOutput: "passed" } } }, createdAt: now + 1 },
+        { seq: 1, projectId: seed.id, turnId: "turn-1", method: "item/started", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "python3 production-task.py check" } } }, createdAt: now },
+        { seq: 2, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "cmd-1", type: "commandExecution", command: "python3 production-task.py check", status: "completed", aggregatedOutput: "passed" } } }, createdAt: now + 1 },
         { seq: 3, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "update-1", type: "agentMessage", text: "画面结构已经确认，接下来整理制作文件。" } } }, createdAt: now + 4 },
         { seq: 4, projectId: seed.id, turnId: "turn-1", method: "item/completed", payload: { params: { item: { id: "file-1", type: "fileChange", status: "completed", changes: [{ path: "plans/production.md" }] } } }, createdAt: now + 6 },
       ],
@@ -136,7 +136,7 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (projectMatch && method === "GET") return json(route, current.id === projectMatch[1] ? current : seed);
     if (pathname.endsWith("/index.html") && pathname.includes("/files/")) return route.fulfill({ status: 200, contentType: "text/html", body: '<section id="scene-one" class="scene" data-start="0" data-duration="5"><h1>产品登场</h1><p class="caption">介绍核心功能</p></section>' });
     if (pathname === "/api/heygen/audio") return json(route, { data: [{ id: "music-test", name: "轻快钢琴", description: "温暖的钢琴配乐", audioUrl: "/assets/uploads/music.mp3", duration: 30, type: "music" }], hasMore: false });
-    if (pathname.endsWith("/heygen/audio") && method === "POST") { const asset = { id: "music-test", name: "轻快钢琴", url: "/assets/uploads/music.mp3", hyperframesPath: "assets/audio/music-test.mp3", kind: "music", source: "heygen", mediaType: "audio/mpeg", createdAt: now }; media.assets.push(asset); return json(route, asset); }
+    if (pathname.endsWith("/heygen/audio") && method === "POST") { const asset = { id: "music-test", name: "轻快钢琴", url: "/assets/uploads/music.mp3", projectPath: "assets/audio/music-test.mp3", kind: "music", source: "heygen", mediaType: "audio/mpeg", createdAt: now }; media.assets.push(asset); return json(route, asset); }
     if (pathname.endsWith("/assets") && method === "POST") return json(route, { path: "assets/inbox/reference.pdf", name: "参考文件.pdf" });
     if (pathname.endsWith("/media") && method === "GET") return json(route, media);
     if (pathname.endsWith("/asset-roles") && method === "PATCH") return json(route, { assetRoles: [request.postDataJSON()] });
@@ -160,8 +160,8 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       return route.fulfill({ status: 204, body: "" });
     }
     if (pathname.endsWith("/checkpoint") && method === "POST") return json(route, { turnId: "turn-confirm", status: "queued", queueDepth: 1 });
-    if (pathname.endsWith("/studio") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: now });
-    if (pathname.endsWith("/studio/heartbeat") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-hyperframes-storyboard`, previewUrl: `${baseUrl}/mock-hyperframes-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: Date.now() });
+    if (pathname.endsWith("/studio") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-remotion-storyboard`, previewUrl: `${baseUrl}/mock-remotion-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: now });
+    if (pathname.endsWith("/studio/heartbeat") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-remotion-storyboard`, previewUrl: `${baseUrl}/mock-remotion-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: Date.now() });
     if (pathname.endsWith("/studio") && method === "DELETE") return route.fulfill({ status: 204, body: "" });
     if (pathname.endsWith("/studio/dirty") && method === "POST") return route.fulfill({ status: 204, body: "" });
     if (pathname.endsWith("/render") && method === "POST") {

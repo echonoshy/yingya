@@ -96,7 +96,7 @@ pub async fn outcomes(root: &Path, detail: &AgentProjectDetail) -> Value {
                             if artifact.version.as_deref() == Some(&target.id)
                                 && matches!(
                                     artifact.kind.as_str(),
-                                    "check-report" | "quality-report" | "hyperframes-check"
+                                    "check-report" | "quality-report"
                                 )
                                 && read_json(root, &artifact.path)
                                     .await
@@ -287,7 +287,7 @@ impl Guard {
         if let Some(assets) = read_json(root, "assets.json").await {
             if let Some(assets) = assets.as_array() {
                 for asset in assets {
-                    if let Some(path) = asset["hyperframesPath"].as_str() {
+                    if let Some(path) = asset["projectPath"].as_str() {
                         if let Ok(file) = local_file(root, path).await {
                             original_files.push((path.to_string(), digest(&file).await?));
                         }

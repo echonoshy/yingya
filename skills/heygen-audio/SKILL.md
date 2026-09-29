@@ -1,6 +1,6 @@
 ---
 name: heygen-audio
-description: "Search HeyGen's audio catalog and import background music or sound effects into the current Yingya video project. Use when Codex needs to source, select, add, inspect, or assign music and SFX for a Yingya/HyperFrames production."
+description: "Search HeyGen's audio catalog and import background music or sound effects into the current Yingya video project. Use when Codex needs to source, select, add, inspect, or assign music and SFX for a Yingya/Remotion production."
 ---
 
 # HeyGen Audio

@@ -23,7 +23,7 @@ export function AudioLibrary({ projectId, onRefresh, onCompose }: { projectId: s
   }
   async function add(id: string) {
     setAdding(id); setError("");
-    try { const asset = await api.importAudio(projectId, { id, ...searchInput }); await onRefresh(); onCompose(`请使用已加入项目的${searchInput.type === "music" ? "配乐" : "音效"}「${asset.name}」（${asset.hyperframesPath}）。使用位置与要求：`); }
+    try { const asset = await api.importAudio(projectId, { id, ...searchInput }); await onRefresh(); onCompose(`请使用已加入项目的${searchInput.type === "music" ? "配乐" : "音效"}「${asset.name}」（${asset.projectPath}）。使用位置与要求：`); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "音频导入失败"); }
     finally { setAdding(""); }
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Durable local HyperFrames jobs with bound checks of the exported video."""
+"""Durable local video-engine jobs with bound checks of the exported video."""
 import argparse
 import fcntl
 import hashlib
@@ -25,47 +25,36 @@ RESOLUTIONS = {'landscape': (1920, 1080), 'portrait': (1080, 1920),
                'square': (1080, 1080), 'square-4k': (2160, 2160)}
 
 
+def remotion_config(source):
+    marker = source / 'remotion.json'
+    if not marker.is_file():
+        raise ValueError('This project has no remotion.json; create a new Remotion project')
+    value = json.loads(marker.read_text())
+    if value.get('schemaVersion') != 1 or value.get('engine') != 'remotion':
+        raise ValueError('Invalid Remotion engine marker')
+    c = value.get('composition', {})
+    for key in ('width', 'height', 'fps', 'durationInFrames'):
+        if type(c.get(key)) is not int or c[key] <= 0:
+            raise ValueError('Invalid Remotion composition ' + key)
+    if not isinstance(value.get('media'), list):
+        raise ValueError('Invalid Remotion media schedule')
+    return value
+
+
+def remotion_command(source, command):
+    return ['node', str(Path(__file__).resolve().parent / 'remotion/cli.mjs'),
+            command, '--project', str(source)]
+
+
 def capture_plan(source, resolution):
-    """Use only HF 0.8.30's supported presets; never edit the composition."""
+    """Scale the native Remotion composition without changing source timing."""
     if resolution not in RESOLUTIONS:
         raise ValueError('Unsupported output resolution: ' + resolution)
-    class Dimensions(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.found, self.dimensions = False, None
-
-        def handle_starttag(self, _tag, pairs):
-            attrs = dict(pairs)
-            if self.found or 'data-composition-id' not in attrs:
-                return
-            self.found = True
-            try:
-                width, height = (int(attrs.get(key, '')) for key in ('data-width', 'data-height'))
-                if width > 0 and height > 0:
-                    self.dimensions = width, height
-            except (ValueError, TypeError):
-                pass
-    parser = Dimensions()
-    parser.feed((source / 'index.html').read_text())
-    target = RESOLUTIONS[resolution]
-    native = parser.dimensions
-    if native is None:
-        # Some legacy compositions leave sizing to HF. Keep its direct path;
-        # the actual probe below still enforces the requested final dimensions.
-        return dict(mode='direct', captureResolution=resolution, target=list(target), native=None)
-    width, height = native
-    if target[0] * height != target[1] * width:
+    c = remotion_config(source)['composition']
+    target = list(RESOLUTIONS[resolution])
+    if target[0] * c['height'] != target[1] * c['width']:
         raise ValueError('Requested output aspect ratio does not match the source composition')
-    if target[0] >= width and target[0] % width == 0:
-        return dict(mode='direct', captureResolution=resolution, target=list(target), native=list(native))
-    if width >= target[0]:
-        return dict(mode='native-downsample', captureResolution=None, target=list(target), native=list(native))
-    compatible = [(w * h, name) for name, (w, h) in RESOLUTIONS.items()
-                  if w >= target[0] and w * height == h * width and w % width == 0]
-    if compatible:
-        return dict(mode='supersample-downsample', captureResolution=min(compatible)[1], target=list(target), native=list(native))
-    return dict(mode='native-upscale', captureResolution=None, target=list(target), native=list(native),
-                warning='No supported integer-scale capture preset; final output is upscaled from native pixels')
+    return dict(mode='remotion', captureResolution=resolution, target=target, native=[c['width'], c['height']])
 
 
 def capture(args, root):
@@ -76,7 +65,6 @@ def capture(args, root):
     if output.suffix.lower() != '.mp4' or not 1 <= args.fps <= 120:
         raise ValueError('Capture requires an MP4 output and FPS in [1, 120]')
     plan = capture_plan(source, args.resolution)
-    executable = Path(os.environ['YINGYA_NODE_MODULES']) / '.bin/hyperframes'
     deadline, parent_pid, interrupted = time.monotonic() + args.timeout, os.getppid(), False
     child, output_owned = None, False
     def interrupt(_signum, _frame):
@@ -85,7 +73,7 @@ def capture(args, root):
 
     def run(command, *, collect=False, limit=None):
         nonlocal child
-        # A dedicated group lets TERM/timeout/parent loss terminate HF and its
+        # A dedicated group lets TERM/timeout/parent loss terminate the renderer and its
         # browser/encoder descendants, rather than only the Python wrapper.
         child = subprocess.Popen(command, cwd=source, stdin=subprocess.DEVNULL,
                                  stdout=subprocess.PIPE if collect else None,
@@ -134,9 +122,8 @@ def capture(args, root):
     try:
         with tempfile.TemporaryDirectory(prefix='yingya-capture-') as work:
             original = Path(work) / 'captured.mp4'
-            command = [str(executable), 'render', '--output', str(original), '--quality', args.quality, '--fps', str(args.fps)]
-            if plan['captureResolution']:
-                command += ['--resolution', plan['captureResolution']]
+            command = remotion_command(source, 'render') + ['--output', str(original), '--quality', args.quality,
+                '--fps', str(args.fps), '--width', str(plan['target'][0]), '--height', str(plan['target'][1])]
             print('[Yingya capture plan] ' + json.dumps(plan), flush=True)
             run(command)
             captured_media, captured_video, captured_fps = probe(original)
@@ -247,7 +234,7 @@ def inside(root, value):
 
 def fingerprint(source, output):
     # Hash dependencies, not workflow journals, reports, or prior deliveries.
-    ignored_dirs = {'.git', 'node_modules', '.hyperframes', '__pycache__',
+    ignored_dirs = {'.git', 'node_modules', '__pycache__',
                     'renders', 'snapshots'}
     ignored_files = {'project.json', 'events.jsonl', 'messages.json', 'queue.json',
                      'check.json', 'source-fingerprint.json', 'manifest.json'}
@@ -326,108 +313,27 @@ def fingerprint(source, output):
     return hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest(), files
 
 
-class MediaDeclarations(HTMLParser):
-    """Read authored nodes, not unrelated files or HTML mentioned in comments."""
-    def __init__(self, text):
-        super().__init__()
-        self.templates, self.videos, self.audios, self.references, self.scripts = [], [], [], [], []
-        self.captions = []
-        self.video, self.audio = None, None
-        self.script = False
-        self.script_templates = []
-        self.feed(text)
-
-    def handle_starttag(self, tag, pairs):
-        attrs = dict(pairs)
-        if 'editorial-caption' in attrs.get('class', '').split() or 'data-editorial-caption' in attrs:
-            self.captions.append(dict(attrs=attrs, templates=list(self.templates)))
-        if tag == 'template':
-            self.templates.append(attrs)
-        if attrs.get('data-composition-src'):
-            self.references.append((attrs['data-composition-src'], list(self.templates)))
-        if tag == 'video':
-            self.video = dict(attrs=attrs, templates=list(self.templates),
-                              sources=[attrs['src']] if attrs.get('src') else [])
-            self.videos.append(self.video)
-        if tag == 'audio':
-            self.audio = dict(attrs=attrs, templates=list(self.templates),
-                              sources=[attrs['src']] if attrs.get('src') else [])
-            self.audios.append(self.audio)
-        if tag == 'source' and attrs.get('src'):
-            media = self.video if self.video is not None else self.audio
-            if media is not None:
-                media['sources'].append(attrs['src'])
-        if tag == 'script':
-            self.script = True
-            self.script_templates = list(self.templates)
-
-    def handle_endtag(self, tag):
-        if tag == 'template' and self.templates:
-            self.templates.pop()
-        if tag == 'video':
-            self.video = None
-        if tag == 'audio':
-            self.audio = None
-        if tag == 'script':
-            self.script = False
-
-    def handle_data(self, value):
-        if self.script:
-            self.scripts.append((value, self.script_templates))
-
-
 def source_media(source):
-    """Follow composition imports and explicitly consumed slots from index.html.
-
-    Native composition files wrap their live markup in an unnamed template.
-    Named host slots count only when a reachable component consumes that slot.
-    Runtime-only JavaScript media is not inferred from arbitrary strings; the
-    optional source-bindings contract provides stronger coverage for that case.
-    """
-    documents, slots = {}, set()
-
-    def active(templates, component):
-        return all(t.get('data-slot') in slots if t.get('data-slot') else component
-                   for t in templates)
-
-    def read(path, component):
-        if path not in documents:
-            if not within(path, source):
-                raise ValueError('composition reference escapes source directory')
-            documents[path] = (MediaDeclarations(path.read_text()), component)
-
-    read(source / 'index.html', False)
-    while True:
-        before = (len(documents), len(slots))
-        for path, (parsed, component) in list(documents.items()):
-            for script, templates in parsed.scripts:
-                if active(templates, component):
-                    slots.update(re.findall(r'template\[data-slot\s*=\s*[\"\']([^\"\']+)[\"\']\]', script))
-            for reference, templates in parsed.references:
-                url = urlsplit(reference)
-                if active(templates, component) and not url.scheme and not url.netloc:
-                    read((path.parent / unquote(url.path)).resolve(), True)
-        if before == (len(documents), len(slots)):
-            break
-    videos, audios, captions = [], [], []
-    for path, (parsed, component) in documents.items():
-        for media_list, target in [(parsed.videos, videos), (parsed.audios, audios)]:
-            for media in media_list:
-                if active(media['templates'], component):
-                    target.append(dict(html=str(path.relative_to(source)),
-                                       id=media['attrs'].get('id'), sources=media['sources'],
-                                       attributes=media['attrs']))
-        for caption in parsed.captions:
-            if active(caption['templates'], component):
-                captions.append(dict(html=str(path.relative_to(source)), attributes=caption['attrs']))
-    return dict(declaredVideoCount=len(videos), videos=videos, audios=audios,
-                captions=captions,
-                reachableDocuments=sorted(str(p.relative_to(source)) for p in documents))
+    """Use the same managed media schedule as the Remotion composition."""
+    config = remotion_config(source)
+    fps = config['composition']['fps']
+    videos, audios = [], []
+    for clip in config['media']:
+        attrs = {'data-start': clip['from'] / fps, 'data-duration': clip['durationInFrames'] / fps,
+                 'data-media-start': clip['trimBefore'] / fps, 'data-volume': clip['volume']}
+        if clip.get('muted'):
+            attrs['muted'] = ''
+        if clip.get('role'):
+            attrs['data-editorial-audio-role'] = clip['role']
+        node = dict(html='remotion.json', id=clip['id'], sources=[clip['src']], attributes=attrs)
+        (videos if clip['type'] == 'video' else audios).append(node)
+    return dict(engine='remotion', declaredVideoCount=len(videos), videos=videos, audios=audios,
+                captions=[], reachableDocuments=['remotion.json', config['entry']])
 
 
 def render_diagnostics(logs):
     """Use only this invocation's machine-readable CLI diagnostics; absent != 0."""
-    compiled, extracted, job_ids, captures = [], [], set(), []
+    captures, remotion = [], []
     for path in logs:
         for line in path.read_text(errors='replace').splitlines():
             start = line.find('{')
@@ -437,53 +343,15 @@ def render_diagnostics(logs):
                 value, _ = json.JSONDecoder().raw_decode(line[start:])
             except ValueError:
                 continue
+            if isinstance(value, dict) and isinstance(value.get('yingyaRemotion'), dict):
+                remotion.append(value['yingyaRemotion'])
             if isinstance(value, dict) and isinstance(value.get('yingyaCapture'), dict):
                 captures.append(value['yingyaCapture'])
-            if not isinstance(value, dict) or not value.get('renderJobId'):
-                continue
-            compile_record = (value.get('phase') == 'compile' and value.get('status') == 'checkpoint'
-                              or 'Compiled composition metadata' in line)
-            extract_record = (value.get('phase') == 'video_extract'
-                              and value.get('status') == 'checkpoint'
-                              and 'extractedVideoCount' in value)
-            if compile_record or extract_record:
-                job_ids.add(value['renderJobId'])
-            if compile_record and 'videoCount' in value:
-                compiled.append(value)
-            if extract_record:
-                extracted.append(value)
-    if len(job_ids) > 1:
-        raise ValueError('本次渲染日志出现多个媒体编译任务，无法绑定唯一导出。')
-    if len({json.dumps(v['videoCount'], sort_keys=True) for v in compiled}) > 1:
-        raise ValueError('本次渲染日志的媒体编译数量相互矛盾。')
     if len({json.dumps(value, sort_keys=True) for value in captures}) > 1:
         raise ValueError('本次渲染日志出现多个不同的尺寸转换结果。')
-    return dict(known=bool(compiled), renderJobId=next(iter(job_ids), None),
-                compile=compiled[-1] if compiled else None,
-                extraction=extracted[-1] if extracted else None,
-                capture=captures[-1] if captures else None)
-
-
-def validate_media_extraction(declarations, diagnostics):
-    authored = declarations['declaredVideoCount'] > 0
-    compiled = diagnostics['compile'] or {}
-    extracted = diagnostics['extraction'] or {}
-    count = compiled.get('videoCount')
-    if authored and (not isinstance(count, int) or isinstance(count, bool)):
-        raise ValueError('入口声明了源视频，但本次导出的媒体编译数量未知；不能用预览检查代替导出验收。')
-    if authored and count <= 0:
-        raise ValueError('入口声明了源视频，但本次导出 videoCount=0；请把素材静态接入实际渲染节点。')
-    if authored and count < declarations['declaredVideoCount']:
-        raise ValueError('本次导出的编译视频数量少于入口实际声明的视频节点，存在素材遗漏。')
-    if isinstance(count, int) and count > 0:
-        extracted_count = extracted.get('extractedVideoCount')
-        total = extracted.get('totalFramesExtracted')
-        coverage = extracted.get('minVideoFrameCoverageRatio')
-        if (extracted.get('videoCount') != count or not isinstance(extracted_count, int)
-                or extracted_count < count or not isinstance(total, (int, float)) or total <= 0):
-            raise ValueError('本次导出的源视频提帧记录缺失或未覆盖全部编译视频。')
-        if not isinstance(coverage, (int, float)) or not math.isfinite(coverage) or coverage < 1 - 1e-6:
-            raise ValueError('本次导出的源视频提帧覆盖不完整或无法验证。')
+    if len(remotion) > 1:
+        raise ValueError('Multiple Remotion completion receipts in one render')
+    return dict(remotion=remotion[0] if remotion else None, capture=captures[-1] if captures else None)
 
 
 def video_duration(path, probe, run=subprocess.run):
@@ -786,13 +654,34 @@ def verify_render(root, source, temporary, job, media, run=subprocess.run):
     job['renderVerificationJobId'] = job['id']
     try:
         report['sourceBindings'] = source_bindings(root, source, declarations, run)
-        validate_media_extraction(declarations, diagnostics)
+        engine = remotion_config(source)
+        receipt = diagnostics.get('remotion')
+        if (not receipt or receipt.get('schemaVersion') != 1 or receipt.get('engine') != 'remotion'
+                or receipt.get('composition') != engine['composition']
+                or receipt.get('renderedFrames') != engine['composition']['durationInFrames']
+                or receipt.get('outputSha256') != report['outputSha256']):
+            raise ValueError('Missing/mismatched Remotion renderer completion evidence')
+        scheduled = engine['media']
+        actual_media = receipt.get('media', [])
+        if len(actual_media) != len(scheduled):
+            raise ValueError('Remotion media receipt does not cover the schedule')
+        for clip, evidence in zip(scheduled, actual_media):
+            if (evidence.get('id') != clip['id'] or evidence.get('path') != clip['src']
+                    or evidence.get('sha256') != digest(inside(source, clip['src']))):
+                raise ValueError('Remotion source media evidence changed')
+        report['engine'] = 'remotion'
+        report['mediaVerification'] = 'managed-schedule-and-renderer-completion; visual review required'
         stream = next(s for s in media['streams'] if s.get('codec_type') == 'video')
         duration = video_duration(temporary, media, run)
         rate = stream.get('avg_frame_rate', '0/1').split('/')
         fps = float(rate[0]) / float(rate[1]) if len(rate) == 2 and float(rate[1]) else 0
         if not math.isfinite(duration) or duration <= 0 or not math.isfinite(fps) or fps <= 0:
             raise ValueError('导出视频缺少有效时长或帧率。')
+        if (abs(duration - engine['composition']['durationInFrames'] / engine['composition']['fps']) > 1 / fps + .001
+                       or abs(fps - engine['composition']['fps']) > .001):
+            raise ValueError('Remotion output timing differs from the approved composition')
+        if any(c['type'] == 'audio' and c['volume'] > 0 and not c.get('muted') for c in engine['media']) and not any(s.get('codec_type') == 'audio' for s in media['streams']):
+            raise ValueError('Remotion output is missing its scheduled audio track')
         report['media'] = dict(duration=duration, fps=fps, width=stream['width'], height=stream['height'])
         capture_evidence = diagnostics.get('capture')
         if capture_evidence is not None:
@@ -937,9 +826,9 @@ def execute(args, root, directory):
                 return 0
         if existing_output:
             raise ValueError('output already exists without a matching successful receipt; choose a new output path')
-        executable = Path(os.environ['YINGYA_NODE_MODULES']) / '.bin/hyperframes'
         temporary = output.with_name('.' + output.stem + '.' + job_id + output.suffix)
-        command = [str(executable), args.kind]
+        remotion_config(source)
+        command = remotion_command(source, args.kind)
         if args.kind == 'check':
             command += ['--snapshots', '--json', *args.check_args]
         else:
@@ -1003,7 +892,7 @@ def execute(args, root, directory):
             if job['status'] != 'running':
                 return 130 if job['status'] == 'cancelled' else 124
             if job['exitCode'] != 0:
-                raise ValueError(f'HyperFrames {args.kind} 退出码 {job["exitCode"]}；详见 {job["stderr"]} 和 {job["stdout"]}')
+                raise ValueError(f'Video engine {args.kind} 退出码 {job["exitCode"]}；详见 {job["stderr"]} 和 {job["stdout"]}')
             if fingerprint(source, output)[0] != source_hash:
                 raise ValueError('运行期间源文件或依赖已变化，请检查改动后重新执行。')
             if args.kind == 'check':

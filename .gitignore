@@ -19,7 +19,7 @@ output/
 docs/design-audit/
 design-qa.md
 
-# HyperFrames outputs are reproducible from composition sources.
+# Video outputs are reproducible from composition sources.
 **/renders/
 **/snapshots/
 **/.thumbnails/
@@ -28,3 +28,6 @@ design-qa.md
 # Python bytecode caches are local build artifacts.
 __pycache__/
 *.py[cod]
+
+# Release-local native Remotion loader, rebuilt from a pinned Ubuntu package.
+/runtime/remotion/native/

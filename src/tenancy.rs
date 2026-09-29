@@ -361,7 +361,7 @@ async fn readiness(State(g): State<Gateway>) -> Response {
     if [
         "web-dist/index.html",
         "node_modules/.bin/codex",
-        "node_modules/.bin/hyperframes",
+        "runtime/remotion/cli.mjs",
         "scripts/sandbox-gateway.mjs",
         "scripts/sandbox-bridge.mjs",
         "skills/yingya-video-agent/SKILL.md",
@@ -1033,7 +1033,6 @@ impl Gateway {
             "voices",
             "runtime/home",
             "runtime/codex-home",
-            "runtime/hyperframes-home",
         ] {
             fs::create_dir_all(root.join(dir))
                 .await
@@ -1062,7 +1061,6 @@ impl Gateway {
             projects: root.join("projects"),
             assets: root.join("assets"),
             codex_home: home,
-            hyperframes_home: root.join("runtime/hyperframes-home"),
         };
         // Reuse the installed browser binary as read-only tooling.
         let router = user_router(
@@ -1386,34 +1384,6 @@ async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
             warn!(%error,"project share revocation failed");
         }
     }
-    if preview_request.is_some()
-        && response.status() == StatusCode::OK
-        && response
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.starts_with("text/html"))
-    {
-        let (mut parts, body) = response.into_parts();
-        let bytes = match to_bytes(body, 16 * 1024 * 1024).await {
-            Ok(bytes) => bytes,
-            Err(_) => return failure(StatusCode::PAYLOAD_TOO_LARGE, "预览页面过大"),
-        };
-        let html = String::from_utf8_lossy(&bytes);
-        let player = format!(
-            "<script>{}</script>",
-            include_str!("../web/preview-player.js")
-        );
-        let html = if let Some(index) = html.rfind("</body>") {
-            format!("{}{}{}", &html[..index], player, &html[index..])
-        } else {
-            format!("{html}{player}")
-        };
-        parts.headers.remove(CONTENT_LENGTH);
-        parts.headers.remove(ETAG);
-        response = Response::from_parts(parts, Body::from(html));
-    }
-
     if response
         .headers()
         .get(CONTENT_TYPE)
@@ -1614,7 +1584,6 @@ mod tests {
             projects: own.join("projects"),
             assets: own.join("assets"),
             codex_home: root.clone(),
-            hyperframes_home: root.clone(),
         };
         let g = Gateway {
             shares: shares::Store::open(&paths.app_data).unwrap(),
@@ -1894,7 +1863,6 @@ mod tests {
             projects: own.join("projects"),
             assets: own.join("assets"),
             codex_home: root.clone(),
-            hyperframes_home: root.clone(),
         };
         let g = Gateway {
             shares: shares::Store::open(&paths.app_data).unwrap(),

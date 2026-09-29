@@ -161,21 +161,12 @@ impl Sandbox {
             .env("MPLCONFIGDIR", "/tmp/yingya-cache/matplotlib")
             .env("YINGYA_NODE_MODULES", self.resources.join("node_modules"))
             .env(
-                "YINGYA_EDITOR",
-                self.resources.join("runtime/editor/cli.mjs"),
-            )
-            .env("YINGYA_EDITOR_LIBRARY", self.root.join("editor-library"))
-            .env(
-                "YINGYA_PRODUCT_VIDEO",
-                self.resources.join("runtime/product-video/build.mjs"),
+                "YINGYA_REMOTION",
+                self.resources.join("runtime/remotion/cli.mjs"),
             )
             .env(
                 "YINGYA_COMPONENT_LIBRARY",
                 self.resources.join("runtime/component-library.mjs"),
-            )
-            .env(
-                "YINGYA_ANIME_COMPONENTS",
-                self.resources.join("runtime/animejs/cli.mjs"),
             )
             .env(
                 "YINGYA_RUNTIME_TOOLS",
@@ -189,12 +180,6 @@ impl Sandbox {
                 "YINGYA_MEDIA_ANALYSIS",
                 self.resources.join("runtime/media-analysis.py"),
             )
-            .env(
-                "YINGYA_EDITORIAL_ASSEMBLER",
-                self.resources.join("runtime/editorial/assemble.mjs"),
-            )
-            .env("HYPERFRAMES_NO_UPDATE_CHECK", "1")
-            .env("HYPERFRAMES_SKIP_SKILLS", "1")
             .env("CODEX_HOME", self.root.join("runtime/codex-home"))
             .env("YINGYA_API_BASE", "http://127.0.0.1:8797")
             .env("VOXCPM2_API_BASE", "http://127.0.0.1:8791");
@@ -202,7 +187,7 @@ impl Sandbox {
             c.env("VIRTUAL_ENV", python.join("venv"));
         }
         if let Some(browser) = &self.browser {
-            c.env("HYPERFRAMES_BROWSER_PATH", &browser_wrapper)
+            c.env("YINGYA_BROWSER_PATH", &browser_wrapper)
                 .env("YINGYA_BROWSER_BINARY", browser);
         }
         c.current_dir(&self.root)
@@ -223,12 +208,12 @@ impl Sandbox {
             "共享 Python 环境未配置；只使用 python3 标准库或 Node.js 内置 fetch，不能假定 PIL 等第三方库可用，不要使用 python（可能是 Python 2）。"
         };
         let browser = if self.browser.is_some() {
-            "已配置 Chromium 入口 HYPERFRAMES_BROWSER_PATH。Playwright 必须传 executablePath: process.env.HYPERFRAMES_BROWSER_PATH，并从 YINGYA_NODE_MODULES 加载；不要使用 Playwright 默认下载路径，也不要搜索 /opt/google/chrome 或 ~/.cache/ms-playwright。浏览器能否渲染/WebGL 是否可用可执行一次 node \"$YINGYA_RUNTIME_TOOLS\" --probe-browser；失败后按返回的替代方式继续，不重复试同一失败入口。"
+            "已配置 Chromium 入口 YINGYA_BROWSER_PATH。Playwright 必须传 executablePath: process.env.YINGYA_BROWSER_PATH，并从 YINGYA_NODE_MODULES 加载；不要使用 Playwright 默认下载路径，也不要搜索 /opt/google/chrome 或 ~/.cache/ms-playwright。浏览器能否渲染/WebGL 是否可用可执行一次 node \"$YINGYA_RUNTIME_TOOLS\" --probe-browser；失败后按返回的替代方式继续，不重复试同一失败入口。"
         } else {
             "当前沙箱没有可用的 Chromium 入口，Browser 专用工具也未提供。不要尝试默认 Chrome/Playwright 路径、安装浏览器或反复运行截图命令。网页文本改用 Python requests/BeautifulSoup 或 Node.js fetch；图片检查用 Pillow，视频信息用 ffprobe/ffmpeg。可做静态检查，但无法宣称浏览器预览或渲染通过；需要渲染时报告具体缺失能力。"
         };
         format!(
-            "\n运行工具说明（当前用户沙箱）：{python}\n{browser}\n可复用镜头统一从 node \"$YINGYA_COMPONENT_LIBRARY\" catalog 查看，按需 install --component 镜头ID --project 当前项目；先读 references/reusable-motion.md。已有 Anime.js 镜头和旧工具继续兼容，避免重复注册时钟、重复实现已有动效。\n执行工具必须返回完整结果：functions.exec 中使用 text(await tools.exec_command(...))，不能只输出 r.output。session_id 表示命令仍在运行，使用 write_stdin 轮询同一 session_id，直到获得 exit_code；等待窗口结束、空日志、Script completed 都不是命令完成或超时的证据。不要因此结束制作任务。检查和渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\"，用当前请求编号登记任务，按 references/runtime-tools.md 查询已有任务，不启动重复进程。\n需要理解上传视频时，其元数据与关键帧使用 python3 \"$YINGYA_MEDIA_ANALYSIS\" --project . --source 项目内素材路径 --json，自动复用内容指纹缓存。适合聚焦、高亮等处理的素材镜头可用 node \"$YINGYA_EDITORIAL_ASSEMBLER\" 从 scenes.json 装配已接入的镜头；先读 references/existing-footage.md，实际查看素材后再选段、剪辑或补充新画面，遵循用户声音要求；该装配器不是所有视频的默认制作路线。\n当前中继未接通内置网页搜索和 Apps 连接器，已停用这些工具。网页资料用 Python requests/BeautifulSoup 或 Node.js fetch 读取已知官方页面；需要搜索才能找到来源时如实说明限制，不编造来源。\n详细用法见 yingya-video-agent 的 references/runtime-tools.md。"
+            "\n运行工具说明（当前用户沙箱）：{python}\n{browser}\n组件源码可从 node \"$YINGYA_COMPONENT_LIBRARY\" search 查找，使用原生 React/Remotion 帧时钟适配；先读 references/third-party-components.md。\n执行工具必须返回完整结果：functions.exec 中使用 text(await tools.exec_command(...))，不能只输出 r.output。session_id 表示命令仍在运行，使用 write_stdin 轮询同一 session_id，直到获得 exit_code；等待窗口结束、空日志、Script completed 都不是命令完成或超时的证据。不要因此结束制作任务。检查和渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\"，用当前请求编号登记任务，按 references/runtime-tools.md 查询已有任务，不启动重复进程。\n需要理解上传视频时，其元数据与关键帧使用 python3 \"$YINGYA_MEDIA_ANALYSIS\" --project . --source 项目内素材路径 --json，自动复用内容指纹缓存。先读 references/existing-footage.md，查看素材后按 Remotion media 帧表剪辑，遵循用户声音要求。\n当前中继未接通内置网页搜索和 Apps 连接器，已停用这些工具。网页资料用 Python requests/BeautifulSoup 或 Node.js fetch 读取已知官方页面；需要搜索才能找到来源时如实说明限制，不编造来源。\n所有项目先读 references/remotion.md，使用 YINGYA_REMOTION 构建原生 React 预览，不覆盖生成的入口。\n详细用法见 yingya-video-agent 的 references/runtime-tools.md。"
         )
     }
 }
@@ -348,7 +333,62 @@ try {
     }
 
     #[tokio::test]
-    #[ignore = "requires npm run python:setup and HyperFrames browser installation"]
+    #[ignore = "requires installed Remotion dependencies and the shared browser"]
+    async fn remotion_renders_in_customer_sandbox() {
+        let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root =
+            std::env::temp_dir().join(format!("yingya-remotion-sandbox-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(root.join("runtime/home"))
+            .await
+            .unwrap();
+        let browser = crate::api::discover_browser_path(&resources).await;
+        assert!(browser.is_some());
+        let sandbox = Sandbox::new(
+            root.clone(),
+            resources,
+            browser,
+            "test-only",
+            "http://127.0.0.1:8797",
+        )
+        .await
+        .unwrap();
+        let script = r#"import os,subprocess,json,pathlib
+project=pathlib.Path('project').resolve()
+cli=os.environ['YINGYA_REMOTION']
+for args in [['init','--project',str(project),'--width','320','--height','180','--fps','10','--duration','1'],
+             ['check','--project',str(project)],
+             ['render','--project',str(project),'--output',str(project/'result.mp4')]]:
+    result=subprocess.run(['node',cli,*args],capture_output=True,text=True,timeout=120)
+    assert result.returncode==0, result.stderr
+    value=json.loads(result.stdout)
+    assert value.get('ok') or value.get('yingyaRemotion',{}).get('renderedFrames')==10
+    if args[0]=='init':
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=10:duration=1','-c:v','libx264','-threads','2',str(project/'assets/source.mp4')],check=True)
+        config=json.loads((project/'remotion.json').read_text())
+        config['media']=[dict(id='source',type='video',src='assets/source.mp4',from_=0,durationInFrames=10,trimBefore=0,volume=0,muted=True)]
+        config['media'][0]['from']=config['media'][0].pop('from_')
+        (project/'remotion.json').write_text(json.dumps(config))
+        subprocess.run(['node',cli,'build','--project',str(project)],check=True,capture_output=True)
+print('Remotion init/check/video render passed in customer sandbox')
+"#;
+        let output = sandbox
+            .command("python3")
+            .args(["-c", script])
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+        drop(sandbox);
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires npm run python:setup and Chromium installation"]
     async fn runtime_tools_share_python_read_only_and_probe_real_browser() {
         let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let root =
@@ -356,14 +396,10 @@ try {
         tokio::fs::create_dir_all(root.join("runtime/home"))
             .await
             .unwrap();
-        let browser = crate::api::discover_hyperframes_browser(
-            &resources,
-            &resources.join(".runtime/hyperframes-home"),
-        )
-        .await;
+        let browser = crate::api::discover_browser_path(&resources).await;
         assert!(
             browser.is_some(),
-            "install the HyperFrames browser before this integration check"
+            "run npm run browser:ensure before this integration check"
         );
         let sandbox = Sandbox::new(
             root.clone(),
@@ -382,7 +418,7 @@ import matplotlib.pyplot as plt
 assert sys.version_info[:2] == (3,12)
 assert pathlib.Path(subprocess.check_output(['python3','-c','import sys; print(sys.executable)']).decode().strip()).resolve() == pathlib.Path(sys.executable).resolve()
 assert pathlib.Path(sys.prefix) == pathlib.Path(os.environ['VIRTUAL_ENV'])
-for variable in ['YINGYA_MEDIA_ANALYSIS', 'YINGYA_EDITORIAL_ASSEMBLER', 'YINGYA_ANIME_COMPONENTS', 'YINGYA_COMPONENT_LIBRARY', 'YINGYA_PRODUCT_VIDEO']:
+for variable in ['YINGYA_MEDIA_ANALYSIS', 'YINGYA_COMPONENT_LIBRARY', 'YINGYA_REMOTION']:
     tool = pathlib.Path(os.environ[variable])
     assert tool.is_file(), f'{variable} is not installed in this release'
     command = ['python3' if variable == 'YINGYA_MEDIA_ANALYSIS' else 'node', str(tool), '--help']
@@ -392,22 +428,6 @@ for variable in ['YINGYA_MEDIA_ANALYSIS', 'YINGYA_EDITORIAL_ASSEMBLER', 'YINGYA_
     except OSError: pass
     else: raise AssertionError(f'{variable} is writable from a customer sandbox')
 import json
-anime_cli = os.environ['YINGYA_ANIME_COMPONENTS']
-catalog = json.loads(subprocess.check_output(['node', anime_cli, 'list', '--json'], text=True))
-assert catalog, 'motion catalog is empty in the production sandbox'
-project = pathlib.Path('anime-project')
-project.mkdir()
-subprocess.run(['node', anime_cli, 'install', '--project', str(project)], check=True, capture_output=True, timeout=10)
-bundle = project / 'assets/animejs/anime.umd.min.js'
-assert bundle.read_bytes() == pathlib.Path(anime_cli).with_name('anime.umd.min.js').read_bytes()
-assert (project / 'assets/animejs/scenes.js').is_file()
-components_cli = os.environ['YINGYA_COMPONENT_LIBRARY']
-catalog = json.loads(subprocess.check_output(['node', components_cli, 'catalog'], text=True))
-assert {'beam-network', 'model-stage'}.issubset({item['id'] for item in catalog['components']})
-for component in ['beam-network', 'model-stage']:
-    installed = json.loads(subprocess.check_output(['node', components_cli, 'install', '--component', component, '--project', str(project)], text=True))
-    assert (project / installed['script']).is_file()
-    assert (project / installed['clock']).is_file()
 try: pathlib.Path(sys.prefix,'forbidden-write').write_text('x')
 except OSError: pass
 else: raise AssertionError('shared Python is writable')
@@ -449,21 +469,13 @@ print('shared Python imports, aliases, isolation, Pillow and matplotlib passed')
                 .all(|v| v == true)
         );
         println!("{probe}");
-        assert!(
-            sandbox
-                .tool_instructions()
-                .contains("HYPERFRAMES_BROWSER_PATH")
-        );
+        assert!(sandbox.tool_instructions().contains("YINGYA_BROWSER_PATH"));
         assert!(
             sandbox
                 .tool_instructions()
                 .contains("YINGYA_MEDIA_ANALYSIS")
         );
-        assert!(
-            sandbox
-                .tool_instructions()
-                .contains("YINGYA_EDITORIAL_ASSEMBLER")
-        );
+        assert!(sandbox.tool_instructions().contains("YINGYA_REMOTION"));
         let mut unavailable = sandbox.clone();
         unavailable.browser = None;
         unavailable.python = None;

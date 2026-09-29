@@ -61,7 +61,7 @@ export const uploadedVoiceSchema = z.object({
 });
 export const voiceListSchema = z.object({ voices: z.array(z.string()), uploaded_voices: z.array(uploadedVoiceSchema) });
 export const imageLibraryAssetSchema = z.object({
-  id: z.string(), url: z.string(), hyperframesPath: z.string(), mimeType: z.string(), prompt: optionalString,
+  id: z.string(), url: z.string(), projectPath: z.string(), mimeType: z.string(), prompt: optionalString,
   sourceName: optionalString, kind: z.enum(["generated", "uploaded"]), createdAt: z.number(),
 });
 export const imageLibrarySchema = z.object({ images: z.array(imageLibraryAssetSchema) });
@@ -74,7 +74,7 @@ export const mediaSceneSchema = z.object({
   id: z.string(), order: z.number().default(0), narrativeRole: z.string().default(""), assetIds: z.array(z.string()).default([]),
 }).passthrough();
 export const mediaAssetSchema = z.object({
-  id: z.string(), name: z.string(), url: z.string(), hyperframesPath: z.string(), kind: z.string(), source: z.string(),
+  id: z.string(), name: z.string(), url: z.string(), projectPath: z.string(), kind: z.string(), source: z.string(),
   mediaType: optionalString, durationSeconds: z.number().optional(), providerId: optionalString, description: optionalString, createdAt: z.number(),
 });
 export const assetRoleSchema = z.enum(["auto", "source", "required", "supplement", "brand", "reference"]);
@@ -104,7 +104,6 @@ export const workbenchSchema = z.object({
   dirty: z.boolean().default(false), warnings: z.array(z.string()).default([]),
   contentIndex: z.unknown().optional(), contentIndexValidation: z.object({ sourceHashesVerified: z.boolean(), semanticClaimsVerified: z.boolean() }).optional(),
 });
-export const sceneEditResultSchema = z.object({ ok: z.boolean(), changedSceneIds: z.array(z.string()), summary: z.string(), scenesRevision: z.string().nullable(), dirty: z.boolean() });
 export type AssetRole = z.infer<typeof assetRoleSchema>;
 export type CreationRequirements = z.infer<typeof requirementsSchema>;
 export type SourceBinding = z.infer<typeof sourceBindingSchema>;
@@ -113,7 +112,7 @@ export type EditorialRecipe = z.infer<typeof recipeSchema>;
 export const agentMediaSchema = z.object({ scenes: z.array(mediaSceneSchema), assets: z.array(mediaAssetSchema) });
 export const imageTurnSchema = z.object({
   threadId: z.string(), turnId: z.string(), status: z.string(), text: z.string(),
-  images: z.array(z.object({ id: z.string(), url: z.string(), hyperframesPath: z.string(), mimeType: z.string(), revisedPrompt: optionalString })),
+  images: z.array(z.object({ id: z.string(), url: z.string(), projectPath: z.string(), mimeType: z.string(), revisedPrompt: optionalString })),
 });
 
 export type CodexModel = z.infer<typeof codexModelSchema>;

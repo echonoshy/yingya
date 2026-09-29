@@ -9,13 +9,13 @@ function event(seq: number, method: string, payload: unknown, turnId = "turn-1")
 describe("buildTimeline", () => {
   it("updates one command activity from deltas and completion", () => {
     const timeline = buildTimeline([
-      event(1, "item/started", { params: { item: { id: "cmd", type: "commandExecution", command: "hyperframes lint" } } }),
+      event(1, "item/started", { params: { item: { id: "cmd", type: "commandExecution", command: "python3 production-task.py check" } } }),
       event(2, "item/commandExecution/outputDelta", { params: { itemId: "cmd", delta: "checking\n" } }),
-      event(3, "item/completed", { params: { item: { id: "cmd", type: "commandExecution", command: "hyperframes lint", status: "completed", aggregatedOutput: "passed\n" } } }),
+      event(3, "item/completed", { params: { item: { id: "cmd", type: "commandExecution", command: "python3 production-task.py check", status: "completed", aggregatedOutput: "passed\n" } } }),
     ], new Set());
 
     expect(timeline).toHaveLength(1);
-    expect(timeline[0]).toMatchObject({ id: "command-cmd", title: "检查 HyperFrames", status: "completed", output: "passed\n", firstSeq: 1, lastSeq: 3, createdAt: 1 });
+    expect(timeline[0]).toMatchObject({ id: "command-cmd", title: "检查视频", status: "completed", output: "passed\n", firstSeq: 1, lastSeq: 3, createdAt: 1 });
   });
 
   it("does not repeat an assistant message already persisted", () => {

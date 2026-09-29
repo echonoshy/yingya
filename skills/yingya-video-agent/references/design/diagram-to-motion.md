@@ -28,19 +28,16 @@ along a path can explain transfer; separating layers can explain composition.
 Do not animate unrelated edges simply because an effect is available.
 
 For path drawing, compute length once after layout and animate stroke-dashoffset
-on the existing paused GSAP timeline. A moving highlight should not remove the
+from the current Remotion frame. A moving highlight should not remove the
 underlying relationship after it passes. Use `fromTo` or explicit starting state
 when needed so seeking directly to a later scene does not depend on prior playback.
 Repeated and backward seeks must reconstruct the same visible state. For a
 component with its own adapter, use its shared video-clock contract instead of
 also tweening its inner properties.
 
-Keep scene visibility and transitions on `window.__timelines.main`. Save
-meaningful motion assertions on unique selectors (node reveal, connection
+Keep scene visibility and transitions in Remotion Sequences. Check unique selectors (node reveal, connection
 order, final diagram bounds). Review the actual rendered MP4 at early reveal,
 connection change and final hold; check that arrow direction and layer meaning
 still match the narration or source, not just that pixels moved.
 
-Use the scaffold's real GSAP script; see [the local GSAP source](slide-to-scene.md)
-if a fresh entry needs an offline copy. A stub timeline can pass a static
-registration check while failing video rendering, so it is not an adapter.
+Use native frame interpolation or the [GSAP frame adapter](../gsap/index.md) for SVG effects.

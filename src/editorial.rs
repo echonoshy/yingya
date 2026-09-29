@@ -309,13 +309,13 @@ pub async fn scene_data(root: &Path, source_path: &str, project_id: &str) -> Res
         .ok_or_else(|| "素材索引必须为数组".to_owned())?;
     for asset in array {
         if let Some(path) = asset
-            .get("hyperframesPath")
+            .get("projectPath")
             .or_else(|| asset.get("path"))
             .and_then(Value::as_str)
             .map(str::to_owned)
         {
             relative_path(&path)?;
-            asset["hyperframesPath"] = json!(path);
+            asset["projectPath"] = json!(path);
             asset["url"] = json!(format!(
                 "/api/agent-projects/{project_id}/files/{prefix}{path}"
             ));
