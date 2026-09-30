@@ -23,7 +23,7 @@ export function CreationLibraryDialog({ selectedIds, onSelect, roles, onRole, on
     let cancelled = false; setLoaded(false); setError("");
     void Promise.all([api.listAssetLibrary(), api.listAssetFolders()]).then(([library, list]) => {
       if (!cancelled) { setAssets(library.assets); setFolders(list); setLoaded(true); }
-    }).catch(() => { if (!cancelled) setError("素材库读取失败，请重试。"); });
+    }).catch(() => { if (!cancelled) setError("素材库读取失败，请重试"); });
     return () => { cancelled = true; };
   }, [retry]);
   return <dialog ref={dialog} className="cap-modal" aria-labelledby="creation-library-title" onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.currentTarget === event.target) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}>

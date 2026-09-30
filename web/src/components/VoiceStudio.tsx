@@ -1,4 +1,5 @@
 import { VoiceAudioInput } from "./VoiceAudioInput";
+import { StudioArtwork } from "./StudioTheme";
 import { Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
@@ -18,7 +19,7 @@ export function VoiceStudio({ value, onChange, compact = false }: { value: strin
   const [working, setWorking] = useState("");
   const [previewing, setPreviewing] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
-  const [previewText, setPreviewText] = useState("你好，我是映芽为下一支视频选定的声音。");
+  const [previewText, setPreviewText] = useState("你好，我是映芽为下一支视频选定的声音");
   const [name, setName] = useState("");
   const [description, setDescription] = useState<string>(voiceIdeas[0][1]);
   const [refText, setRefText] = useState("");
@@ -65,7 +66,7 @@ export function VoiceStudio({ value, onChange, compact = false }: { value: strin
         <VoiceAudioInput value={audio} onChange={setAudio} disabled={Boolean(working)} onBusyChange={setAudioBusy}/>
         <label><span>参考音频原文</span><textarea value={refText} maxLength={500} onChange={event => setRefText(event.target.value)} placeholder="逐字填写音频里说出的内容"/></label>
         <label><span>音色说明（可选）</span><input value={description} maxLength={200} onChange={event => setDescription(event.target.value)}/></label>
-        <label className="voice-consent"><input type="checkbox" checked={authorized} onChange={event => setAuthorized(event.target.checked)}/><span>我确认已获得声音所有者授权，并同意将此声音用于合成。</span></label>
+        <label className="voice-consent"><input type="checkbox" checked={authorized} onChange={event => setAuthorized(event.target.checked)}/><span>我确认已获得声音所有者授权，并同意将此声音用于合成</span></label>
       </>}
       <button className="asset-primary" type="button" disabled={!name.trim() || (mode === "design" ? description.trim().length < 4 : !refText.trim() || !audio || audioBusy || !authorized) || Boolean(working)} onClick={() => void create()}>{working ? <CircleNotch className="spin"/> : mode === "design" ? <MagicWand/> : <UploadSimple/>}{working ? "正在创建" : "创建音色"}</button>
       {error ? <p className="asset-error" role="alert">{error}</p> : null}
@@ -77,7 +78,7 @@ export function VoiceStudio({ value, onChange, compact = false }: { value: strin
         const detail = metadata.get(voice.toLocaleLowerCase()); const label = voice === "default" ? "默认音色" : detail?.name ?? voice; const selected = value.toLocaleLowerCase() === voice.toLocaleLowerCase();
         return <article className={selected ? "selected" : ""} key={voice}><span className="voice-avatar"><SpeakerHigh/></span><div><b>{label}</b>{voice !== "default" ? <small>{detail?.speaker_description || "已保存的音色"}</small> : null}</div><button className="voice-preview" type="button" aria-label={`试听 ${label}`} disabled={Boolean(previewing)} onClick={() => void preview(voice)}>{previewing === voice ? <CircleNotch className="spin"/> : <Play weight="fill"/>}</button><button className="voice-select" type="button" disabled={selected} onClick={() => onChange(voice)}>{selected ? <><Check/>新项目默认</> : "设为默认"}</button></article>;
       })}{loading ? <p className="asset-loading"><CircleNotch className="spin"/>正在读取音色…</p> : null}</div>
-      {audioUrl ? <audio className="studio-voice-audio" src={audioUrl} controls autoPlay/> : null}
+      {audioUrl ? <audio className="studio-voice-audio" src={audioUrl} controls autoPlay/> : !loading ? <div className="voice-listen-state"><StudioArtwork variant="assets" state="voice" motion/><p>{previewing ? '正在准备试听…' : '听见故事的另一面'}</p><small>选择音色，试听你的文案</small></div> : null}
     </section>
   </div>;
 }

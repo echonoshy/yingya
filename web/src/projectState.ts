@@ -23,7 +23,7 @@ export function workflowState(project: ProjectDetail) {
   const hasVideo = Boolean(version?.videoPath);
   const exported = Boolean(version && project.manifest.artifacts.some(a => a.kind === "final-video" && a.version === version.id));
   const checkpoint = !running && !project.queue.length ? project.manifest.checkpoint : undefined;
-  const sourceNotice = hasVideo && project.manifest.dirty && !checkpoint && !running ? "源文件有更新，当前视频可能尚未包含这些修改。" : "";
+  const sourceNotice = hasVideo && project.manifest.dirty && !checkpoint && !running ? "源文件有更新，当前视频可能尚未包含这些修改" : "";
   let group: ProjectGroup = "review";
   let label = "等待继续制作";
   if (running) { group = "active"; label = rendering && !project.activeTurnId ? "正在导出" : "正在制作"; }

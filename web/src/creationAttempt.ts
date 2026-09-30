@@ -17,5 +17,5 @@ export function newCreationAttempt(signature: string): CreationAttempt {
 }
 export function saveCreationAttempt(key: string, attempt: CreationAttempt | null) {
   try { localStorage.setItem(key, JSON.stringify(attempt)); }
-  catch { throw new Error("无法保存提交进度，请允许浏览器存储后重试。"); }
+  catch { throw new Error("无法保存提交进度，请允许浏览器存储后重试"); }
 }

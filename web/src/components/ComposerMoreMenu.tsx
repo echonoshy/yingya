@@ -172,7 +172,7 @@ export function ComposerMoreMenu({
             </>
           ) : (
             <p className="composer-audio-note">
-              需要新增配音时，可在对话中说明音色要求。
+              需要新增配音时，可在对话中说明音色要求
             </p>
           )}
           {settings ? (

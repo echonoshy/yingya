@@ -25,7 +25,7 @@ try{
   const heading=await page.getByRole('heading',{name:'我的作品',exact:true}).boundingBox();
   const navigation=await page.locator('.app-navigation').boundingBox();
   assert.ok(heading.y>=navigation.y+navigation.height,'Projects heading must clear sticky mobile navigation');
-  await page.getByRole('button',{name:'新建视频',exact:true}).click();
+  await page.locator('.app-primary-navigation').getByRole('button',{name:'新建视频',exact:true}).click();
   await page.waitForURL('**/app#/');
   // Navigation updates the URL before the scheduled animation-frame focus runs.
   await page.waitForFunction(()=>document.querySelector('.home-create textarea')===document.activeElement,{},{timeout:3000});
@@ -35,7 +35,7 @@ try{
  await page.locator('.home-create textarea').fill('面向初学者，用生活例子解释单摆的周期。');
  await page.getByRole('button',{name:'我的作品',exact:true}).click();
  assert.equal(await page.locator('.home-create').count(),0,'Library does not duplicate the creation composer');
- await page.getByRole('button',{name:'新建视频',exact:true}).click();
+ await page.locator('.app-primary-navigation').getByRole('button',{name:'新建视频',exact:true}).click();
  assert.match(await page.locator('.home-create textarea').inputValue(),/初学者/,'Draft survives navigation');
  await page.screenshot({path:out+'/home.png'});
 
@@ -44,7 +44,7 @@ try{
  const creation=(await creationRequest).postDataJSON();assert.equal(creation.requirements.workflow,'knowledge-explainer');for(const key of ['presentation','styleId','referenceExample'])assert.equal(key in creation.requirements,false,`retired setting ${key} must not affect creation`);
  await page.waitForURL('**/app#/projects/22222222-2222-4222-8222-222222222222');
 
- await page.goto(base+`/app#/projects/${seed.id}`);await page.getByRole('button',{name:'按这个方案制作',exact:true}).waitFor();assert.equal(await page.locator('.motion-editor').count(),0);await page.getByText('已确认方案，开始制作。',{exact:true}).waitFor();assert.equal(await page.getByText('内部测试标记',{exact:false}).count(),0);assert.equal(await page.getByText('plan-revision:',{exact:false}).count(),0);
+ await page.goto(base+`/app#/projects/${seed.id}`);await page.getByRole('button',{name:'按这个方案制作',exact:true}).waitFor();assert.equal(await page.locator('.motion-editor').count(),0);await page.getByText('已确认方案，开始制作',{exact:true}).waitFor();assert.equal(await page.getByText('内部测试标记',{exact:false}).count(),0);assert.equal(await page.getByText('plan-revision:',{exact:false}).count(),0);
  const keyframe=page.getByRole('button',{name:'放大查看：从生活观察开始',exact:true});
  await keyframe.focus();await page.keyboard.press('Enter');
  const frameDialog=page.getByRole('dialog',{name:'从生活观察开始',exact:true});
@@ -73,7 +73,7 @@ try{
  await page.route('**/files/video.mp4',async route=>{const body=await readFile('tests/fixtures/media/explainer.mp4');const range=route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(Number(range[2]),body.length-1):body.length-1;return route.fulfill({status:range?206:200,contentType:'video/mp4',headers:{'accept-ranges':'bytes','content-length':String(end-start+1),...(range?{'content-range':`bytes ${start}-${end}/${body.length}`}:{})},body:body.subarray(start,end+1)});});
  await page.setViewportSize({width:1440,height:900});await page.reload();await page.getByRole('tab',{name:'视频',exact:true}).click();const video=page.getByLabel('视频预览',{exact:true});await video.waitFor();await video.evaluate(v=>new Promise(resolve=>{if(v.readyState>=2)return resolve();v.addEventListener('loadeddata',resolve,{once:true});}));
  await page.locator('.thread-footer textarea').fill('12–18 秒缩短一些');await page.getByText('将针对 初稿 1 · 12–18 秒提交修改').waitFor();await page.locator('.thread-footer form').evaluate(form=>form.requestSubmit());await page.waitForFunction(()=>document.querySelector('.thread-footer textarea').value==='');assert.equal(submitted.feedback[0].kind,'video-range');assert.equal(submitted.feedback[0].endSeconds,18);
- await page.locator('.thread-footer textarea').fill('29–99 秒加一点说明');await page.locator('.thread-footer form').evaluate(form=>form.requestSubmit());await page.getByText('反馈时间超出所选视频时长，请调整范围后重试。文字已保留。').waitFor();assert.equal(await page.locator('.thread-footer textarea').inputValue(),'29–99 秒加一点说明');await page.locator('.thread-footer textarea').fill('');
+ await page.locator('.thread-footer textarea').fill('29–99 秒加一点说明');await page.locator('.thread-footer form').evaluate(form=>form.requestSubmit());await page.getByText('反馈时间超出所选视频时长，请调整范围后重试；文字已保留').waitFor();assert.equal(await page.locator('.thread-footer textarea').inputValue(),'29–99 秒加一点说明');await page.locator('.thread-footer textarea').fill('');
  await page.screenshot({path:out+'/video-desktop.png'});
  // The feedback entry is one click; typing and screenshots survive reloads and version switches.
  await video.evaluate(v=>{v.pause();v.currentTime=4.2;});await page.waitForFunction(()=>Math.abs(document.querySelector('video[aria-label="视频预览"]').currentTime-4.2)<0.001 && !document.querySelector('video[aria-label="视频预览"]').seeking);
@@ -94,7 +94,7 @@ try{
  for(const [width,height] of [[390,844],[320,568]]){await page.setViewportSize({width,height});await page.getByRole('button',{name:'视频',exact:true}).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.getByRole('button',{name:'对此处提修改',exact:true}).click();await page.locator('.feedback-drafts textarea').last().waitFor({state:'visible'});await page.locator('.feedback-drafts textarea').last().fill('手机上的时间点意见');const sendBounds=await page.getByRole('button',{name:'发送消息',exact:true}).boundingBox();assert.ok(sendBounds.y+sendBounds.height<=height,`send must stay visible at ${width}`);await page.screenshot({path:`${out}/feedback-${width}.png`});}
 
  await page.setViewportSize({width:390,height:420});await page.locator('.thread-footer textarea[aria-label="修改描述"]').fill('模拟可视区域变短，发送仍应可见');const compactSend=await page.getByRole('button',{name:'发送消息',exact:true}).boundingBox();assert.ok(compactSend.y+compactSend.height<=420);
- videoSeed.status='failed';videoSeed.statusLabel="Codex 执行失败：Codex turn failed: You've hit your usage limit.";videoSeed.manifest.dirty=true;await page.reload();await page.getByText('制作服务额度已用完。服务恢复后可以继续，已有成果不会丢失。',{exact:false}).waitFor();
+ videoSeed.status='failed';videoSeed.statusLabel="Codex 执行失败：Codex turn failed: You've hit your usage limit.";videoSeed.manifest.dirty=true;await page.reload();await page.getByText('制作服务额度已用完；服务恢复后可以继续，已有成果不会丢失',{exact:false}).waitFor();
  assert.equal(requests.some(path=>path.includes('/video/capabilities')||path.includes('/composition')||path.includes('/footage')),false);
  assert.deepEqual(errors,[]);console.log('PASS knowledge UI: home prompts, no editor/provider, real-content plan view, focused feedback, resize persistence, 4 viewport sizes, bound confirmation, retry, video and range/bounds feedback, screenshot/text draft recovery, history binding across version switches, keyboard annotation, share version and modal focus. API mocked; real sample MP4.');
 }catch(error){const page=browser.contexts()[0]?.pages()[0];if(page){await page.screenshot({path:out+'/failure.png'});console.log((await page.locator('body').innerText()).slice(-3500));}throw error;}finally{await browser.close();}

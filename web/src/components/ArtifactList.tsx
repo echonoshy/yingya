@@ -58,7 +58,7 @@ export function ArtifactList({ artifacts, query, onQuery, expanded, onExpanded, 
           </div>
         </section>;
       })}
-      {!matching.length ? <div className="artifact-empty"><MagnifyingGlass/><b>没有找到匹配的产物</b><p>试试文件名、版本号或路径中的关键词。</p></div> : null}
-    </> : <div className="artifact-empty"><File/><b>还没有生成的文件</b><p>生成完成后，视频与检查报告会显示在这里。</p></div>}
+      {!matching.length ? <div className="artifact-empty"><MagnifyingGlass/><b>没有找到匹配的产物</b><p>试试文件名、版本号或路径中的关键词</p></div> : null}
+    </> : <div className="artifact-empty"><File/><b>还没有生成的文件</b><p>生成完成后，视频与检查报告会显示在这里</p></div>}
   </section>;
 }

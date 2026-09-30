@@ -26,22 +26,22 @@ export default function AssetDocumentPreview({ asset, kind }: { asset: AssetLibr
     void (async () => {
       try {
         const response = await fetch(asset.url, { signal: controller.signal });
-        if (!response.ok) throw new Error("文件读取失败，请重试。");
-        if (Number(response.headers.get("content-length")) > MAX_BYTES) throw new Error("文件较大，请下载后查看。");
+        if (!response.ok) throw new Error("文件读取失败，请重试");
+        if (Number(response.headers.get("content-length")) > MAX_BYTES) throw new Error("文件较大，请下载后查看");
         const reader = response.body?.getReader();
-        if (!reader) throw new Error("文件内容无法读取。");
+        if (!reader) throw new Error("文件内容无法读取");
         const decoder = new TextDecoder(); let text = ""; let bytes = 0;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           bytes += value.byteLength;
-          if (bytes > MAX_BYTES) { await reader.cancel(); throw new Error("文件较大，请下载后查看。"); }
+          if (bytes > MAX_BYTES) { await reader.cancel(); throw new Error("文件较大，请下载后查看"); }
           text += decoder.decode(value, { stream: true });
         }
         text += decoder.decode();
         if (!controller.signal.aborted) setContent(text);
       } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "文件读取失败，请重试。");
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "文件读取失败，请重试");
       }
     })();
     return () => controller.abort();
@@ -53,6 +53,6 @@ export default function AssetDocumentPreview({ asset, kind }: { asset: AssetLibr
   const canRender = kind === "html" || kind === "markdown";
   return <div className="asset-document-preview">
     <div className="asset-document-toolbar"><b>文件预览</b>{canRender ? <div role="group" aria-label="文件显示方式"><button aria-pressed={!source} onClick={() => setSource(false)}>预览</button><button aria-pressed={source} onClick={() => setSource(true)}>源码</button></div> : <span>{kind === "json" ? "JSON" : "文本"}</span>}</div>
-    {error ? <div className="asset-document-status" role="alert"><p>{error}</p><button onClick={() => setRetry(value => value + 1)}>重新读取</button></div> : content === null ? <p className="asset-document-status" role="status"><CircleNotch className="spin"/>正在读取文件…</p> : content === "" ? <p className="asset-document-status">这是一个空文件。</p> : kind === "html" && !source ? <iframe title={`${asset.sourceName ?? "HTML"} 文件预览`} sandbox="" referrerPolicy="no-referrer" srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:; font-src https: http: data:; base-uri 'none'; form-action 'none'">${content}`}/> : kind === "markdown" && !source ? <div className="asset-document-body markdown-body"><MarkdownPreview>{content}</MarkdownPreview></div> : <>{invalidJson ? <p className="asset-document-status">JSON 格式有误，显示原始内容。</p> : null}<pre className="asset-document-body"><code>{source ? content : formatted}</code></pre></>}
+    {error ? <div className="asset-document-status" role="alert"><p>{error}</p><button onClick={() => setRetry(value => value + 1)}>重新读取</button></div> : content === null ? <p className="asset-document-status" role="status"><CircleNotch className="spin"/>正在读取文件…</p> : content === "" ? <p className="asset-document-status">这是一个空文件</p> : kind === "html" && !source ? <iframe title={`${asset.sourceName ?? "HTML"} 文件预览`} sandbox="" referrerPolicy="no-referrer" srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: http: data:; style-src 'unsafe-inline' https: http:; font-src https: http: data:; base-uri 'none'; form-action 'none'">${content}`}/> : kind === "markdown" && !source ? <div className="asset-document-body markdown-body"><MarkdownPreview>{content}</MarkdownPreview></div> : <>{invalidJson ? <p className="asset-document-status">JSON 格式有误，显示原始内容</p> : null}<pre className="asset-document-body"><code>{source ? content : formatted}</code></pre></>}
   </div>;
 }

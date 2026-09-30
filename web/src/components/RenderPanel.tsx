@@ -84,7 +84,7 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
     </div> : null}
     <details className="export-settings" open={exportOpen} onToggle={event => setExportOpen(event.currentTarget.open)}>
       <summary>导出其他规格{rendering ? <span><CircleNotch className="spin"/>导出中</span> : null}<CaretDown className="export-chevron"/></summary>
-      <p className="render-hint">{editableSnapshot ? "导出这个已保存版本；之后的修改需重新保存版本后导出。" : project.manifest.dirty ? "按所选分辨率和帧率导出已有版本，不包含未渲染的源文件修改。" : "按所选分辨率和帧率生成新的 MP4。"}</p>
+      <p className="render-hint">{editableSnapshot ? "导出这个已保存版本；之后的修改需重新保存版本后导出" : project.manifest.dirty ? "按所选分辨率和帧率导出已有版本，不包含未渲染的源文件修改" : "按所选分辨率和帧率生成新的 MP4"}</p>
       {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.status === "queued" ? "等待导出" : `已完成 ${Math.round(activeJob.progress)}%`}</p></div> : null}
     <div className="render-options">
       <label><span>分辨率</span><select value={resolution} disabled={rendering} onChange={event => setResolution(event.target.value as RenderResolution)}>{options.map(value => <option value={value} key={value}>{resolutionLabels[value]}</option>)}</select></label>
@@ -93,7 +93,7 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
     <div className="render-actions">
       <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution, fps })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在导出 MP4…" : editableSnapshot ? "导出此版本" : project.manifest.dirty ? "导出已有版本" : "开始导出"}</button>
     </div>
-    {project.activeTurnId ? <p className="render-hint">当前修改完成后可导出。</p> : null}
+    {project.activeTurnId ? <p className="render-hint">当前修改完成后可导出</p> : null}
     {error ? <p className="render-error" role="alert"><Warning/>{error}</p> : null}
     {project.renderJobs.length ? <details className="render-history"><summary>导出历史 <span>{project.renderJobs.length}</span></summary><div>
       {project.renderJobs.map(job => <article key={job.id}>

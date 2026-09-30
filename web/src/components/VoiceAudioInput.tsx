@@ -61,7 +61,7 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
   async function startRecording() {
     setError("");
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setError("当前浏览器无法录音，请使用支持录音的浏览器打开安全连接，或上传音频文件。"); return;
+      setError("当前浏览器无法录音，请使用支持录音的浏览器打开安全连接，或上传音频文件"); return;
     }
     const attempt = ++generation.current;
     setStatus("requesting");
@@ -77,7 +77,7 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
       next.onerror = () => {
         failed = true;
         source.getTracks().forEach(track => track.stop());
-        if (attempt === generation.current) { setError("录音中断，请重新录制或上传文件。"); setStatus("idle"); }
+        if (attempt === generation.current) { setError("录音中断，请重新录制或上传文件"); setStatus("idle"); }
       };
       next.onstop = async () => {
         source.getTracks().forEach(track => track.stop());
@@ -87,7 +87,7 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
           const file = await recordingFile(new Blob(chunks, { type: next.mimeType }));
           if (attempt === generation.current) onChange(file);
         } catch {
-          if (attempt === generation.current) setError("未能保存录音，请重新录制或上传文件。");
+          if (attempt === generation.current) setError("未能保存录音，请重新录制或上传文件");
         } finally { if (attempt === generation.current) setStatus("idle"); }
       };
       next.start(); setSeconds(0); setStatus("recording");
@@ -96,8 +96,8 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
       if (attempt !== generation.current) return;
       setStatus("idle");
       setError(reason instanceof DOMException && reason.name === "NotAllowedError"
-        ? "未获得麦克风权限，请在浏览器中允许访问后重试，或上传音频文件。"
-        : "无法使用麦克风，请检查设备后重试，或上传音频文件。");
+        ? "未获得麦克风权限，请在浏览器中允许访问后重试，或上传音频文件"
+        : "无法使用麦克风，请检查设备后重试，或上传音频文件");
     }
   }
 
@@ -114,8 +114,8 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
       <input ref={input} type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac,.webm" hidden aria-label="上传参考音频" disabled={disabled || busy} onChange={event => {
         const file = event.target.files?.[0]; event.target.value = "";
         if (!file) return;
-        if (!file.size || file.size > 10 * 1024 * 1024) { setError("请选择非空且不超过 10 MB 的音频文件。"); return; }
-        if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|flac|aac|webm)$/i.test(file.name)) { setError("请选择音频文件。"); return; }
+        if (!file.size || file.size > 10 * 1024 * 1024) { setError("请选择非空且不超过 10 MB 的音频文件"); return; }
+        if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|flac|aac|webm)$/i.test(file.name)) { setError("请选择音频文件"); return; }
         setError(""); onChange(file);
       }}/>
       <p className={`voice-reference-status ${busy ? "is-busy" : ""}`} role="status">{status === "recording" ? <><Microphone/>正在录音 <time>00:{String(seconds).padStart(2, "0")} / 00:30</time></> : status === "requesting" ? "请允许使用麦克风…" : status === "processing" ? "正在保存录音…" : "建议 30 秒，文件不超过 10 MB"}</p>

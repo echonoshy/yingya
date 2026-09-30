@@ -112,7 +112,7 @@ export function AvatarPicker({ current, loadError, onRetry, onSaved, onClose, re
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   }
   return <dialog className="avatar-picker" ref={dialog} aria-labelledby="avatar-picker-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <header><div><h2 id="avatar-picker-title">更换头像</h2><p>选一只小怪兽，或用自己的照片。</p></div><button type="button" aria-label="关闭头像选择" disabled={busy} onClick={onClose}><X /></button></header>
+    <header><div><h2 id="avatar-picker-title">更换头像</h2><p>选一只小怪兽，或用自己的照片</p></div><button type="button" aria-label="关闭头像选择" disabled={busy} onClick={onClose}><X /></button></header>
     <div className="avatar-picker-body">
       <div className="avatar-preview"><AvatarImage url={previewUrl} /><span>{selection === "custom" ? "自己的头像" : avatarPresets.find(item => item.id === selection)?.name}</span></div>
       {loadError ? <p className="avatar-error" role="alert">{loadError}<button type="button" onClick={onRetry}>重新读取</button></p> : null}
@@ -124,7 +124,7 @@ export function AvatarPicker({ current, loadError, onRetry, onSaved, onClose, re
         <button type="button" disabled={busy || reading} onClick={() => input.current?.click()}>{reading ? <CircleNotch className="spin" /> : <UploadSimple />}上传自己的头像</button>
         <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" aria-label="头像图片" onChange={event => { void upload(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
-      <p className="avatar-hint">支持 PNG、JPG、WebP，最大 5 MB。图片会居中裁切，保存前可查看效果。</p>
+      <p className="avatar-hint">支持 PNG、JPG、WebP，最大 5 MB；图片会居中裁切，保存前可查看效果</p>
       {error ? <p className="avatar-error" role="alert">{error}</p> : null}
     </div>
     <footer><button type="button" disabled={busy} onClick={onClose}>取消</button><button type="button" className="primary-button" disabled={busy || reading || !changed} onClick={() => void save()}>{busy ? <><CircleNotch className="spin" />正在保存…</> : "保存头像"}</button></footer>

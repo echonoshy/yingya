@@ -76,9 +76,9 @@ export function VideoAnnotationEditor({ projectId, frame, versionId, versionLabe
       {url ? <img src={url} alt={`${versionLabel} 在 ${frame.time.toFixed(2)} 秒的冻结画面`} draggable={false}/> : null}
       {region ? <span className="annotation-region" style={{ left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.width * 100}%`, height: `${region.height * 100}%` }}/> : null}
     </div></div>
-    <div className="annotation-fields"><p id="annotation-help">拖动框选修改位置。聚焦画面后，方向键创建或移动选区，Shift + 方向键调整大小。</p><div className="annotation-tools"><button type="button" disabled={!region || busy} onClick={() => setRegion(null)}>清除选区</button></div>
+    <div className="annotation-fields"><p id="annotation-help">拖动框选修改位置；聚焦画面后，方向键创建或移动选区，Shift + 方向键调整大小</p><div className="annotation-tools"><button type="button" disabled={!region || busy} onClick={() => setRegion(null)}>清除选区</button></div>
       <label htmlFor="annotation-note">修改要求</label><textarea ref={noteRef} id="annotation-note" disabled={busy} maxLength={2000} rows={1} value={note} onChange={event => setNote(event.target.value)} placeholder="例如：放大框内字幕"/>
-      <p>标注将加入输入区，发送后才会开始修改。</p><p role="status">{draftStatus}</p>{error ? <p className="form-error" role="alert">{error}</p> : null}
+      <p>标注将加入输入区，发送后才会开始修改</p><p role="status">{draftStatus}</p>{error ? <p className="form-error" role="alert">{error}</p> : null}
     </div></div><footer><button type="button" disabled={busy} onClick={() => void close()}>取消</button><button className="primary-button" type="button" disabled={!region || !note.trim() || busy} onClick={() => void save()}><ArrowLeft/>{busy ? "正在保存截图…" : "加入修改要求"}</button></footer>
   </dialog>, document.body);
 }

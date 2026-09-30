@@ -1,16 +1,16 @@
 {
   "name": "yingya",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "description": "映芽 · Yingya，把资料、想法和已有素材制作成能独立讲解、直接分享的视频。",
   "scripts": {
-    "test": "npm run test:source && npm run test:release && npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:production && npm run test:editorial && npm run test:services && npm run test:design && npm run test:components && npm run web:build && npm run test:remotion && npm run test:remotion:browser && npm run test:ui",
+    "test": "npm run version:check && npm run test:versions && npm run test:source && npm run test:release && npm run format:check && npm run lint:rust && npm run test:rust && npm run typecheck && npm run test:web && npm run test:heygen && npm run test:tts && npm run test:production && npm run test:editorial && npm run test:services && npm run test:design && npm run test:components && npm run web:build && npm run test:remotion && npm run test:remotion:browser && npm run test:ui",
     "format:check": "cargo fmt --all -- --check",
     "lint:rust": "cargo clippy --all-targets -- -D warnings",
     "web:dev": "vite --config web/vite.config.ts --host 0.0.0.0 --port 8798 --strictPort",
     "web:service:status": "bash scripts/dev-service.sh frontend status",
     "web:service:reload": "bash scripts/dev-service.sh frontend restart",
-    "web:build": "vite build --config web/vite.config.ts",
+    "web:build": "npm run version:check && vite build --config web/vite.config.ts",
     "web:preview": "vite preview --config web/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "test:web": "vitest run web/src --exclude \"**/.runtime/**\"",
@@ -53,7 +53,10 @@
     "test:remotion": "node --test tests/remotion.test.mjs",
     "test:remotion:browser": "node --test tests/remotion-browser.test.mjs",
     "browser:ensure": "playwright install chromium",
-    "browser:path": "node runtime/browser.mjs"
+    "browser:path": "node runtime/browser.mjs",
+    "version:check": "node scripts/versions.mjs check",
+    "version:record": "node scripts/versions.mjs record",
+    "test:versions": "node --test tests/versions.test.mjs"
   },
   "dependencies": {
     "@chinese-fonts/lxgwwenkai": "3.0.0",
@@ -61,7 +64,7 @@
     "@fontsource-variable/noto-serif-sc": "5.3.0",
     "@fontsource/fragment-mono": "^5.3.0",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@openai/codex": "0.154.0",
+    "@openai/codex": "0.159.2",
     "@phosphor-icons/react": "2.1.10",
     "@remotion/bundler": "4.0.529",
     "@remotion/player": "4.0.529",

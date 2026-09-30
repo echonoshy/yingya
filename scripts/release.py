@@ -82,13 +82,14 @@ def environment(args, release):
 def build(args):
     if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', args.release):
         raise RuntimeError('release ID must contain 1-64 letters, digits, underscores or hyphens')
+    run(['node', REPO / 'scripts/versions.mjs', 'check'])
     root = args.releases / args.release
     root.mkdir(parents=True, exist_ok=False)
     # Snapshot the current worktree (including authorized, uncommitted changes),
     # then build there. Running workers never read changing source/dependencies.
     for name in ['src', 'web', 'skills', 'scripts', 'runtime']:
         shutil.copytree(REPO / name, root / name, ignore=shutil.ignore_patterns('node_modules', '__pycache__'))
-    for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'tsconfig.json']:
+    for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'tsconfig.json', 'versions.json']:
         shutil.copy2(REPO / name, root / name)
     run(['python3', root / 'scripts/setup-python.py', '--resources', root,
          '--store', args.runtime / 'python'])
@@ -103,7 +104,8 @@ def build(args):
     target = args.runtime / 'release-build'
     run(['cargo', 'build', '--locked', '--release', '--target-dir', target], cwd=root)
     shutil.copy2(target / 'release/yingya-server', root / 'yingya-server')
-    manifest = {'id': args.release, 'binary': str(root / 'yingya-server'), 'resources': str(root)}
+    manifest = {'id': args.release, 'appVersion': json.loads((root / 'package.json').read_text())['version'],
+                'binary': str(root / 'yingya-server'), 'resources': str(root)}
     atomic_json(root / 'release.json', manifest)
     print(root / 'release.json')
 
@@ -270,6 +272,8 @@ def activate(args):
         raise
     current = {'release': args.release, 'api_port': api_port, 'api_session': api_session,
                'entry_session': nginx_session, 'port': args.port, 'previous': previous['release'] if previous else None}
+    if release.get('appVersion'):
+        current['appVersion'] = release['appVersion']
     atomic_json(state_path, current)
     args.candidate_session = None
     if previous and has_session(previous['api_session']):

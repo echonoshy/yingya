@@ -60,7 +60,7 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
         row.turnId = undefined;
         row.status = job.status === "succeeded" ? "completed" : job.status === "failed" ? "failed"
           : job.status === "cancelled" || job.status === "lost" ? "interrupted" : "running";
-        row.summary = row.status === "running" ? "原任务仍在运行，完成后继续制作。" : stringValue(job.message);
+        row.summary = row.status === "running" ? "原任务仍在运行，完成后继续制作" : stringValue(job.message);
       }
       continue;
     }
@@ -74,11 +74,11 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
       const progress = `${Number(params.attempt)}/${Number(params.maxAttempts)}`;
       row.title = status === "completed" ? "模型重试已完成" : status === "interrupted" ? "模型重试已停止" : status === "failed" ? "自动重试已结束" : "模型暂时繁忙";
       row.status = status === "waiting" ? "waiting" : status === "running" ? "running" : status === "completed" ? "completed" : status === "interrupted" ? "interrupted" : "failed";
-      row.summary = status === "waiting" ? `${Number(params.delaySeconds)} 秒后自动重试（${progress}），可随时停止。`
-        : status === "running" ? `正在继续原任务（重试 ${progress}）。`
-        : status === "completed" ? "已恢复并完成本次执行。"
-        : status === "interrupted" ? "已停止，不会继续自动重试。"
-        : `重试 ${Number(params.attempt)} 次后仍未完成。请查看错误详情，稍后重试或切换模型。`;
+      row.summary = status === "waiting" ? `${Number(params.delaySeconds)} 秒后自动重试（${progress}），可随时停止`
+        : status === "running" ? `正在继续原任务（重试 ${progress}）`
+        : status === "completed" ? "已恢复并完成本次执行"
+        : status === "interrupted" ? "已停止，不会继续自动重试"
+        : `重试 ${Number(params.attempt)} 次后仍未完成；请查看错误详情，稍后重试或切换模型`;
       continue;
     }
 
@@ -89,9 +89,9 @@ export function buildTimeline(events: AgentEvent[], persistedAssistantTexts: Set
       const retrying = params.willRetry === true;
       const row = activity(`system-${event.turnId ?? "current"}`, "system", event, overloaded ? "模型暂时繁忙" : retrying ? "等待网络恢复" : "创作服务连接异常");
       row.title = overloaded ? "模型暂时繁忙" : retrying ? "等待网络恢复" : "创作服务连接异常";
-      row.summary = overloaded ? (retrying ? "当前模型服务繁忙，正在自动重试。" : "当前模型服务繁忙，请稍后重试或切换模型。") : retrying
-        ? "暂时无法连接创作服务，正在自动重试。"
-        : stringValue(error.message) || stringValue(params.message) || "暂时无法连接创作服务。";
+      row.summary = overloaded ? (retrying ? "当前模型服务繁忙，正在自动重试" : "当前模型服务繁忙，请稍后重试或切换模型") : retrying
+        ? "暂时无法连接创作服务，正在自动重试"
+        : stringValue(error.message) || stringValue(params.message) || "暂时无法连接创作服务";
       row.status = retrying ? "waiting" : "failed";
       continue;
     }

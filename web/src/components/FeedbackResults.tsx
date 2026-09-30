@@ -13,7 +13,7 @@ export function FeedbackResults({ project, onView, onRetry }: { project: Project
     let disposed=false;
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),15000);
-    void sessionFetch(scopedUrl(`/api/agent-projects/${project.id}/feedback-results`),{signal:controller.signal}).then(async response=>{if(!response.ok)throw new Error();return schema.parse(await response.json());}).then(result=>{if(!disposed){setItems(result.items);setError('');}}).catch(()=>{if(!disposed)setError('修改状态读取失败，意见仍已保留。');}).finally(()=>clearTimeout(timer));
+    void sessionFetch(scopedUrl(`/api/agent-projects/${project.id}/feedback-results`),{signal:controller.signal}).then(async response=>{if(!response.ok)throw new Error();return schema.parse(await response.json());}).then(result=>{if(!disposed){setItems(result.items);setError('');}}).catch(()=>{if(!disposed)setError('修改状态读取失败，意见仍已保留');}).finally(()=>clearTimeout(timer));
     return()=>{disposed=true;clearTimeout(timer);controller.abort();};
   },[project.id,project.updatedAt,hasFeedback,reload]);
   if(!hasFeedback)return null;

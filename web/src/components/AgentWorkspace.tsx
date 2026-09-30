@@ -62,7 +62,6 @@ import {
   BoundingBox,
   Clock,
   Check,
-  CheckCircle,
   CircleNotch,
   Code,
   DownloadSimple,
@@ -506,7 +505,7 @@ export function AgentWorkspace({
       const submittedFeedback: FeedbackDraft[] = feedbackDraft.items.length || !range || !selectedVersion ? feedbackDraft.items : [rangeDraftRef.current!.draft];
       for (const item of submittedFeedback) {
         const duration = videoDurations.current.get(item.videoPath);
-        if (duration !== undefined && (item.timeSeconds > duration || (item.kind === "video-range" && item.endSeconds > duration))) throw new Error("反馈时间超出所选视频时长，请调整范围后重试。文字已保留。");
+        if (duration !== undefined && (item.timeSeconds > duration || (item.kind === "video-range" && item.endSeconds > duration))) throw new Error("反馈时间超出所选视频时长，请调整范围后重试；文字已保留");
       }
       const signature = JSON.stringify({
         text,
@@ -596,7 +595,7 @@ export function AgentWorkspace({
                 file.name === revision.value && file.type.startsWith("image/"),
             );
           if (candidates.length !== 1)
-            throw new Error("替换截图缺失或同名图片不唯一，请重新选择截图。");
+            throw new Error("替换截图缺失或同名图片不唯一，请重新选择截图");
           return sceneRevisionContext({
             ...revision,
             replacementPath: uploaded[candidates[0].index].path,
@@ -608,10 +607,10 @@ export function AgentWorkspace({
           text:
             text.trim() ||
             (submittedFeedback.length
-              ? "请根据修改意见调整视频，保留其他内容。"
+              ? "请根据修改意见调整视频，保留其他内容"
               : materialOnlyPrompt),
           attachments: uploaded.map((item) => item.path),
-          context: [...new Set([...submissionContexts, ...assetContexts, ...(selectedVersion && selectedVersion.id !== project.manifest.currentDraft ? [`意见来自历史版本 ${selectedVersion.id}，正在查看不表示回退；先按稳定段落身份映射到当前版本，无法映射时请澄清。`] : [])])],
+          context: [...new Set([...submissionContexts, ...assetContexts, ...(selectedVersion && selectedVersion.id !== project.manifest.currentDraft ? [`意见来自历史版本 ${selectedVersion.id}，正在查看不表示回退；先按稳定段落身份映射到当前版本，无法映射时请澄清`] : [])])],
           feedback: visualFeedback,
           interrupt: false,
           ...selection,
@@ -776,11 +775,11 @@ export function AgentWorkspace({
   }
   function prepareSceneRevision(revision: SceneRevision, file?: File) {
     if (contexts.some((value) => value.startsWith(sceneRevisionPrefix))) {
-      setError("请先发送或移除当前镜头修改，再选择下一处修改。");
+      setError("请先发送或移除当前镜头修改，再选择下一处修改");
       return;
     }
     if (revision.versionId !== selectedVersion?.id || oldVersion) {
-      setError("请切到当前版本后修改。");
+      setError("请切到当前版本后修改");
       return;
     }
     clearSubmissionFeedback();
@@ -797,7 +796,7 @@ export function AgentWorkspace({
   async function answerWaitingInput(choice: string) {
     if (busy) return;
     if (oldVersion) {
-      setError("请先切到当前版本或回退，再继续制作。");
+      setError("请先切到当前版本或回退，再继续制作");
       return;
     }
     setBusy(true);
@@ -805,7 +804,7 @@ export function AgentWorkspace({
     try {
       await api.sendTurn(project.id, {
         baseVersionId: project.manifest.currentDraft ?? null,
-        text: `选择${choice.replace("（推荐）", "")}，请继续制作。`,
+        text: `选择${choice.replace("（推荐）", "")}，请继续制作`,
         ...selection,
       });
       await refresh();
@@ -1035,7 +1034,7 @@ export function AgentWorkspace({
           ) : null}
           {project.queue.length ? (
             <section className="queue-card">
-              <p className="queue-interrupt-notice">消息按顺序处理；立即执行将中断当前任务。</p>
+              <p className="queue-interrupt-notice">消息按顺序处理；立即执行将中断当前任务</p>
               <header>
                 <Queue />
                 <b>{project.queuePaused ? "队列已暂停" : "待处理消息"}</b>
@@ -1091,7 +1090,7 @@ export function AgentWorkspace({
         <div className="composer-context">
         {feedbackDraft.status === "error" ? (
           <p className="form-error" role="status">
-            反馈草稿无法保存，请勿刷新页面。
+            反馈草稿无法保存，请勿刷新页面
           </p>
         ) : feedbackDraft.items.length ? (
           <p className="draft-save-status" role="status">
@@ -1139,7 +1138,7 @@ export function AgentWorkspace({
         </div>
         {fileDraftStatus === "error" ? (
           <p className="form-error" role="status">
-            附件无法保存，刷新后需重新添加。
+            附件无法保存，刷新后需重新添加
           </p>
         ) : null}
         {text && !textSaved ? (
@@ -1251,7 +1250,7 @@ export function AgentWorkspace({
         </div>
         {oldVersion ? (
           <div className="version-edit-notice" role="status">
-            <span>正在看 {selectedVersion?.label}。定位意见保留原版位置，修改应用到最新版本。</span>
+            <span>正在看 {selectedVersion?.label}；定位意见保留原版位置，修改应用到最新版本</span>
             <button
               type="button"
               onClick={() => selectVersion(project.manifest.currentDraft ?? "")}
@@ -1277,7 +1276,7 @@ export function AgentWorkspace({
               id="requirements-hint"
               role="status"
             >
-              在这里补充内容、目标受众或画面要求，点击发送后应用。
+              在这里补充内容、目标受众或画面要求，点击发送后应用
             </p>
           ) : null}
           <textarea
@@ -1437,7 +1436,7 @@ export function AgentWorkspace({
       <header className="project-header">
         <div className="project-header-brand">
           <StudioArtwork variant="workspace"/>
-          <img src="/brand/yingya-ghost.png" alt="" />
+          <img src="/brand/yingya-ghost-navy.svg" alt="" />
           <b>映芽</b>
         </div>
         <button className="project-back" onClick={onBack}>
@@ -1752,10 +1751,10 @@ function ConnectionNotice({
         </b>
         <p>
           {syncFailed
-            ? "当前显示的是上次同步的内容，请重新同步以确认任务进度。"
+            ? "当前显示的是上次同步的内容，请重新同步以确认任务进度"
             : stalled
-              ? "映芽仍会保留任务和队列，你可以重新同步最新状态。"
-              : "当前内容不会丢失，重新连接后会补齐期间的进度。"}
+              ? "映芽仍会保留任务和队列，你可以重新同步最新状态"
+              : "当前内容不会丢失，重新连接后会补齐期间的进度"}
         </p>
       </div>
       <button type="button" onClick={onRetry}>
@@ -1907,7 +1906,7 @@ function MessageRow({
             </Suspense>
           </div>
         ) : (
-          <div>{planConfirmation ? "已确认方案，开始制作。" : message.text}</div>
+          <div>{planConfirmation ? "已确认方案，开始制作" : message.text}</div>
         )}
         {message.feedback?.map((item) => (
           <FeedbackCard key={item.id} projectId={projectId} feedback={item} />
@@ -2011,7 +2010,7 @@ function WaitingInputCard({
       <div>
         <small>需要你的输入</small>
         <h2>等待你的确认</h2>
-        <p>任务已暂停，回答后才会继续制作。</p>
+        <p>任务已暂停，回答后才会继续制作</p>
       </div>
       <div className="waiting-input-actions">
         <WaitingInputActions
@@ -2193,7 +2192,7 @@ function RequestControls({ event }: { event: AgentEvent }) {
   if (event.method.includes("permissions/requestApproval"))
     return (
       <div className="request-controls">
-        <p>{String(params.reason ?? "Codex 请求临时扩展项目权限。")}</p>
+        <p>{String(params.reason ?? "Codex 请求临时扩展项目权限")}</p>
         <div>
           <button
             onClick={() =>
@@ -2218,7 +2217,7 @@ function RequestControls({ event }: { event: AgentEvent }) {
         <p>
           {String(
             params.message ??
-              "外部工具请求输入；请先检查原始事件中的表单结构。",
+              "外部工具请求输入；请先检查原始事件中的表单结构",
           )}
         </p>
         <div>
@@ -2242,7 +2241,7 @@ function RequestControls({ event }: { event: AgentEvent }) {
   )
     return (
       <div className="request-controls">
-        <p>{String(params.reason ?? "Codex 请求执行受限操作。")}</p>
+        <p>{String(params.reason ?? "Codex 请求执行受限操作")}</p>
         <div>
           <button onClick={() => void respond({ decision: "allow" })}>
             允许
@@ -2256,7 +2255,7 @@ function RequestControls({ event }: { event: AgentEvent }) {
     );
   return (
     <div className="request-controls">
-      <p>{String(params.reason ?? "此操作需要你的批准。")}</p>
+      <p>{String(params.reason ?? "此操作需要你的批准")}</p>
       <div>
         <button onClick={() => void respond({ decision: "accept" })}>
           仅本次允许
@@ -2287,13 +2286,11 @@ function CheckpointCard({
 }) {
   return (
     <section className="checkpoint-card">
-      <div className="checkpoint-icon">
-        <CheckCircle weight="fill" />
-      </div>
+      <StudioArtwork variant="workspace" state="review" className="checkpoint-art"/>
       <div className="checkpoint-copy">
         <small>制作检查点</small>
         <h2>{title || "制作方案已就绪"}</h2>
-        <p>{summary || "确认方向后开始制作视频。"}</p>
+        <p>{summary || "确认方向后开始制作视频"}</p>
       </div>
       <div className="checkpoint-actions">
         {onPreview ? (
@@ -2328,15 +2325,15 @@ function WorkflowRecoveryCard({
 }) {
   const prompt = briefing ? "重新生成制作方案" : "检查并恢复项目流程";
   const failureReason = /usage limit|额度/i.test(statusLabel)
-    ? "制作服务额度已用完。服务恢复后可以继续，已有成果不会丢失。"
+    ? "制作服务额度已用完；服务恢复后可以继续，已有成果不会丢失"
     : /capacity|overloaded/i.test(statusLabel)
-      ? "制作服务暂时繁忙，请稍后继续。"
+      ? "制作服务暂时繁忙，请稍后继续"
       : statusLabel.replace(/^Codex 执行失败：(?:Codex turn failed:\s*)?/, "");
   const detail = briefing
-    ? "已有资料和输入会保留，恢复后将继续整理可确认的制作方案。"
+    ? "已有资料和输入会保留，恢复后将继续整理可确认的制作方案"
     : incomplete
-      ? "现有文件和有效检查结果已保留。恢复时会先复用已有成果，只补齐缺失的版本与审核登记。"
-      : "项目状态或产物不完整。恢复后会先检查现有文件，再回到正确的确认节点。";
+      ? "现有文件和有效检查结果已保留；恢复时会先复用已有成果，只补齐缺失的版本与审核登记"
+      : "项目状态或产物不完整；恢复后会先检查现有文件，再回到正确的确认节点";
   return (
     <section
       className={`workflow-recovery ${incomplete ? "workflow-recovery--incomplete" : ""}`}
@@ -2809,7 +2806,7 @@ function ArtifactCanvas({
                         />
                       ) : (
                         <div className="planning-empty">
-                          <StudioArtwork variant="workspace"/>
+                          <StudioArtwork variant="workspace" state={project.manifest.phase === "plan_review" ? "review" : project.activeTurnId ? "making" : "waiting"} motion/>
                           <h3>
                             {project.manifest.phase === "plan_review"
                               ? "制作方案待确认"
@@ -2817,7 +2814,7 @@ function ArtifactCanvas({
                           </h3>
                           <p>
                             {project.manifest.checkpoint?.summary ||
-                              "提供要讲的内容、目标受众和素材，映芽会整理画面、动画与旁白安排，确认后开始制作。"}
+                              "提供要讲的内容、目标受众和素材，映芽会整理画面、动画与旁白安排，确认后开始制作"}
                           </p>
                           <PlanDocument
                             project={project}
@@ -2849,7 +2846,7 @@ function ArtifactCanvas({
                   </div>
                   {videoPath ? (
                     <>
-                      {videoLoadError ? <p className="form-error" role="alert">视频暂时无法读取，已有作品和意见仍已保留。<button onClick={() => setVideoRetry(value => value + 1)}>重新加载视频</button></p> : null}
+                      {videoLoadError ? <p className="form-error" role="alert">视频暂时无法读取，已有作品和意见仍已保留<button onClick={() => setVideoRetry(value => value + 1)}>重新加载视频</button></p> : null}
                       <div className="canvas-actions">
                         <button
                           type="button"
@@ -2884,7 +2881,7 @@ function ArtifactCanvas({
                       </div>
                       {captureError ? (
                         <p className="form-error" role="alert">
-                          {captureError}。可使用“对此处提修改”填写文字意见。
+                          {captureError}；可使用“对此处提修改”填写文字意见
                         </p>
                       ) : null}
                       {timeFeedback.length ? (
@@ -2997,7 +2994,7 @@ function ArtifactCanvas({
                       />
                     ) : exportRequest ? (
                       <p role="status">
-                        请先确认制作方案并完成动画编排，预览满意后在这里导出成片。
+                        请先确认制作方案并完成动画编排，预览满意后在这里导出成片
                       </p>
                     ) : null}
                   </div>
@@ -3079,7 +3076,7 @@ function ProjectAssetsPanel({
       <div className="section-heading">
         <div>
           <h3>参考文件</h3>
-          <p>图片、视频、音频、文档及其他文件都可加入当前创作对话。</p>
+          <p>图片、视频、音频、文档及其他文件都可加入当前创作对话</p>
         </div>
         <span>{media.assets.length} 项已进入项目</span>
       </div>
@@ -3172,9 +3169,9 @@ function ProjectAssetsPanel({
           </div>
         ) : (
           <div className="workbench-empty">
-            <StudioArtwork variant="empty"/>
+            <StudioArtwork variant="assets" motion/>
             <b>这个文件夹暂无素材</b>
-            <p>可前往素材工坊上传任意类型的参考文件。</p>
+            <p>可前往素材工坊上传任意类型的参考文件</p>
           </div>
         )}
       </section>
@@ -3237,7 +3234,7 @@ function PreviewAssetInspector({
         {loading ? (
           <p>正在读取版本素材…</p>
         ) : !scene ? (
-          <p>这个时间点暂无已登记的素材。</p>
+          <p>这个时间点暂无已登记的素材</p>
         ) : (
           <>
             {clip && path ? (
@@ -3282,7 +3279,7 @@ function PreviewAssetInspector({
                 ))}
               </div>
             ) : !clip ? (
-              <p>此镜头没有已登记的素材绑定。</p>
+              <p>此镜头没有已登记的素材绑定</p>
             ) : null}
           </>
         )}
@@ -3312,7 +3309,7 @@ function PreviewAssetInspector({
         </div>
       </section>
       <p className="preview-inspector-hint">
-        已使用素材跟随所选版本和当前播放镜头；新选择的素材将在发送消息后加入项目。
+        已使用素材跟随所选版本和当前播放镜头；新选择的素材将在发送消息后加入项目
       </p>
     </aside>
   );
@@ -3377,7 +3374,7 @@ function InlineArtifactPreview({
           <p role="status">正在读取文件…</p>
         ) : preview.error || mediaError ? (
           <p className="form-error" role="alert">
-            {preview.error || "文件无法预览，可尝试下载或重新打开。"}
+            {preview.error || "文件无法预览，可尝试下载或重新打开"}
           </p>
         ) : kind === "image" ? (
           <img
@@ -3396,7 +3393,7 @@ function InlineArtifactPreview({
         ) : kind === "audio" ? (
           <audio src={url} controls onError={() => setMediaError(true)} />
         ) : kind === "download" ? (
-          <p>此文件暂不支持在线预览，请下载后查看。</p>
+          <p>此文件暂不支持在线预览，请下载后查看</p>
         ) : kind === "markdown" && !source ? (
           <div className="markdown-body">
             <Suspense fallback={<p>正在加载预览…</p>}>

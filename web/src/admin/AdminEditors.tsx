@@ -35,7 +35,7 @@ export function UserEditor({member,currentId,busy,onSave,onAction,onClose,error}
     </fieldset>
     {member?.registered?<div className="admin-secondary-actions"><button type="button" className="admin-button" disabled={busy||member.quota.disabled} onClick={()=>void onAction('reset',member).then(result=>{if(result)setLink(result);})}><Key/>生成密码重置链接</button><button type="button" className="admin-button" disabled={busy} onClick={()=>void onAction('sessions',member)}><SignOut/>撤销登录会话</button></div>:null}
     {link?<Credential label="密码重置链接（1 小时有效）" url={link}/>:null}
-    {member?.archived?<p className="admin-help">归档账号的作品和记录仍保留，可切换为启用恢复访问。</p>:null}
+    {member?.archived?<p className="admin-help">归档账号的作品和记录仍保留，可切换为启用恢复访问</p>:null}
     {error?<p className="admin-error" role="alert">{error}</p>:null}
     <footer><button type="button" className="admin-button" disabled={busy} onClick={onClose}>取消</button><button className="admin-button primary" disabled={busy}>{member?<Check/>:<Plus/>}{busy?'正在保存…':member?'保存更改':'创建用户'}</button></footer>
   </form></EditorDialog>;
@@ -54,8 +54,8 @@ export function InviteEditor({invite,busy,onClose,onSave,error}:{invite:Invite|n
     <label>每人 Token 额度<input name="tokens" type="number" min={0} max={1000000000000} defaultValue={invite?.tokenLimit??DEFAULT_ACCOUNT_QUOTA.tokenLimit} required/></label>
     <p className="admin-help">素材生成不限次数</p>
     </div>{invite?<label className="admin-check"><input name="revoked" type="checkbox" defaultChecked={invite.revoked}/>停用此邀请</label>:null}</fieldset>
-    {invite?<p className="admin-help">新的额度用于之后的兑换，已注册用户的额度保持原值。</p>:null}
-    {invite&&invite.uses>0?<section className="admin-form-section"><h3>兑换用户（{invite.uses}）</h3>{invite.users.map(user=><div className="admin-redemption" key={user.id}><span>{user.email}</span><small>{date(user.createdAt)}</small></div>)}{invite.users.length<invite.uses?<p className="admin-help">部分早期兑换仅保留次数记录。</p>:null}</section>:null}
+    {invite?<p className="admin-help">新的额度用于之后的兑换，已注册用户的额度保持原值</p>:null}
+    {invite&&invite.uses>0?<section className="admin-form-section"><h3>兑换用户（{invite.uses}）</h3>{invite.users.map(user=><div className="admin-redemption" key={user.id}><span>{user.email}</span><small>{date(user.createdAt)}</small></div>)}{invite.users.length<invite.uses?<p className="admin-help">部分早期兑换仅保留次数记录</p>:null}</section>:null}
     {error?<p className="admin-error" role="alert">{error}</p>:null}<footer><button type="button" className="admin-button" disabled={busy} onClick={onClose}>取消</button><button className="admin-button primary" disabled={busy}>{invite?<Check/>:<Plus/>}{busy?'正在保存…':invite?'保存邀请':'生成邀请码'}</button></footer>
     </form></EditorDialog>;
 }

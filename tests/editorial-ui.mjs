@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { installApiMock, detail } from './ui-qa.mjs';
 
 // The real frontend runs against isolated API fixtures; this never changes user data.
@@ -16,7 +16,8 @@ try {
   let loggedIn = false, loginPayload, renamePayload;
   await page.route('**/api/auth/me', route => route.fulfill({ status: loggedIn ? 200 : 401, json: loggedIn ? { user: { id: 'qa-user', email: 'qa@example.com', isAdmin: false } } : { message: '未登录' } }));
   await page.route('**/api/auth/login', route => { loginPayload = route.request().postDataJSON(); loggedIn = true; return route.fulfill({ json: { user: { id: 'qa-user', email: 'qa@example.com', isAdmin: false } } }); });
-  const records = Array.from({ length: 6 }, (_, i) => ({ ...detail, id: `${i + 1}1111111-1111-4111-8111-111111111111`, title: ['把想法变成故事', '一段城市里的光', '春日记录', '产品介绍', '灵感笔记', '第一次创作'][i], posterUrl: '/src/assets/home-cinema/02-sunset-panorama.webp', updatedAt: detail.updatedAt + i }));
+  await page.route('**/qa-editorial-cover.webp', async route => route.fulfill({ contentType: 'image/webp', body: await readFile(new URL('../web/src/assets/home-cinema/02-sunset-panorama.webp', import.meta.url)) }));
+  const records = Array.from({ length: 6 }, (_, i) => ({ ...detail, id: `${i + 1}1111111-1111-4111-8111-111111111111`, title: ['把想法变成故事', '一段城市里的光', '春日记录', '产品介绍', '灵感笔记', '第一次创作'][i], posterUrl: '/qa-editorial-cover.webp', updatedAt: detail.updatedAt + i }));
   await page.route(url => /^\/api(?:\/u\/[^/]+)?\/agent-projects$/.test(url.pathname), route => route.request().method() === 'GET' ? route.fulfill({ json: records }) : route.fallback());
   await page.route(url => /^\/api(?:\/u\/[^/]+)?\/agent-projects\/[^/]+$/.test(url.pathname), route => {
     if (route.request().method() !== 'PATCH') return route.fallback();
