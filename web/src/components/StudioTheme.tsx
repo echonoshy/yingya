@@ -2,18 +2,8 @@ import { createContext, useContext, useLayoutEffect, useMemo, useState, type Rea
 import { z } from "zod";
 import { useSavedState } from "../hooks/useSavedState";
 import { initialStudioTheme, studioTheme, type StudioArtworkVariant } from "../studioThemes";
-
-import inkDirector from "../assets/scenery/ink-ai-director.webp";
-import inkHanging from "../assets/scenery/ink-ai-hanging.webp";
-import inkFilm from "../assets/scenery/ink-ai-film.webp";
-import marketingArtwork from "../assets/comic/marketing.webp";
-
-const inkArtwork = {
-  home: [inkDirector, 600, 623], projects: [inkDirector, 600, 623],
-  assets: [inkFilm, 900, 480], access: [inkDirector, 600, 623],
-  account: [inkDirector, 600, 623], workspace: [inkHanging, 400, 500],
-  empty: [inkFilm, 900, 480],
-} as const;
+import { stateMaterials, type StudioMaterialName } from "../studioMaterials";
+import { MaterialFilm } from "./MaterialFilm";
 
 const motionSchema = z.boolean();
 const MotionContext = createContext({ enabled: true, toggle: () => {} });
@@ -35,10 +25,12 @@ export function StudioThemeProvider({ children }: { children: ReactNode }) {
 export const useStudioMotion = () => useContext(MotionContext);
 
 /** Real page-specific illustrations, independent of form state and customer media. */
-export function StudioArtwork({ variant, className = "" }: { variant: StudioArtworkVariant; className?: string }) {
-  const ink = variant === "marketing" ? null : inkArtwork[variant];
-  const src = ink?.[0] ?? marketingArtwork;
-  return <div className={`studio-art studio-art--${variant} ${className}`} data-theme={studioTheme.id} data-artwork={variant} aria-hidden="true">
-    <img key={src} src={src} alt="" draggable={false} decoding="async" width={ink?.[1] ?? 2172} height={ink?.[2] ?? 724} onError={event => { event.currentTarget.style.visibility = "hidden"; }}/>
+const artworkStates: Record<StudioArtworkVariant, StudioMaterialName> = { home: "start", marketing: "start", projects: "start", assets: "assets", access: "review", account: "ready", workspace: "thinking", empty: "search" };
+
+export function StudioArtwork({ variant, state, motion = false, className = "" }: { variant: StudioArtworkVariant; state?: StudioMaterialName; motion?: boolean; className?: string }) {
+  const { enabled } = useStudioMotion();
+  const name = state ?? artworkStates[variant];
+  return <div className={`studio-art studio-art--${variant}${motion ? " studio-art--motion" : ""} ${className}`} data-theme={studioTheme.id} data-artwork={variant} data-material={name}>
+    <MaterialFilm material={stateMaterials[name]} interactive={motion} enabled={enabled} controlLabel={`${stateMaterials[name].label}动画`} />
   </div>;
 }

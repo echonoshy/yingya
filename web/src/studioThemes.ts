@@ -1,5 +1,5 @@
-/** A unified comic studio; legacy illustration families remain archived. */
-export const studioTheme = { id: "comic", name: "小鬼片场", material: "comic" } as const;
+/** A unified print studio; preference IDs remain compatible with existing sessions. */
+export const studioTheme = { id: "comic", name: "想法有戏", material: "print" } as const;
 export type StudioArtworkVariant = "home" | "marketing" | "projects" | "assets" | "access" | "account" | "workspace" | "empty";
 export const studioThemeSessionKey = "yingya-studio-theme-v1";
 

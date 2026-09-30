@@ -1,71 +1,87 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, Copy, GithubLogo, Play, X } from '@phosphor-icons/react';
-import { featuredIntro, posterPath, videoPath, type VideoExample } from './examples';
-import { BrandLogo as Brand } from './BrandLogo';
-import { MotionGallery } from './MotionGallery';
-import { WorkflowShowcase } from './WorkflowShowcase';
-import { InkLandscape } from './InkLandscape';
-import './marketing.css';
-import './workshopHome.css';
-import './inkHome.css';
+import "./marketing.css";
+import "./printHome.css";
+import "./splitHome.css";
+import { ArrowUp, ArrowUpRight, GithubLogo } from "@phosphor-icons/react";
+import { BrandLogo } from "./BrandLogo";
+import { useCinemaPlayback } from "./useCinemaPlayback";
+import city from "../assets/home-cinema/02-sunset-panorama.webp";
+import movie from "../assets/home-cinema/yingya-six-scenes-v2.mp4";
+import sea from "../assets/home-cinema/04-seaside.webp";
+import seaMovie from "../assets/home-cinema/04-seaside.mp4";
+import door from "../assets/home-cinema/03-light-passage.webp";
+import train from "../assets/home-cinema/05-night-train.webp";
 
-function ExampleDialog({ example, onClose }: { example: VideoExample; onClose: () => void }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [copied, setCopied] = useState(false);
-  const [copyError, setCopyError] = useState(false);
-  const [mediaError, setMediaError] = useState(false);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    const previousFocus = document.activeElement;
-    dialog?.showModal();
-    const pauseWhenHidden = () => { if (document.hidden) videoRef.current?.pause(); };
-    document.addEventListener('visibilitychange', pauseWhenHidden);
-    return () => { document.removeEventListener('visibilitychange', pauseWhenHidden); dialog?.close(); if (previousFocus instanceof HTMLElement) previousFocus.focus({ preventScroll: true }); };
-  }, []);
-  async function copyPrompt() {
-    try { await navigator.clipboard.writeText(example.prompt); setCopied(true); setCopyError(false); }
-    catch { setCopyError(true); }
-  }
-  return <dialog ref={dialogRef} className="marketing-dialog" aria-labelledby="example-title" onCancel={event => { event.preventDefault(); onClose(); }} onClick={event => { if (event.target === event.currentTarget) { const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose(); } }}>
-    <header><div><p>{example.category} · {example.source}</p><h2 id="example-title">{example.title}</h2></div><button className="marketing-close" onClick={onClose} aria-label="关闭示例" autoFocus><X /></button></header>
-    <video ref={videoRef} src={videoPath(example.id)} poster={posterPath(example.id)} controls autoPlay playsInline preload="metadata" aria-label={example.title} onError={() => setMediaError(true)} />
-    {mediaError ? <p className="marketing-media-error" role="alert">视频暂时无法播放，请稍后重试。你仍可复制下方创作需求。</p> : null}
-    <div className="marketing-dialog-body"><h3>创作需求</h3><p className="marketing-example-prompt">{example.prompt}</p><div className="marketing-dialog-actions"><button className="marketing-secondary" onClick={() => void copyPrompt()}>{copied ? <Check /> : <Copy />}{copied ? '已复制需求' : '复制创作需求'}</button><a className="marketing-primary" href="/app">进入工作台<ArrowRight /></a></div><p className="marketing-dialog-note" role="status">{copyError ? '复制未成功，请选中上方文字手动复制。' : copied ? '需求已复制，进入工作台后粘贴，并补充你的内容或素材。' : example.coverNote || '效果示例供参考；实际作品将根据你的内容与素材制作。'}</p></div>
-  </dialog>;
+const createUrl = "/app";
+
+function HeroFilm() {
+  const media = useCinemaPlayback(movie);
+  return <div className="cinema-screening" id="screening">
+    <div className="cinema-scene">
+      <img className={media.started ? "cinema-poster cinema-poster--hidden" : "cinema-poster"}
+        src={city} alt="小映坐在屋顶，远望橙色夕阳下的城市" width="1344" height="768" fetchPriority="high" />
+      <video ref={media.videoRef} poster={city} autoPlay loop muted playsInline preload="none" aria-hidden="true" tabIndex={-1} />
+    </div>
+  </div>;
 }
 
+function Journey() {
+  const media = useCinemaPlayback(seaMovie);
+  return <section className="scene-journey" id="about-yingya" aria-labelledby="journey-title">
+    <div className="journey-heading">
+      <h2 id="journey-title">带上灵感，<br />让故事发生</h2>
+      <div className="journey-intro">
+        <p>一份资料，一个网页<br />或是脑海里闪过的念头<br />和映芽一起，把它变成一段好故事</p>
+        <a href={createUrl}>开始你的故事<ArrowUpRight aria-hidden="true" /></a>
+      </div>
+    </div>
+    <div className="journey-frames">
+      <figure className="journey-frame journey-frame--door">
+        <img src={door} alt="小映穿过深蓝长廊，走向一扇明亮的光门" width="1344" height="768" loading="lazy" />
+        <figcaption><span>01 / 想象</span><em lang="en">What if?</em></figcaption>
+      </figure>
+      <figure className="journey-frame journey-frame--sea">
+        <div className="journey-moving-frame">
+          <img src={sea} className={media.started ? "cinema-poster--hidden" : ""} alt="小映举起相机，记录海边的落日和飞鸟" width="1344" height="768" loading="lazy" />
+          <video ref={media.videoRef} poster={sea} autoPlay loop muted playsInline preload="none" aria-hidden="true" tabIndex={-1} />
+        </div>
+        <figcaption><span>02 / 看见</span><em lang="en">Look a little closer.</em></figcaption>
+      </figure>
+      <figure className="journey-frame journey-frame--train">
+        <img src={train} alt="小映坐在夜行列车上，窗外的城市灯光掠过" width="1344" height="768" loading="lazy" />
+        <figcaption><span>03 / 出发</span><em lang="en">And, action.</em></figcaption>
+      </figure>
+    </div>
+  </section>;
+}
 
 export function MarketingPage() {
-  const [selected, setSelected] = useState<VideoExample | null>(null);
-  const [reduced, setReduced] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReduced(media.matches);
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-  return <div className="marketing-page workshop-home ink-home">
+  return <div className="marketing-page cinema-home split-preview">
     <a className="marketing-skip" href="#main-content">跳到主要内容</a>
+    <header className="cinema-header" id="page-top">
+      <BrandLogo href="#page-top" compact />
+      <nav aria-label="官网导航">
+        <a className="github-link" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer"><GithubLogo weight="fill" aria-hidden="true" />GitHub</a>
+        <a href={createUrl}>进入创作<ArrowUpRight aria-hidden="true" /></a>
+      </nav>
+    </header>
     <main id="main-content" tabIndex={-1}>
-    <div className="ink-masthead">
-    <header className="marketing-header"><div className="marketing-header-inner"><Brand /><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看映芽源码"><GithubLogo weight="fill" /><span>GitHub</span></a><a className="marketing-login" href="/app">登录</a></div></header>
-      <section className="marketing-hero" aria-labelledby="marketing-title">
-        <div className="marketing-hero-copy">
-          <h1 id="marketing-title" className="ink-calligraphy-title" aria-label="让想法，跃然成片">
-            <span className="hero-title-line" aria-hidden="true">让想法</span>
-            <span className="hero-title-line" aria-hidden="true">跃然成片</span>
-          </h1>
-          <p className="ink-hero-description">用 AI，把文字、网页与素材做成视频。</p>
-          <div className="marketing-hero-actions"><a className="marketing-primary" href="/app">开始创作<ArrowRight /></a><button className="marketing-secondary workshop-watch" onClick={() => setSelected(featuredIntro)}><Play weight="fill" />观看演示</button></div>
+      <section className="cinema-hero" aria-labelledby="marketing-title">
+        <div className="cinema-copy">
+          <p className="cinema-motto" lang="en">A moving story.</p>
+          <h1 id="marketing-title"><span>让想法</span><span>有声有色</span></h1>
+          <div className="cinema-introduction">
+            <p className="cinema-intro">把资料、想法和素材<br />变成讲得清楚的视频</p>
+            <a className="cinema-start" href={createUrl}>开始创作<ArrowUpRight aria-hidden="true" /></a>
+          </div>
         </div>
+        <HeroFilm />
       </section>
-      <InkLandscape suspended={Boolean(selected)} />
-    </div>
-      <MotionGallery onOpen={setSelected} suspended={Boolean(selected)} reduced={reduced} />
-      <WorkflowShowcase />
+      <Journey />
     </main>
-    <footer className="workshop-footer"><div><Brand /><span aria-hidden="true">|</span><a className="marketing-github" href="https://github.com/echonoshy/yingya" target="_blank" rel="noopener noreferrer"><GithubLogo weight="fill" />GitHub</a></div></footer>
-    {selected ? <ExampleDialog key={selected.id} example={selected} onClose={() => setSelected(null)} /> : null}
+    <footer className="cinema-footer">
+      <BrandLogo href="#page-top" compact />
+      <p>带上灵感，剩下的交给映芽</p>
+      <a href="#page-top">回到顶部<ArrowUp aria-hidden="true" /></a>
+    </footer>
   </div>;
 }

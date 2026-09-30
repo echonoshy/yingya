@@ -1,6 +1,8 @@
-import { StudioArtwork } from "./StudioTheme";
+import { EditorialCharacter } from "./EditorialCharacter";
+import { BrandLogo } from "../marketing/BrandLogo";
+import "./editorial-login.css";
 import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowRight, CircleNotch, EnvelopeSimple, Key, LockKey, Prohibit } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowRight, CircleNotch, Eye, EyeSlash, Prohibit } from '@phosphor-icons/react';
 import { z } from 'zod';
 import { sessionFetch } from '../session';
 import { formatUsage as number } from '../usage';
@@ -20,6 +22,7 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
   const [mode, setMode] = useState<'login' | 'register' | 'reset'>(invitation.has('reset') ? 'reset' : invitation.has('invite') ? 'register' : 'login');
   const [email, setEmail] = useState(invitation.get('email') ?? '');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmation, setConfirmation] = useState('');
   const [inviteCode, setInviteCode] = useState(invitation.get('invite') ?? '');
   const [busy, setBusy] = useState(false), [error, setError] = useState(initialError);
@@ -41,18 +44,26 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
       onLogin(z.object({ id: z.string(), email: z.string(), isAdmin: z.boolean() }).parse(body.user));
     } catch (error) { setError(message(error)); } finally { setBusy(false); }
   }
-  return <main className="login-screen studio-shell studio-shell--login"><a className="login-brand" href="/" aria-label="返回映芽首页"><img src="/brand/yingya-ghost.png" alt="" /><span>映芽</span></a>
-    <section className="login-content account-login"><StudioArtwork variant="access"/><h1>{mode === 'reset' ? '重置密码' : mode === 'register' ? '邀请注册' : '登录'}</h1>
-      <div className="account-tabs" role="group" aria-label="账号方式">{(['login', 'register'] as const).map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={busy} onClick={() => { setMode(value); setError(''); }}>{value === 'login' ? '登录' : '邀请注册'}</button>)}</div>
-      <form onSubmit={event => void submit(event)}>
-        <label htmlFor="login-email">邮箱地址</label><div className="login-input"><EnvelopeSimple /><input id="login-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} disabled={busy} /></div>
-        {mode === 'register' ? <><label htmlFor="login-invite">邀请码</label><div className="login-input"><Key /><input id="login-invite" autoComplete="off" value={inviteCode} onChange={event => setInviteCode(event.target.value)} required maxLength={128} disabled={busy} /></div></> : null}
-        <label htmlFor="login-password">{mode !== 'login' ? '设置密码' : '密码'}</label><div className="login-input"><LockKey /><input id="login-password" type="password" autoComplete={mode !== 'login' ? 'new-password' : 'current-password'} placeholder={mode !== 'login' ? '至少 10 个字符' : ''} minLength={mode !== 'login' ? 10 : undefined} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} /></div>
-        {mode !== 'login' ? <><label htmlFor="login-confirmation">确认密码</label><div className="login-input"><LockKey /><input id="login-confirmation" type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} required maxLength={128} disabled={busy} /></div></> : null}
-        <button className="login-submit" disabled={busy}>{busy ? <CircleNotch className="spin" /> : <ArrowRight />}{busy ? '正在处理…' : mode === 'reset' ? '重置密码并登录' : mode === 'register' ? '注册并进入工作台' : '进入工作台'}</button>
-        {error ? <p className="account-error" role="alert">{error}</p> : null}
-      </form><p className="account-help">{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员。' : '忘记密码或首次激活已有内测账号，请联系管理员。'}</p>
-    </section></main>;
+  return <div className="auth-preview cinema-home editorial-login">
+    <header className="auth-header"><BrandLogo compact /><a className="auth-back" href="/"><ArrowLeft aria-hidden="true" />返回首页</a></header>
+    <main className="auth-layout">
+      <section className="auth-form-area" aria-labelledby="auth-heading">
+        <h1 id="auth-heading">{mode === 'reset' ? '重新出发' : mode === 'register' ? '开始创作' : '欢迎回来'}</h1>
+        <p className="auth-subtitle">{mode === 'reset' ? '设置新密码，继续你的创作' : mode === 'register' ? '用邀请码，开启你的第一个故事' : '登录映芽，继续你的创作'}</p>
+        <form onSubmit={event => void submit(event)} aria-busy={busy}>
+          <div className="auth-field"><label htmlFor="login-email">邮箱地址</label><input id="login-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} disabled={busy} /></div>
+          {mode === 'register' ? <div className="auth-field"><label htmlFor="login-invite">邀请码</label><input id="login-invite" autoComplete="off" placeholder="输入你的邀请码" value={inviteCode} onChange={event => setInviteCode(event.target.value)} required maxLength={128} disabled={busy} /></div> : null}
+          <div className="auth-field"><label htmlFor="login-password">{mode !== 'login' ? '设置密码' : '密码'}</label><div className="auth-password"><input id="login-password" type={passwordVisible ? 'text' : 'password'} autoComplete={mode !== 'login' ? 'new-password' : 'current-password'} minLength={mode !== 'login' ? 10 : undefined} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} aria-describedby={mode === 'login' ? undefined : 'password-hint'} /><button type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)} disabled={busy}>{passwordVisible ? <EyeSlash/> : <Eye/>}</button></div>{mode !== 'login' ? <small id="password-hint">至少 10 个字符</small> : null}</div>
+          {mode !== 'login' ? <div className="auth-field"><label htmlFor="login-confirmation">确认密码</label><input id="login-confirmation" type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} required maxLength={128} disabled={busy} /></div> : null}
+          <button className="auth-submit" disabled={busy}>{busy ? '正在处理…' : mode === 'reset' ? '重置密码并登录' : mode === 'register' ? '注册并开始创作' : '登录并开始创作'}{busy ? <CircleNotch className="spin" /> : <ArrowRight />}</button>
+          {error ? <p className="auth-error" role="alert">{error}</p> : null}
+        </form>
+        <p className="auth-switch">{mode === 'login' ? '有邀请码？' : '已有账号？'}<button disabled={busy} onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setPasswordVisible(false); }}>{mode === 'login' ? '注册账号' : '返回登录'}</button></p>
+        <p className="auth-help">{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员' : '忘记密码或首次激活账号，请联系管理员'}</p>
+      </section>
+      <aside className="auth-art" aria-label="映芽角色"><EditorialCharacter variant="login" /><p>每一个想法，<br />都值得被看见</p></aside>
+    </main>
+  </div>;
 }
 
 export function QuotaOverview({ refresh }: { refresh: number }) {
@@ -64,10 +75,10 @@ export function QuotaOverview({ refresh }: { refresh: number }) {
   }, [refresh]);
   return <section className="account-quota" aria-label="内测额度"><h2>我的额度</h2>{error ? <p className="account-error" role="alert">{error}</p> : null}
     {quota ? <><div className="account-quota-grid"><div><span>剩余 Token</span><strong>{number(quota.remainingTokens)}</strong><progress aria-label="Token 已用额度" value={Math.min(quota.usedTokens, quota.tokenLimit)} max={quota.tokenLimit || 1} /><small>已用 {number(quota.usedTokens)} / 总额 {number(quota.tokenLimit)}</small></div><div><span>素材生成</span><strong>不限次数</strong><small>已用 {number(quota.usedMedia)} 次</small></div></div>
-      {quota.remainingTokens === 0 ? <p className="account-status"><Prohibit />Token 额度已用完或正在使用。已有作品仍可查看和下载。</p> : null}
-      {quota.reservedTokens > 0 ? <p className="account-help">运行中预留 {number(quota.reservedTokens)} Token，调用结束后按实际用量结算。</p> : null}
-      {quota.reservedMedia > 0 ? <p className="account-help">运行中图片调用 {quota.reservedMedia} 次。</p> : null}
-      {quota.unknownCalls > 0 ? <p className="account-help">有 {quota.unknownCalls} 次模型调用尚未确认用量，暂按预留额度扣除，请联系管理员核对。</p> : null}
-      <p className="account-help">Token 额度不自动重置，需要追加请联系管理员。图片生成与语音操作不限次数。</p></> : !error ? <p role="status">正在读取额度…</p> : null}
+      {quota.remainingTokens === 0 ? <p className="account-status"><Prohibit />Token 额度已用完或正在使用；已有作品仍可查看和下载</p> : null}
+      {quota.reservedTokens > 0 ? <p className="account-help">运行中预留 {number(quota.reservedTokens)} Token，调用结束后按实际用量结算</p> : null}
+      {quota.reservedMedia > 0 ? <p className="account-help">运行中图片调用 {quota.reservedMedia} 次</p> : null}
+      {quota.unknownCalls > 0 ? <p className="account-help">有 {quota.unknownCalls} 次模型调用尚未确认用量，暂按预留额度扣除，请联系管理员核对</p> : null}
+      <p className="account-help">Token 额度不自动重置，需要追加请联系管理员；图片生成与语音操作不限次数</p></> : !error ? <p role="status">正在读取额度…</p> : null}
   </section>;
 }

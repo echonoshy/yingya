@@ -1,0 +1,134 @@
+/* Ink, precise preview controls, and a small original film crew. */
+.marketing-page.workshop-home.ink-home { background: var(--story-paper); color: var(--story-ink); }
+.ink-masthead { position: relative; isolation: isolate; }
+.ink-home .marketing-header { position: relative; z-index: 2; background: transparent; }
+.ink-home .marketing-header-inner { max-width: none; padding: 0 5.6%; height: 88px; gap: 32px; }
+.ink-home .marketing-brand-toy { width: 124px; height: 60px; }
+.ink-home .brand-scene text { font-family: var(--font-book); font-weight: 600; }
+.ink-home .marketing-header .marketing-github { min-width: 44px; }
+.ink-home .marketing-header .marketing-github svg { width: 30px; height: 30px; }
+.ink-home .marketing-header .marketing-github span { display: none; }
+.ink-home .marketing-login { min-width: 92px; font-family: var(--font-book); font-size: 18px; }
+.ink-home .marketing-hero { position: relative; z-index: 1; max-width: none; padding-top: 20px; }
+.ink-home .marketing-hero-copy h1 { font-family: var(--font-story); font-size: clamp(78px, 7.1vw, 116px); font-weight: 400; line-height: 1.16; letter-spacing: .025em; color: var(--text); }
+.ink-home .marketing-hero-copy .ink-calligraphy-title { position: relative; overflow: hidden; width: clamp(420px, 34vw, 510px); height: clamp(224px, 15.5vw, 238px); max-width: 100%; margin-inline: auto; display: flex; flex-direction: column; justify-content: center; }
+.ink-home .marketing-hero-copy > .ink-hero-description { margin-top: 16px; font-family: var(--font-book); font-size: clamp(18px, 1.65vw, 25px); color: var(--story-muted); line-height: 1.5; text-wrap: balance; }
+.ink-home .marketing-hero-actions { margin-top: 28px; gap: 24px; }
+.ink-home .marketing-hero-actions > * { min-width: 204px; min-height: 60px; border-radius: var(--radius-pill); font-family: var(--font-book); font-size: 20px; font-weight: 500; padding: 12px 24px; }
+.ink-home .marketing-hero-actions svg { width: 22px; height: 22px; }
+.ink-home .marketing-hero-actions .marketing-secondary { background: transparent; border: 1px solid var(--story-muted); }
+.ink-home .marketing-hero-actions .marketing-secondary:hover { background: var(--story-panel); }
+.ink-landscape-backdrop { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.ink-landscape-image { display: block; width: 100%; height: 100%; object-fit: cover; opacity: .82; mix-blend-mode: multiply; }
+.ink-landscape { position: relative; margin-top: 30px; padding-bottom: 82px; }
+.ink-landscape-scene { position: relative; width: 100%; }
+.ink-preview { position: relative; width: min(60.4%, 1040px); margin: 0 auto; }
+.ink-preview-frame { position: relative; aspect-ratio: 3.12 / 1; border: 1px solid var(--story-ink); }
+.ink-preview-frame > video { display: block; width: 100%; height: 100%; object-fit: cover; visibility: hidden; }
+.ink-preview-frame > video.has-started { visibility: visible; }
+.ink-frame-corner { position: absolute; width: 8px; height: 8px; border: 1px solid var(--story-ink); background: var(--story-paper); pointer-events: none; }
+.ink-frame-corner--tl { left: -4px; top: -4px; }
+.ink-frame-corner--tr { right: -4px; top: -4px; }
+.ink-frame-corner--bl { left: -4px; bottom: -4px; }
+.ink-frame-corner--br { right: -4px; bottom: -4px; }
+.ink-preview-shots { display: flex; position: absolute; top: 26%; right: 3%; gap: 6px; }
+.ink-preview-shots button { width: 54px; height: 44px; border: 1px solid var(--story-line-strong); border-radius: 0; padding: 2px; background: var(--story-panel); }
+.ink-preview-shots button[aria-pressed="true"] { border-color: var(--accent); outline: 1px solid var(--accent); outline-offset: 2px; }
+.ink-preview-shots img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ink-preview-controls { display: flex; align-items: center; gap: 18px; min-height: 64px; padding: 8px 18px; background: var(--story-panel); }
+.ink-preview-controls button { display: grid; place-items: center; flex-shrink: 0; min-width: 40px; min-height: 44px; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; }
+.ink-preview-controls button:hover { background: var(--story-surface); }
+.ink-preview-controls svg { width: 22px; height: 22px; }
+.ink-preview-time { white-space: nowrap; font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.ink-preview-time > span { color: var(--muted); }
+.ink-preview-controls input { flex: 1; min-width: 40px; width: 100%; height: 44px; margin: 0; accent-color: var(--story-ink); cursor: pointer; }
+.ink-preview-status { display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; font-size: var(--text-caption); }
+.ink-preview-status svg { color: var(--accent); width: 14px; height: 14px; }
+.ink-preview-error { padding: 8px; background: var(--story-panel); color: var(--danger); font-size: var(--text-control); }
+.ink-preview:fullscreen { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; background: var(--story-paper); padding: 24px; }
+.ink-preview:fullscreen .ink-preview-frame { width: 100%; max-height: calc(100vh - 96px); background: url('../assets/scenery/ink-ai-landscape.webp') center 72% / cover; }
+.ink-preview:fullscreen .ink-preview-shots { display: none; }
+.ink-home .ink-visitor { position: absolute; z-index: 2; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; touch-action: pan-y pinch-zoom; }
+.ink-visitor img { display: block; width: 100%; height: 100%; object-fit: contain; transform-origin: center bottom; pointer-events: none; }
+.ink-home .ink-visitor--ochre { left: 8.3%; top: 30%; width: 11.2%; height: 54%; }
+.ink-home .ink-visitor--ink { left: 70.4%; top: -5%; width: 5.7%; height: 30%; }
+.ink-visitor--ink img { transform-origin: center top; }
+.ink-home .ink-visitor--sage { right: 0; top: 52%; width: 23%; height: 44%; }
+.ink-home .workshop-showcase.motion-showcase { position: relative; z-index: 1; max-width: none; margin: 0; padding: 24px max(5.6%, calc((100% - 1440px) / 2)) 0; background: transparent; }
+.ink-home #motion-gallery-title { font-family: var(--font-book); font-size: var(--text-section); font-weight: 500; letter-spacing: 0; }
+.ink-home .motion-gallery-heading { display: flex; align-items: center; gap: 24px; margin-bottom: 26px; }
+.ink-home .motion-gallery-heading::after { content: ''; flex: 1; border-top: 1px solid var(--story-line); }
+@media (max-width: 1000px) and (min-width: 768px) {
+  .ink-preview { width: 70%; }
+  .ink-preview-controls { gap: 10px; padding-inline: 8px; }
+  .ink-home .ink-visitor--ochre { left: 2%; width: 13%; }
+  .ink-home .ink-visitor--sage { width: 20%; }
+  .ink-home .ink-visitor--ink { left: 73%; }
+}
+@media (max-width: 767px) {
+  .ink-home .marketing-header-inner { height: 76px; padding-inline: 20px; gap: 18px; }
+  .ink-home .marketing-brand-toy { width: 96px; height: 48px; }
+  .ink-home .marketing-login { min-width: 68px; min-height: 40px; font-size: 16px; }
+  .ink-home .marketing-header .marketing-github svg { width: 25px; height: 25px; }
+  .ink-home .marketing-hero { padding-top: 24px; }
+  .ink-home .marketing-hero-copy { padding-inline: 16px; }
+  .ink-home .marketing-hero-copy h1 { font-size: 56px; line-height: 1.3; }
+  .ink-home .marketing-hero-copy .ink-calligraphy-title { width: 264px; height: 166px; }
+  .ink-home .marketing-hero-copy > .ink-hero-description { max-width: 290px; margin: 18px auto 0; font-family: var(--font-ui); font-size: var(--text-body); line-height: 1.7; }
+  .ink-home .marketing-hero-actions { margin-top: 22px; gap: 12px; }
+  .ink-home .marketing-hero-actions > * { min-width: 0; min-height: 48px; padding: 10px 18px; font-size: 16px; gap: 10px; }
+  .ink-home .marketing-hero-actions svg { width: 18px; height: 18px; }
+  .ink-landscape-backdrop { inset: 110px 0 0; }
+  .ink-landscape-image { width: 860px; max-width: none; position: absolute; right: -120px; object-fit: cover; }
+  .ink-landscape { margin-top: 46px; padding-bottom: 88px; }
+  .ink-preview { width: calc(100% - 40px); }
+  .ink-preview-frame { aspect-ratio: 16 / 9; }
+  .ink-preview-frame > video { object-fit: contain; }
+  .ink-preview-shots { top: 20%; right: 4%; gap: 5px; }
+  .ink-preview-shots button { width: 44px; height: 44px; }
+  .ink-preview-controls { gap: 6px; padding: 2px 4px; min-height: 48px; flex-wrap: wrap; }
+  .ink-preview-controls button { min-width: 36px; }
+  .ink-preview-controls input { min-width: 30px; }
+  .ink-preview-status { position: absolute; right: 0; bottom: -27px; font-size: var(--text-caption); }
+  .ink-home .ink-visitor--ochre { width: 74px; height: 84px; left: 2%; top: auto; bottom: -49px; }
+  .ink-home .ink-visitor--ink { width: 48px; height: 65px; left: auto; right: 8%; top: -11px; }
+  .ink-home .ink-visitor--sage { width: 138px; height: 74px; right: 2%; top: auto; bottom: 29px; pointer-events: auto; }
+  .ink-home .workshop-showcase.motion-showcase { padding: 18px 20px 0; }
+  .ink-home .motion-gallery-heading { margin-bottom: 20px; }
+}
+/* The quiet gallery shares the rice-paper surface of the opening illustration. */
+.ink-home .motion-tile { opacity: 1; transform: none; transition: none; }
+.ink-home .marketing-gallery.motion-gallery { gap: 36px 24px; }
+.ink-home .marketing-example-image { aspect-ratio: 16 / 9; border: 0; border-radius: var(--radius-control); background: transparent; }
+.ink-home .marketing-example-image img { object-fit: cover; }
+.ink-home .motion-card-open { left: 12px; right: auto; bottom: 12px; width: 34px; height: 34px; padding: 0; justify-content: center; opacity: 1; transform: none; border: 1px solid var(--canvas); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--text) 65%, transparent); color: var(--canvas); }
+.ink-home .motion-card-caption { margin-top: 14px; }
+.ink-home .motion-card-caption h3 { font-family: var(--font-book); font-size: var(--text-section); font-weight: 500; }
+.ink-home .marketing-example .motion-card-description { font-family: var(--font-story); font-size: var(--text-body); color: var(--story-muted); margin-top: 6px; line-height: 1.7; }
+.ink-home .motion-gallery-bottom { margin-top: 30px; }
+.ink-home .motion-more { display: inline-flex; width: auto; min-width: 112px; height: 44px; justify-content: center; gap: 10px; font-family: var(--font-book); }
+.ink-home .motion-more svg { width: 18px; height: 18px; }
+.ink-home .workflow-showcase { max-width: 1440px; width: 87.8%; margin: 32px auto 0; padding: 44px 0 0; border-top: 1px solid var(--story-line); }
+.ink-home .workshop-footer { padding: 24px; }
+.ink-home .workshop-footer .marketing-brand-toy { width: 96px; height: 48px; }
+@media (max-width: 767px) {
+  .ink-home .workflow-showcase { width: calc(100% - 40px); margin-top: 28px; padding-top: 28px; }
+  .ink-home .workshop-footer { padding-top: 32px; }
+}
+
+.ink-preview-focus { position: absolute; right: 26%; top: 16%; width: 13%; height: 24%; padding: 0; border: 1px dashed var(--accent); border-radius: 0; background: transparent; color: var(--accent); }
+.ink-preview-focus:hover { background: color-mix(in srgb, var(--selection) 30%, transparent); }
+.ink-preview-focus svg { position: absolute; right: 2px; bottom: 2px; width: 20px; height: 20px; color: var(--story-ink); }
+.ink-preview-flow { position: absolute; right: 21%; top: 32%; width: 32px; height: 24px; color: var(--accent); pointer-events: none; }
+.ink-preview-shots { top: 34%; }
+.ink-home #motion-gallery-title { font-size: var(--text-title); }
+@media (max-width: 767px) {
+  .ink-preview-focus, .ink-preview-flow { display: none; }
+  .ink-preview-shots { top: 20%; }
+  .ink-home #motion-gallery-title { font-size: var(--text-section); }
+  .ink-home .motion-gallery-heading { flex-direction: row; text-align: left; }
+}
+.ink-home .ink-visitor { min-width: 44px; min-height: 44px; }
+/* Controls sit above transparent character bounds, including the film tail. */
+.ink-preview-controls { position: relative; z-index: 3; }
+.ink-home #marketing-title { user-select: text; }

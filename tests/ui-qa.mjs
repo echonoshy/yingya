@@ -187,7 +187,7 @@ async function assertAssetWorkshop(browser) {
   await page.goto(workspaceUrl);
   await page.getByRole("button", { name: "素材工坊", exact: true }).click();
   await page.getByLabel("搜索素材").waitFor();
-  await page.getByRole("heading", { name: "素材工坊", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "我的素材", exact: true }).waitFor();
   if (await page.getByText("最近项目", { exact: true }).count()) throw new Error("Asset workshop should not show video projects in its navigation");
   const mediaTabs = page.getByRole("navigation", { name: "素材类型" });
   await mediaTabs.getByRole("button", { name: /^视频/ }).waitFor();
@@ -227,6 +227,8 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("button", { name: /全部素材/ }).click();
   await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
   await folderSelect.selectOption({ label: "活动素材" });
+  await page.keyboard.press("Escape");
+  await page.locator(".editorial-inspector").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: /全部素材/ }).click();
   await page.getByRole("button", { name: "AI 生成", exact: true }).click();
   await page.getByRole("button", { name: /深色背景中的发光新芽，电影级侧光.*AI 生成/ }).waitFor();
@@ -326,7 +328,7 @@ async function assertWaitingInputPrompt(browser) {
       const turnRequest = page.waitForRequest(request => request.url().endsWith("/turns") && request.method() === "POST");
       await prompt.getByRole("button", { name: /明亮课堂风/ }).click();
       const payload = (await turnRequest).postDataJSON();
-      if (payload.text !== "选择明亮课堂风，请继续制作。") throw new Error(`Unexpected waiting-input answer: ${payload.text}`);
+      if (payload.text.replace(/。$/, "") !== "选择明亮课堂风，请继续制作") throw new Error(`Unexpected waiting-input answer: ${payload.text}`);
     }
     if (errors.length) throw new Error(`Waiting input ${viewport.name} errors:\n${errors.join("\n")}`);
     await page.close();
