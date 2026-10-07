@@ -28,4 +28,9 @@ if (process.argv.includes('--probe-browser') && result.browser.configured) {
     clearTimeout(watchdog);
   }
 }
+if (process.env.YINGYA_CAPTIONS) {
+  const captions = spawnSync('python3', [process.env.YINGYA_CAPTIONS, 'health'], {encoding:'utf8', timeout:10000});
+  try { result.captions = JSON.parse(captions.stdout); }
+  catch { result.captions = {ok:false, error:'Offline captions runtime is unavailable'}; }
+}
 console.log(JSON.stringify(result, null, 2));

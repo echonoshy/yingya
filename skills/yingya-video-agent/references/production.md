@@ -1,6 +1,6 @@
 # Current product contract
 
-Read [knowledge-video.md](knowledge-video.md). Reuse approved keyframe source and record per-feedback evidence. No video-generation provider calls.
+Read [knowledge-video.md](knowledge-video.md). Reuse approved keyframe source and record per-feedback evidence. For generated shots follow [generated-footage.md](generated-footage.md); assemble their verified local media with Remotion.
 
 # Production dependencies
 
@@ -65,10 +65,10 @@ For narration-led videos:
 3. Synthesize by scene or natural sentence group, retaining consistent settings and tone. Reuse existing audio only when text, voice, and synthesis settings match. Use versioned filenames so earlier drafts retain their original audio.
 4. Measure each output with `ffprobe`. Record scene-local audio paths and measured durations in the scene fields. Use actual speech duration plus intentional pauses to set scene ends; never truncate a sentence to fit an earlier estimate.
    Generate Remotion media frame ranges and scene windows from these fields. For a full narration track, measure sentence/scene offsets before setting cuts.
-5. Derive captions from the resulting audio using an installed alignment / transcription capability. Check recognized text against the script. If only manual sentence alignment is available, describe it accurately and verify it by listening; do not claim word-level alignment.
+5. Use the installed `yingya-captions` skill to transcribe measured speech into timestamped JSON and compare the saved script. Correct recognition against the script and actual speech, retain the raw result, validate intervals and listen around boundaries. ASR timestamps are estimates; do not claim verified word timing or 300 ms accuracy without listening evidence.
 6. Keep caption times scene-local until assembly, then add the scene offset exactly once. Recompute offsets after duration changes. Hold the ending until narration and captions finish.
 
-For music-led work, align major visual beats with the supplied track using installed audio tools when available. For silent work, omit speech synthesis and transcription; use readable on-screen copy and deliberate hold time. Music and effects should leave speech intelligible. Never generate speech merely because a voice is saved when the user requested a silent video.
+For music-led work, align major visual beats with the supplied track using installed audio tools when available. For silent work, omit speech synthesis and transcription; use readable on-screen copy and deliberate hold time. Music and effects should leave speech intelligible. Use [audio-mixing.md](audio-mixing.md) for loudness measurements, fades, normalization and ducking. Never generate speech merely because a voice is saved when the user requested a silent video.
 
 ## Assets and composition
 
@@ -86,7 +86,7 @@ subject animation when the plan promises it; panning a still does not establish
 continuous character action. Resolve each shot's action and transition within
 the common measured scene schedule.
 
-Keep narration and generated media in `assets/`, scene sources in `src/` when needed, review media in `artifacts/`, and reports in `.yingya/reports/`. Use relative paths so immutable source snapshots can render independently. Register produced media in the existing `assets.json` shape before linking its ID to a scene. Preserve existing IDs and fields.
+Keep narration and generated media in `assets/`, scene sources in `src/` when needed, rendered media in `renders/`, and reports in `.yingya/reports/`. Use relative paths so immutable source snapshots can render independently. Register produced media in the existing `assets.json` shape before linking its ID to a scene. Preserve existing IDs and fields.
 
 Stable scene IDs connect `scenes.json`, React scene components, assets, and feedback. Write scene-local animation times and assemble from the shared timeline. Do not maintain unrelated hand-written timing copies in captions and React. Check local media and fonts load and that the first and last frames contain the intended content.
 

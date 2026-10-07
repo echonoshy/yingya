@@ -1,4 +1,5 @@
-.marketing-page { height: 100dvh; overflow-y: auto; overflow-x: hidden; background: var(--canvas); color: var(--text); font: var(--text-body)/var(--leading-body) var(--font-ui); scroll-behavior: smooth; }
+/* Keep absolute content, including accessible text, inside this scroll container. */
+.marketing-page { position: relative; height: 100dvh; overflow-y: auto; overflow-x: hidden; background: var(--canvas); color: var(--text); font: var(--text-body)/var(--leading-body) var(--font-ui); scroll-behavior: smooth; }
 .marketing-page :is(h1,h2,h3,p) { margin: 0; }
 .marketing-page a { color: inherit; text-decoration: none; }
 .marketing-page button { font: inherit; color: inherit; cursor: pointer; }

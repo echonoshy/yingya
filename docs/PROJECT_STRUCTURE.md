@@ -15,6 +15,8 @@ runtime dependencies.
 | `scripts/` | Developer tooling | Product source | Track |
 | `deploy/` | Local service operations | Product source | Track |
 | `examples/` | Composition examples used by runtime tooling/tests | Product source | Track |
+| `design-assets/` | Current film sources and typography tools | Rebuildable product assets | Track source; ignore build output |
+| `local-ui-archive/` | Retired UI assets and prototypes | Machine-local historical reference | Ignore |
 | `tests/fixtures/` | Automated test inputs | Test source | Track |
 | `data/` | Yingya and its users | Mutable runtime data | Ignore |
 | `.runtime/` | Codex, Remotion, models, caches | Machine-local state | Ignore |
@@ -99,9 +101,20 @@ directory; do not add generated media to the repository unless a visual
 regression test explicitly defines it as a reviewed baseline.
 
 One-off QA scripts, screenshots, logs, and exploratory design exports belong in
-temporary directories. Keep current product guidance in `docs/`; archive superseded decisions under
-`docs/archive/`, clearly marked as historical rather than current instructions. Current brand assets live in `web/public/brand/`: `yingya-ghost.png` is
-the product logo; `yingya-favicon.svg` is the theme-aware browser icon.
+temporary directories. Keep current product guidance in `docs/`; remove superseded
+plans, delivery reports, and tests for retired interfaces instead of accumulating
+historical instructions. Preserve source attributions and font licenses with their assets.
+
+Unused UI artwork, previews, and old UI source are kept locally under
+`local-ui-archive/<date>/`, preserving their original relative paths. The directory
+is ignored by Git and is outside the frontend and release snapshot inputs. Each
+archive has a manifest of original paths, sizes, and SHA-256 hashes. It must not be
+required to build or test a fresh checkout.
+
+Current browser assets live in `web/src/assets/` and `web/public/`. The brand
+wordmark is rendered by `marketing/BrandLogo.tsx`; the browser icon is
+`web/public/brand/yingya-monogram.svg`. Active film source and font tooling remain
+in `design-assets/capability-reels/` and `design-assets/typography/`.
 
 ## Cleanup policy
 

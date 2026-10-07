@@ -1,0 +1,22 @@
+/* Small, self-hosted subsets for fixed display copy; user content keeps the UI font. */
+@font-face {
+  font-family: "Yingya Display";
+  src: url("./assets/typography/display.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Yingya Note";
+  src: url("./assets/typography/note.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Yingya Serif";
+  src: url("./assets/typography/serif.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+}

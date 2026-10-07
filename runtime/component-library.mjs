@@ -63,6 +63,33 @@ function within(root, target) {
 }
 async function exists(file) { try { await fs.lstat(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } }
 
+export async function nativeCatalog() {
+  return JSON.parse(await fs.readFile(path.join(here, 'remotion/explain-catalog.json'), 'utf8'));
+}
+
+export async function viewNative(component) {
+  const entry = (await nativeCatalog()).find(item => item.id === component);
+  check(entry, `Unknown native component: ${component}`);
+  return {...entry, engine: 'remotion', source: 'src/yingya-explain.tsx',
+    sharedProps: 'title?, theme?: {ink,accent,panel,fontFamily,fontSize}, style? (footage uses theme only)',
+    captionsExport: 'SentenceCaptions({captions: [{text,startMs,endMs}], offsetMs?, style?})',
+    note: 'Use inside Sequence for scene-local frames. All audio/video belongs in remotion.json.media. Edit the copied source and preserve it in snapshots.'};
+}
+
+export async function installNative({project, component}) {
+  const entry = await viewNative(component);
+  const root = await fs.realpath(project);
+  const target = await projectPath(root, entry.source);
+  const contents = await fs.readFile(path.join(here, 'remotion/explain.tsx'));
+  await fs.mkdir(path.dirname(target), {recursive: true});
+  try { await fs.writeFile(target, contents, {flag: 'wx'}); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    check((await fs.readFile(target)).equals(contents), 'Native source has project edits; reuse it or choose a new project. Never overwrite those edits.');
+  }
+  return {...entry, sha256: hash(contents), installed: true};
+}
+
 export async function projectPath(root, relative, { mustExist = false } = {}) {
   check(typeof relative === 'string' && relative.length > 0 && !path.isAbsolute(relative) && !relative.includes('\0') && !relative.includes('\\') && !relative.split('/').includes('..'), `Project path must be relative without traversal: ${relative}`);
   const target = path.resolve(root, relative);
@@ -569,11 +596,11 @@ export async function buildComponents({ project, entry = `${LIBRARY}/entry.tsx`,
 export async function main(argv = process.argv.slice(2)) {
   const [command, ...flags] = argv;
   if (!command || command === '--help' || command === 'help' || flags.includes('--help')) {
-    console.log('Usage: node "$YINGYA_COMPONENT_LIBRARY" view|init|search|add|diagnose|build\nview: --component @provider/item --project PATH\nsearch: --project PATH --registry all|@react-bits|@magicui --query TEXT --limit 20 --offset 0\nadd: --project PATH --component @react-bits/Name-TS-CSS|@magicui/name (includes static import diagnostics)\ndiagnose: --project PATH --component @provider/item (recheck existing source; restores locked dependencies if needed)\nbuild: --project PATH --entry component-library/entry.tsx --out assets/components\nPublic source registries require timeline adaptation. Tailwind v4 imports are compiled at build time. Imported playback dependencies are bundled; runtime URLs and rendered output still require verification.');
+    console.log('Usage: node "$YINGYA_COMPONENT_LIBRARY" catalog|view|install|init|search|add|diagnose|build\ncatalog: list offline native Remotion explain-* components\nview: --component explain-* OR --component @provider/item --project PATH\ninstall: --component explain-* --project PATH (copies editable native source)\nsearch: --project PATH --registry all|@react-bits|@magicui --query TEXT --limit 20 --offset 0\nadd: --project PATH --component @react-bits/Name-TS-CSS|@magicui/name (includes static import diagnostics)\ndiagnose: --project PATH --component @provider/item (recheck existing source; restores locked dependencies if needed)\nbuild: --project PATH --entry component-library/entry.tsx --out assets/components\nPublic source registries require timeline adaptation. Tailwind v4 imports are compiled at build time. Imported playback dependencies are bundled; runtime URLs and rendered output still require verification.');
     return;
   }
   const options = {};
-  const allowed = { init: [], search: ['query', 'limit', 'offset', 'registry'], view: ['component'], add: ['component'], diagnose: ['component'], build: ['entry', 'out'] };
+  const allowed = { catalog: [], install: ['component'], init: [], search: ['query', 'limit', 'offset', 'registry'], view: ['component'], add: ['component'], diagnose: ['component'], build: ['entry', 'out'] };
   check(Object.hasOwn(allowed, command), `Unknown command: ${command}`);
   for (let i = 0; i < flags.length; i += 2) {
     if (flags[i] === '--json') { i -= 1; continue; }
@@ -581,8 +608,10 @@ export async function main(argv = process.argv.slice(2)) {
     check(flags[i].startsWith('--') && ['project', ...allowed[command]].includes(key) && flags[i + 1] !== undefined && !Object.hasOwn(options, key), `Invalid or duplicate option: ${flags[i]}`);
     options[key] = flags[i + 1];
   }
+  if (command === 'catalog') { console.log(json(await nativeCatalog()).trimEnd()); return; }
+  if (command === 'view' && options.component?.startsWith('explain-')) { console.log(json(await viewNative(options.component)).trimEnd()); return; }
   check(options.project, '--project PATH is required.');
-  const operation = { init: initLibrary, search: searchComponents, view: viewComponent, add: addComponent, diagnose: diagnoseComponent, build: buildComponents }[command];
+  const operation = { install: installNative, init: initLibrary, search: searchComponents, view: viewComponent, add: addComponent, diagnose: diagnoseComponent, build: buildComponents }[command];
   console.log(json(await operation(options)).trimEnd());
 }
 

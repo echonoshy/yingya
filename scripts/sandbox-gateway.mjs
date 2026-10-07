@@ -33,9 +33,16 @@ const server=http.createServer(async(req,res)=>{
     options={hostname:base.hostname,port:base.port,path:path+url.search,method:req.method,headers:{...clean(req.headers),host:base.host,authorization:`Bearer ${token}`}};
   } else {
     if(url.protocol!=='http:')throw new Error('Use CONNECT for HTTPS');
-    const address=await target(url.hostname,url.port||80);
+    // The bundled H3 skill is the sole nonstandard-port service. Keep the
+    // public-network restriction for every other destination and omit job listing.
+    const h3 = url.hostname === '140.143.229.103' && url.port === '8910';
+    if (h3 && !(
+      (req.method === 'GET' && /^\/api\/(health|capabilities|jobs\/[a-zA-Z0-9_-]+(?:\/video|\/frame\/(?:first|last))?)$/.test(url.pathname)) ||
+      (req.method === 'POST' && /^\/api\/jobs(?:\/[a-zA-Z0-9_-]+\/cancel)?$/.test(url.pathname))
+    )) throw new Error('H3 route denied');
+    const address=h3 ? url.hostname : await target(url.hostname,url.port||80);
     const pinned=new URL(url);pinned.hostname=net.isIPv6(address)?`[${address}]`:address;
-    options=upstream ? {hostname:upstream.hostname,port:upstream.port||80,path:pinned.href,method:req.method,headers:{...clean(req.headers),host:url.host,...proxyAuth()}} : {hostname:address,port:url.port||80,path:url.pathname+url.search,method:req.method,headers:{...clean(req.headers),host:url.host}};
+    options=upstream && !h3 ? {hostname:upstream.hostname,port:upstream.port||80,path:pinned.href,method:req.method,headers:{...clean(req.headers),host:url.host,...proxyAuth()}} : {hostname:address,port:url.port||80,path:url.pathname+url.search,method:req.method,headers:{...clean(req.headers),host:url.host}};
     // Preserve provider authorization only for public destinations.
     if(req.headers.authorization)options.headers.authorization=req.headers.authorization;
   }

@@ -81,6 +81,139 @@ async fn records(relay: &ModelRelay) -> Vec<Value> {
 }
 
 #[tokio::test]
+async fn native_image_calls_forward_host_auth_and_count_media_without_text_token_prices() {
+    for endpoint in ["generations", "edits"] {
+        let payload = json!({"created":1,"data":[{"b64_json":"generated-image"}],
+            "usage":{"input_tokens":100,"output_tokens":200,"total_tokens":300}});
+        let upstream = Response::builder()
+            .header("content-type", "application/json")
+            .body(Body::from(payload.to_string()))
+            .unwrap();
+        let (relay, db, user, mut rx, server) = setup(vec![upstream]).await;
+        let input = json!({"model":"gpt-image-2","prompt":"private-image-prompt",
+            "background":"opaque","quality":"auto","size":"auto",
+            "images":[{"image_url":"data:image/png;base64,private-reference"}]});
+        let compressed = zstd::stream::encode_all(input.to_string().as_bytes(), 1).unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!(
+                "/api/internal/model/backend-api/codex/images/{endpoint}"
+            ))
+            .header("content-type", "application/json")
+            .header("content-encoding", "zstd")
+            .header("authorization", "Bearer sandbox-secret")
+            .header("chatgpt-account-id", "sandbox-account")
+            .header("cookie", "private-cookie")
+            .body(Body::from(compressed))
+            .unwrap();
+        let response = relay.forward(request, db.clone(), &user).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&body).unwrap(), payload);
+        let (headers, forwarded) = rx.recv().await.unwrap();
+        assert_eq!(forwarded, input);
+        assert_eq!(headers["authorization"], "Bearer host-secret");
+        assert_eq!(headers["chatgpt-account-id"], "host-account");
+        assert!(!headers.contains_key("cookie"));
+        assert!(!headers.contains_key("content-encoding"));
+        let rows = records(&relay).await;
+        assert_eq!(rows[0]["model"], "gpt-image-2");
+        assert_eq!(rows[0]["tokens"], 0);
+        let quota = db.quota(&user).unwrap();
+        assert_eq!(quota.used_tokens, 0);
+        assert_eq!(quota.used_media, 1);
+        assert_eq!(quota.reserved_media, 0);
+        assert_eq!(quota.unknown_calls, 0);
+        let metadata = serde_json::to_string(&rows).unwrap();
+        for secret in [
+            "private-image-prompt",
+            "private-reference",
+            "generated-image",
+            "host-secret",
+        ] {
+            assert!(!metadata.contains(secret));
+        }
+        server.abort();
+        fs::remove_dir_all(relay.auth_path.parent().unwrap())
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn native_image_validation_and_provider_errors_release_the_media_reservation() {
+    let upstream = Response::builder()
+        .status(400)
+        .header("content-type", "application/json")
+        .body(Body::from(
+            r#"{"error":{"code":"content_policy_violation","message":"private-error"}}"#,
+        ))
+        .unwrap();
+    let (relay, db, user, mut rx, server) = setup(vec![upstream]).await;
+    for (model, status) in [
+        ("gpt-6-astra", StatusCode::BAD_GATEWAY),
+        ("gpt-image-2", StatusCode::BAD_REQUEST),
+    ] {
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/internal/model/backend-api/codex/images/generations")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({"model":model,"prompt":"private-image-prompt"}).to_string(),
+            ))
+            .unwrap();
+        let response = relay.forward(request, db.clone(), &user).await;
+        assert_eq!(response.status(), status);
+        to_bytes(response.into_body(), 4096).await.unwrap();
+        let quota = db.quota(&user).unwrap();
+        assert_eq!(quota.used_tokens, 0);
+        assert_eq!(quota.used_media, 0);
+        assert_eq!(quota.reserved_media, 0);
+        assert_eq!(quota.unknown_calls, 0);
+    }
+    assert_eq!(rx.recv().await.unwrap().1["model"], "gpt-image-2");
+    assert!(rx.try_recv().is_err());
+    server.abort();
+    fs::remove_dir_all(relay.auth_path.parent().unwrap())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn interrupted_native_image_response_retains_media_without_fabricating_text_tokens() {
+    let (tx, rx) = mpsc::channel::<Result<&'static str, std::io::Error>>(1);
+    tx.send(Ok(r#"{"data":[{"b64_json":"#)).await.unwrap();
+    let upstream = Response::builder()
+        .header("content-type", "application/json")
+        .body(Body::from_stream(
+            tokio_stream::wrappers::ReceiverStream::new(rx),
+        ))
+        .unwrap();
+    let (relay, db, user, mut requests, server) = setup(vec![upstream]).await;
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/internal/model/backend-api/codex/images/generations")
+        .body(Body::from(r#"{"model":"gpt-image-2","prompt":"forest"}"#))
+        .unwrap();
+    let response = relay.forward(request, db.clone(), &user).await;
+    requests.recv().await.unwrap();
+    assert!(to_bytes(response.into_body(), 4096).await.is_err());
+    assert_eq!(records(&relay).await[0]["outcome"], "stream_timeout");
+    let quota = db.quota(&user).unwrap();
+    assert_eq!(quota.used_tokens, 0);
+    assert_eq!(quota.used_media, 1);
+    assert_eq!(quota.reserved_media, 0);
+    assert_eq!(quota.unknown_calls, 1);
+    tokio::time::timeout(Duration::from_secs(1), tx.closed())
+        .await
+        .unwrap();
+    server.abort();
+    fs::remove_dir_all(relay.auth_path.parent().unwrap())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn forwards_current_protocol_headers_and_records_only_metadata() {
     let payload = "data: {\"type\":\"response.completed\",\"response\":{\"service_tier\":\"priority\",\"usage\":{\"input_tokens\":7,\"output_tokens\":3}}}\n\n";
     let upstream = Response::builder()

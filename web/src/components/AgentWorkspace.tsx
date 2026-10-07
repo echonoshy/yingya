@@ -1,4 +1,7 @@
-import { StudioArtwork } from "./StudioTheme";
+import { useUploadQueue } from "../hooks/useUploadQueue";
+import { UploadProgressList } from "./UploadProgressList";
+import { SelectControl } from "./SelectControl";
+import { BrandWordmark } from "../marketing/BrandLogo";
 import { FeedbackResults } from "./FeedbackResults";
 import { parseTimeRange } from "../feedback/timeRange";
 import { readAnnotationDraft, type AnnotationDraft } from "../feedback/annotationDraft";
@@ -34,6 +37,9 @@ import { SelectionIndicator } from "./SelectionIndicator";
 import { ArtifactList } from "./ArtifactList";
 import { AssetPicker } from "./AssetPicker";
 import { PlanDocument } from "./PlanDocument";
+import { ProjectJourney } from "./ProjectJourney";
+import { PlaybackBar } from "./PlaybackBar";
+import { TimeRangeDialog } from "./TimeRangeDialog";
 import { filePreviewKind } from "../projectFiles";
 import {
   useFeedbackDraft,
@@ -167,6 +173,7 @@ export function AgentWorkspace({
     [],
   );
   const [busy, setBusy] = useState(false);
+  const uploads = useUploadQueue<{ path: string; name?: string }>();
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"thread" | "canvas">("thread");
@@ -276,7 +283,7 @@ export function AgentWorkspace({
     error: string;
   } | null>(null);
   const [threadWidth, setThreadWidth] = useState(() =>
-    savedWidth("yingya-review-thread-width", Math.round(window.innerWidth / 3)),
+    savedWidth("yingya-review-thread-width", Math.min(400, Math.round(window.innerWidth * .28))),
   );
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   useEffect(() => {
@@ -527,11 +534,11 @@ export function AgentWorkspace({
       attemptRef.current = attempt;
       if (!attempt.input) {
         const [uploaded, visualFeedback] = await Promise.all([
-          Promise.all([
-            ...files.map((file) => api.uploadAsset(project.id, file)),
-            ...selectedAssets.map((asset) =>
-              uploadLibraryAsset(project.id, asset),
-            ),
+          uploads.run([
+            ...files.map((file) => ({ id: `file:${fileRoleKey(file)}`, name: file.name, size: file.size,
+              run: (options: import("../upload").UploadOptions) => api.uploadAsset(project.id, file, options) })),
+            ...selectedAssets.map((asset) => ({ id: `library:${asset.id}`, name: assetName(asset),
+              run: async () => uploadLibraryAsset(project.id, asset) })),
           ]),
           Promise.all(
             submittedFeedback.map(async (draft) => {
@@ -902,17 +909,12 @@ export function AgentWorkspace({
   const displayedCheckpoint = checkpointPresence.value
     ? lastCheckpoint.current
     : undefined;
-  const checkpointArtifact = displayedCheckpoint?.artifactIds
-    .map((id) =>
-      project.manifest.artifacts.find((artifact) => artifact.id === id),
-    )
-    .find(Boolean);
   const workspaceStyle = {
     "--thread-width": `${visibleThreadWidth}px`,
   } as CSSProperties;
   function dragThread(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId))
-      setThreadWidth(Math.min(maxThreadWidth, Math.max(320, event.clientX)));
+      setThreadWidth(Math.min(maxThreadWidth, Math.max(320, viewportWidth - event.clientX)));
   }
   function finishResize(
     event: ReactPointerEvent<HTMLDivElement>,
@@ -964,8 +966,8 @@ export function AgentWorkspace({
     <main className="thread">
       <header className="thread-header">
         <div>
-          <span>创作对话</span>
-          {running ? <b>正在制作</b> : null}
+          <span>创作助手<span className="assistant-cursor" aria-hidden="true" /></span>
+          <b>{running ? "正在制作" : visibleCheckpoint ? "等待确认" : selectedVersion ? "可以继续修改" : "一起理清想法"}</b>
         </div>
         {titleError ? (
           <small className="thread-title-error">{titleError}</small>
@@ -1023,11 +1025,6 @@ export function AgentWorkspace({
                 summary={displayedCheckpoint.summary}
                 busy={busy}
                 confirming={confirming}
-                onPreview={
-                  checkpointArtifact
-                    ? () => void previewArtifact(checkpointArtifact)
-                    : undefined
-                }
                 onConfirm={() => { selectCanvasTab("plan"); setMobilePanel("canvas"); }}
               />
             </div>
@@ -1213,6 +1210,7 @@ export function AgentWorkspace({
             ))}
           </div>
         ) : null}
+        <UploadProgressList items={uploads.items} onClear={uploads.clearCompleted}/>
         <div
           className="composer-feedback"
           role="status"
@@ -1342,12 +1340,7 @@ export function AgentWorkspace({
                 voiceId={project.voiceId}
                 onVoice={onVoice}
                 running={running}
-                narration={(["narration", "replace"] as unknown[]).includes(
-                  (
-                    project.manifest.outputSpec.requirements as
-                      Record<string, unknown> | undefined
-                  )?.audioMode,
-                )}
+                narration
               />
               <input
                 ref={fileRef}
@@ -1435,13 +1428,12 @@ export function AgentWorkspace({
     >
       <header className="project-header">
         <div className="project-header-brand">
-          <StudioArtwork variant="workspace"/>
-          <img src="/brand/yingya-ghost-navy.svg" alt="" />
-          <b>映芽</b>
+
+          <BrandWordmark />
         </div>
         <button className="project-back" onClick={onBack}>
           <CaretLeft />
-          我的作品
+          我的项目
         </button>
         <div className="project-heading">
           {editingTitle ? (
@@ -1512,6 +1504,7 @@ export function AgentWorkspace({
           </button>
         </div>
       </header>
+      <ProjectJourney project={project} onSelect={stage => { selectCanvasTab(stage === 0 ? "assets" : stage === 1 ? "plan" : "preview"); setMobilePanel("canvas"); }}/>
       <div
         className="workspace-splitter workspace-splitter--thread"
         role="separator"
@@ -1529,10 +1522,10 @@ export function AgentWorkspace({
             "yingya-review-thread-width",
             320,
             maxThreadWidth,
-            1,
+            -1,
           )
         }
-        onDoubleClick={() => { const next = Math.min(maxThreadWidth, Math.max(320, Math.round(viewportWidth / 3))); setThreadWidth(next); writeNumberSetting("yingya-review-thread-width", next); }}
+        onDoubleClick={() => { const next = Math.min(maxThreadWidth, Math.max(320, Math.round(viewportWidth * .28))); setThreadWidth(next); writeNumberSetting("yingya-review-thread-width", next); }}
         onPointerDown={(event) =>
           event.currentTarget.setPointerCapture(event.pointerId)
         }
@@ -1545,8 +1538,8 @@ export function AgentWorkspace({
         }
       />
       <nav className="workspace-tabs" aria-label="工作区视图">
-        <StudioArtwork variant="workspace"/>
-        <SelectionIndicator value={`${mobilePanel}:${canvasTab}`} />
+
+        <SelectionIndicator value={`${mobilePanel}:${canvasTab}`} line />
         <button
           aria-pressed={mobilePanel === "thread"}
           className={mobilePanel === "thread" ? "active" : ""}
@@ -1554,7 +1547,7 @@ export function AgentWorkspace({
         >
           对话
         </button>
-        {(["plan", "preview"] as CanvasTab[]).map((tab) => (
+        {(["plan", "preview", "assets", "artifacts"] as CanvasTab[]).map((tab) => (
           <button
             key={tab}
             aria-pressed={mobilePanel === "canvas" && canvasTab === tab}
@@ -1566,7 +1559,7 @@ export function AgentWorkspace({
               selectCanvasTab(tab);
             }}
           >
-            {canvasTabLabel(tab)}
+            {tab === "artifacts" ? "详情" : canvasTabLabel(tab)}
           </button>
         ))}
       </nav>
@@ -2140,7 +2133,8 @@ function RequestControls({ event }: { event: AgentEvent }) {
             <b>{question.header || "需要你的输入"}</b>
             <span>{question.question}</span>
             {question.options?.length ? (
-              <select
+              <SelectControl
+                aria-label={question.question}
                 value={answers[question.id] ?? ""}
                 onChange={(change) =>
                   setAnswers((value) => ({
@@ -2155,7 +2149,7 @@ function RequestControls({ event }: { event: AgentEvent }) {
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             ) : (
               <input
                 value={answers[question.id] ?? ""}
@@ -2269,47 +2263,10 @@ function RequestControls({ event }: { event: AgentEvent }) {
   );
 }
 
-function CheckpointCard({
-  title,
-  summary,
-  busy,
-  confirming,
-  onPreview,
-  onConfirm,
-}: {
-  title: string;
-  summary: string;
-  busy: boolean;
-  confirming: boolean;
-  onPreview?: () => void;
-  onConfirm: () => void;
+function CheckpointCard({ title, summary, busy, confirming, onConfirm }: {
+  title: string; summary: string; busy: boolean; confirming: boolean; onConfirm: () => void;
 }) {
-  return (
-    <section className="checkpoint-card">
-      <StudioArtwork variant="workspace" state="review" className="checkpoint-art"/>
-      <div className="checkpoint-copy">
-        <small>制作检查点</small>
-        <h2>{title || "制作方案已就绪"}</h2>
-        <p>{summary || "确认方向后开始制作视频"}</p>
-      </div>
-      <div className="checkpoint-actions">
-        {onPreview ? (
-          <button className="checkpoint-preview" onClick={onPreview}>
-            <Eye />
-            查看方案
-          </button>
-        ) : null}
-        <button
-          className="primary-button primary-fill"
-          disabled={busy}
-          onClick={onConfirm}
-        >
-          {confirming ? "正在提交…" : "查看方案并制作"}
-          {confirming ? <CircleNotch className="spin" /> : <ArrowUp />}
-        </button>
-      </div>
-    </section>
-  );
+  return <section className="checkpoint-card checkpoint-card--compact"><Check className="checkpoint-status-icon"/><div className="checkpoint-copy"><h2>{title || "制作方案已就绪"}</h2><p>{summary || "先看看画面与讲法，再决定开始制作"}</p><button type="button" disabled={busy || confirming} onClick={onConfirm}>查看制作方案<ArrowRight/></button></div></section>;
 }
 
 function WorkflowRecoveryCard({
@@ -2415,6 +2372,8 @@ function ArtifactCanvas({
   ) => Promise<void>;
   onRefresh: () => Promise<void>;
 }) {
+  const [rangeOpen, setRangeOpen] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -2523,7 +2482,7 @@ function ArtifactCanvas({
   const videoPath =
     finalVideoArtifact?.path ?? version?.videoPath ?? videoArtifact?.path;
   useEffect(() => {
-    setVideoLoadError(false);
+    setVideoLoadError(false); setVideoDuration(0); setRangeOpen(false);
     if (!videoPath || activeTab !== "preview") return;
     const timer = window.setTimeout(() => { if (!videoRef.current || videoRef.current.readyState < 2) setVideoLoadError(true); }, 15000);
     return () => clearTimeout(timer);
@@ -2651,6 +2610,7 @@ function ArtifactCanvas({
 
   return (
     <section className="artifact-canvas" aria-label="作品工作区">
+      {rangeOpen && version && videoPath && videoRef.current ? <TimeRangeDialog current={videoRef.current.currentTime} duration={videoDuration} onClose={() => setRangeOpen(false)} onConfirm={(start,end) => onFeedback({ id: createClientRequestId(), kind: "video-range", versionId: version.id, videoPath, timeSeconds: start, endSeconds: end, note: "", createdAt: Date.now() })}/> : null}
       {annotation ? (
         <VideoAnnotationEditor
           projectId={project.id}
@@ -2662,7 +2622,7 @@ function ArtifactCanvas({
       <header>
         <div className="canvas-version">
           {project.manifest.versions.length ? (
-            <select
+            <SelectControl
               aria-label="视频版本"
               value={version?.id ?? ""}
               onChange={(event) => {
@@ -2678,9 +2638,9 @@ function ArtifactCanvas({
                   {item.label.replace(/草稿/g, "视频")}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           ) : (
-            <h2>作品预览</h2>
+            <h2>{canvasTabLabel(activeTab)}</h2>
           )}
         </div>
         <div
@@ -2691,7 +2651,7 @@ function ArtifactCanvas({
           aria-label="项目工作台"
         >
           <SelectionIndicator value={activeTab} line />
-          {(["plan", "preview", "artifacts"] as CanvasTab[]).map((tab) => (
+          {(["plan", "preview", "assets", "artifacts"] as CanvasTab[]).map((tab) => (
             <button
               role="tab"
               id={`canvas-tab-${tab}`}
@@ -2712,7 +2672,6 @@ function ArtifactCanvas({
           ))}
         </div>
         <div>
-          <button className="mobile-production-details" onClick={() => onTab(activeTab === "artifacts" ? "plan" : "artifacts")}>{activeTab === "artifacts" ? "返回方案" : "制作详情"}</button>
           {workflowState(project).sourceNotice ? (
             <span
               className="dirty-chip"
@@ -2789,6 +2748,7 @@ function ArtifactCanvas({
                           onError={() => setVideoLoadError(true)}
                           onCanPlay={() => setVideoLoadError(false)}
                           onLoadedMetadata={(event) => {
+                            setVideoDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0);
                             onVideoDuration(videoPath, event.currentTarget.duration);
                             restoreVideoTime(event.currentTarget, playbackKey);
                             updatePlayback(event.currentTarget.currentTime);
@@ -2806,43 +2766,15 @@ function ArtifactCanvas({
                         />
                       ) : (
                         <div className="planning-empty">
-                          <StudioArtwork variant="workspace" state={project.manifest.phase === "plan_review" ? "review" : project.activeTurnId ? "making" : "waiting"} motion/>
-                          <h3>
-                            {project.manifest.phase === "plan_review"
-                              ? "制作方案待确认"
-                              : "先梳理内容与素材"}
-                          </h3>
-                          <p>
-                            {project.manifest.checkpoint?.summary ||
-                              "提供要讲的内容、目标受众和素材，映芽会整理画面、动画与旁白安排，确认后开始制作"}
-                          </p>
-                          <PlanDocument
-                            project={project}
-                            compact={Boolean(view?.scenes.length)}
-                          />
-                          {project.manifest.checkpoint?.artifactIds
-                            .map((id) =>
-                              project.manifest.artifacts.find(
-                                (item) => item.id === id,
-                              ),
-                            )
-                            .filter((item): item is Artifact => Boolean(item))
-                            .map((item) => (
-                              <button
-                                key={item.id}
-                                onClick={() => onPreview(item)}
-                              >
-                                <Eye />
-                                查看{item.label}
-                              </button>
-                            ))}
-                          <button type="button" onClick={onDescribe}>
-                            <PencilSimple />
-                            去对话补充要求
-                          </button>
+
+                          <h3>{project.activeTurnId ? "正在让想法成为画面" : project.manifest.phase === "plan_review" ? "先确认方案，再开始制作" : "你的第一版视频会出现在这里"}</h3>
+                          <p>{project.activeTurnId ? "你可以继续补充想法，或离开页面。再次打开项目即可查看进展。" : "先一起确定讲法与关键画面，制作完成后就能播放、标记和修改。"}</p>
+                          <button type="button" onClick={() => onTab("plan")}><Eye/>查看制作方案</button>
+                          <button type="button" onClick={onDescribe}><PencilSimple/>补充创作要求</button>
                         </div>
                       )}
                     </div>
+                    {videoPath ? <PlaybackBar videoRef={videoRef} sourceKey={`${version?.id}:${videoPath}:${videoRetry}`}/> : null}
                   </div>
                   {videoPath ? (
                     <>
@@ -2866,6 +2798,7 @@ function ArtifactCanvas({
                           <BoundingBox />
                           {capturing ? "正在截取…" : "框选画面"}
                         </button>
+                        <button type="button" disabled={!canAnnotate || videoLoadError || feedbackDisabled || !videoDuration} onClick={() => { videoRef.current?.pause(); setRangeOpen(true); }}><Clock/>标记时间范围</button>
                         {version &&
                         version.id !== project.manifest.currentDraft ? (
                           <button
@@ -3113,7 +3046,7 @@ function ProjectAssetsPanel({
           <div className="project-library-controls">
             <label>
               <FolderSimple />
-              <select
+              <SelectControl
                 aria-label="筛选素材文件夹"
                 value={folderId}
                 onChange={(event) => setFolderId(event.target.value)}
@@ -3125,7 +3058,7 @@ function ProjectAssetsPanel({
                     {folder.name}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             </label>
             {folderId !== "*" && visibleAssets.length ? (
               <button
@@ -3169,7 +3102,7 @@ function ProjectAssetsPanel({
           </div>
         ) : (
           <div className="workbench-empty">
-            <StudioArtwork variant="assets" motion/>
+
             <b>这个文件夹暂无素材</b>
             <p>可前往素材工坊上传任意类型的参考文件</p>
           </div>

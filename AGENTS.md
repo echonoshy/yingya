@@ -15,6 +15,29 @@
 - When reporting service status, include the tmux session name and the listening
   port. Do not treat a systemd unit as the source of truth for this repository.
 
+## Product version records
+
+- Product versions use `major.minor.patch` and are recorded in `versions.json`;
+  date-based deployment IDs remain separate. Follow `docs/VERSIONING.md`.
+- Default routine product iterations to `patch` (for example,
+  `0.4.1` → `0.4.2` → `0.4.3`), including small feature improvements.
+  Frequent releases alone are not a reason to increment `minor` or `major`.
+- Before publishing product changes, record the development changes with
+  `npm run version:record -- patch --change "..."`, unless the current version
+  record already covers this unpublished batch. Do not bump for every commit,
+  rebuild, rollback, or documentation-only edit.
+- Reserve `minor` for a substantial, cohesive feature release or an explicit
+  user request. Record every release with a brief `--change`; titles and
+  milestone summaries are unnecessary. The website shows only the latest 5
+  patch releases (nonzero patch number), newest first, using their change text.
+- Keep version records and user-facing update notes brief: one short Chinese
+  sentence or a few concise bullets describing the main changes is enough.
+  Public notes focus on important functional changes, not decorative adjustments.
+  Frequent patch releases do not need long explanations, exhaustive change
+  lists, or repeated implementation and deployment details.
+- Run `npm run version:check`. Keep the version history, package manifest, and
+  package lock in the same change; do not publish mismatched versions.
+
 ## Updating development and the live website
 
 - The user-facing website is `https://yingya.art/app#/`. The Vite development
@@ -108,19 +131,32 @@
 
 - Any work that creates or changes user-facing UI must read and follow
   [`docs/UI_DESIGN_STYLE.md`](docs/UI_DESIGN_STYLE.md) before implementation.
-- Use Apple's product design principles as the visual and interaction reference:
-  clear hierarchy, generous whitespace, precise typography, neutral layered
-  surfaces, direct manipulation, and calm motion.
-- Apple is a reference, not a template to copy. Preserve Yingya's own name,
-  logo, Chinese product voice, video-production concepts, and original assets.
-- Reuse the semantic design tokens in `web/src/styles.css`. Do not introduce
-  one-off colors, radii, shadows, fonts, or motion timings when a token fits.
-- The product is light-first. Use white for the working canvas, cool system gray
-  for navigation and inspector surfaces, near-black for primary actions, and
-  system blue only for focus, links, selection, and live status.
-- Prefer alignment, spacing, typography, and hairline separators over decorative
-  effects. Avoid dark-tech styling, purple glow, ambient grids, and ornamental
-  Agent chrome.
+- Apply the project-adapted Anthropic frontend-design workflow in that document:
+  identify the user's task, make a brief design plan, check it against the
+  approved direction, implement, then inspect screenshots and interactions.
+  Scale planning to the change; a small fix does not need a redesign proposal.
+- The normative reference is the user-selected `frontend-design/SKILL.md` at
+  Anthropic commit `dbdd79cebfae5891f5b0fab6f7773ea520d289a7`, linked in that
+  document. Apply its task-first design, deliberate typography, restraint,
+  actionable copy, and screenshot critique to every product surface, including
+  account/admin pages, dialogs, and empty/error states. Use the document's
+  coverage matrix; a homepage review alone is not a whole-product review.
+- Treat Anthropic's guidance as design principles, not a request to copy its
+  brand or replace Yingya's approved identity. Existing product requirements
+  and the user's explicit choices take precedence over generic style advice.
+- Use clear action labels consistently across controls and feedback. Empty
+  and error states must explain the next useful action. Give decoration and
+  motion a specific purpose, and scope CSS changes to their intended surface.
+- Follow the user-approved 2026-09-29 print direction: ivory paper, navy ink,
+  orange sprout identity, expressive editorial typography, and generous whitespace.
+  The former landscape/ghost theme is archived, not an active UI option.
+- Keep each screen focused. Do not accumulate stickers, thick frames, props,
+  slogans, feature cards, or decorative technical chrome.
+- Reuse the semantic design tokens in `web/src/styles.css` and the shared
+  `web/src/print-studio.css` layouts. Keep body text and working controls legible.
+- Use the original ghost identity recolored in navy at
+  `web/public/brand/yingya-ghost-navy.svg`, as requested by the user on 2026-09-30. Preserve
+  Yingya's Chinese product voice, user data, uploaded avatars, and customer media.
 - Keep the prompt composer and current task state easy to find throughout an
   Agent run. Command output, debug data, and secondary controls use progressive
   disclosure.

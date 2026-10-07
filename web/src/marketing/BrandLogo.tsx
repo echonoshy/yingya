@@ -1,7 +1,12 @@
-/** The original ghost mark with the current navy ink is shared by the public site and the working app. */
+import './brandLogo.css';
+
+/** The same English wordmark as the promotional film's closing frame. */
+export function BrandWordmark() {
+  return <span className="yingya-wordmark">YingYa<span className="yingya-wordmark-dot" aria-hidden="true" /></span>;
+}
+
 export function BrandLogo({ href = "/", compact = false }: { href?: string; compact?: boolean }) {
-  return <a href={href} className={`print-brand${compact ? " print-brand--compact" : ""}`} aria-label="映芽首页">
-    <img src="/brand/yingya-ghost-navy.svg" alt="" width="36" height="36" />
-    <b>映芽</b>{!compact && <span>yingya</span>}
+  return <a href={href} className={`print-brand${compact ? " print-brand--compact" : ""}`} aria-label="YingYa 首页">
+    <BrandWordmark />
   </a>;
 }

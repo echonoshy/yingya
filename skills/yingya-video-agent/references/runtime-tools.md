@@ -70,7 +70,7 @@ do not install a replacement shared CLI during a video task.
 
 Inspect footage with `python3 "$YINGYA_MEDIA_ANALYSIS" --project . --source
 assets/inbox/recording.mp4 --json`. It caches measured metadata and keyframes;
-it does not provide semantic recognition or transcription. Read
+it does not provide semantic recognition or transcription. For measured speech timestamps use the installed `yingya-captions` skill with `python3 "$YINGYA_CAPTIONS"`; it uses a host-provisioned offline CPU model. For audio levels, fades and ducking use `python3 "$YINGYA_AUDIO_TOOLS"` and [audio-mixing.md](audio-mixing.md). Read
 [existing-footage.md](existing-footage.md), inspect real frames, and declare the
 chosen source in/out in `remotion.json`.
 

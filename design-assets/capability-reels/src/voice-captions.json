@@ -1,0 +1,114 @@
+[
+  {
+    "text": "让",
+    "startMs": 50,
+    "endMs": 570,
+    "timestampMs": null,
+    "confidence": 0.46940651535987854
+  },
+  {
+    "text": "声",
+    "startMs": 570,
+    "endMs": 770,
+    "timestampMs": null,
+    "confidence": 0.9886528849601746
+  },
+  {
+    "text": "音，",
+    "startMs": 770,
+    "endMs": 990,
+    "timestampMs": null,
+    "confidence": 0.9976887702941895
+  },
+  {
+    "text": "有",
+    "startMs": 990,
+    "endMs": 1350,
+    "timestampMs": null,
+    "confidence": 0.9377996921539307
+  },
+  {
+    "text": "画",
+    "startMs": 1350,
+    "endMs": 1570,
+    "timestampMs": null,
+    "confidence": 0.9894928932189941
+  },
+  {
+    "text": "面。",
+    "startMs": 1570,
+    "endMs": 1790,
+    "timestampMs": null,
+    "confidence": 0.9999468326568604
+  },
+  {
+    "text": "每",
+    "startMs": 2310,
+    "endMs": 2490,
+    "timestampMs": null,
+    "confidence": 0.8520309925079346
+  },
+  {
+    "text": "一个",
+    "startMs": 2490,
+    "endMs": 2650,
+    "timestampMs": null,
+    "confidence": 0.9932456612586975
+  },
+  {
+    "text": "重",
+    "startMs": 2650,
+    "endMs": 2830,
+    "timestampMs": null,
+    "confidence": 0.9938418865203857
+  },
+  {
+    "text": "点，",
+    "startMs": 2830,
+    "endMs": 3070,
+    "timestampMs": null,
+    "confidence": 0.9996962547302246
+  },
+  {
+    "text": "都",
+    "startMs": 3070,
+    "endMs": 3390,
+    "timestampMs": null,
+    "confidence": 0.9948252439498901
+  },
+  {
+    "text": "值",
+    "startMs": 3390,
+    "endMs": 3530,
+    "timestampMs": null,
+    "confidence": 0.9995530247688293
+  },
+  {
+    "text": "得",
+    "startMs": 3530,
+    "endMs": 3670,
+    "timestampMs": null,
+    "confidence": 0.9999338388442993
+  },
+  {
+    "text": "被",
+    "startMs": 3670,
+    "endMs": 3770,
+    "timestampMs": null,
+    "confidence": 0.9908271431922913
+  },
+  {
+    "text": "看",
+    "startMs": 3770,
+    "endMs": 3970,
+    "timestampMs": null,
+    "confidence": 0.9696242213249207
+  },
+  {
+    "text": "见。",
+    "startMs": 3970,
+    "endMs": 4210,
+    "timestampMs": null,
+    "confidence": 0.9946380257606506
+  }
+]

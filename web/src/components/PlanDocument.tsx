@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { ChatText, CircleNotch, ArrowRight, ArrowClockwise, ArrowsOut, Plus, Minus } from '@phosphor-icons/react';
 import { api } from '../api';
 import { ActionDialog } from './ActionDialog';
-import { StudioArtwork } from './StudioTheme';
 import type { ProjectDetail } from '../types';
 import type { ExplanationPlan, PlanReceipt } from '../explanationPlan';
 const MarkdownPreview = lazy(() => import('./MarkdownPreview'));
@@ -11,6 +10,7 @@ export function PlanDocument({ project, compact = false, onCompose, onConfirm, c
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
+  const [selectedSectionId, setSelectedSectionId] = useState('');
   const [expandedFrame, setExpandedFrame] = useState<{ title: string; path: string; description: string } | null>(null);
   useEffect(() => setExpandedFrame(null), [project.id, result?.revision]);
   const [failedFrames, setFailedFrames] = useState<string[]>([]);
@@ -25,23 +25,41 @@ export function PlanDocument({ project, compact = false, onCompose, onConfirm, c
   }, [project.id, project.updatedAt, retry]);
   const working = Boolean(project.activeTurnId || project.queueDepth);
   const document = result?.document;
+  const selectedSection = document?.sections.find(section => section.id === selectedSectionId) ?? document?.sections[0];
+  const selectedFrame = selectedSection?.keyframe;
   const canConfirm = !failedFrames.length && !loading && !error && result?.ready && result.checkpointId === project.manifest.checkpoint?.id && !working && !confirming;
+  const offersFrameReference = Boolean(!document && result?.markdown || selectedSection && selectedFrame?.status !== 'ready');
+  const frameFailed = selectedSection ? failedFrames.includes(selectedSection.id) : false;
+  function selectScene(index: number) {
+    const section = document?.sections[index];
+    if (section) setSelectedSectionId(section.id);
+  }
   const content = <section className="plan-document knowledge-plan" aria-label="制作方案">
-    <header><div><h2>{document?.title || '制作方案'}</h2></div>{working || loading ? <span role="status"><CircleNotch className="spin"/>{loading ? '读取方案中' : '正在完善方案'}</span> : null}</header>
-    {error ? <p className="form-error" role="alert">{error}<button onClick={() => setRetry(value => value + 1)}><ArrowClockwise/>重新读取</button></p> : null}
-    {document ? <>
-      <dl className="plan-brief"><div><dt>讲给谁听</dt><dd>{document.audience}</dd></div><div><dt>核心问题</dt><dd>{document.question}</dd></div><div><dt>看完理解</dt><dd>{document.takeaway}</dd></div></dl>
-      <p className="plan-meta">预计 {Math.round(document.durationSeconds)} 秒 · {document.aspectRatio} · {document.narration}</p>
-      <div className="plan-sections">{document.sections.map((section, index) => <article key={section.id}>
-        <header><h3>{index + 1}. {section.title}</h3>{onCompose ? <button type="button" onClick={() => onCompose(`关于方案「${result?.revision.slice(0,8)}」的段落「${section.id}」（${section.title}），我想调整：`)}><ChatText/>对此提意见</button> : null}</header>
-        <p>{section.summary}</p><p className="plan-expression">画面：{section.expression}</p>
-        {section.keyframe ? section.keyframe.status === 'ready' && section.keyframe.path ? <figure><button type="button" className="plan-keyframe-open" aria-label={`放大查看：${section.title}`} disabled={failedFrames.includes(section.id)} onClick={() => setExpandedFrame({ title: section.title, path: section.keyframe!.path!, description: section.expression })}><img key={`${section.id}:${retry}`} onError={() => setFailedFrames(items => items.includes(section.id) ? items : [...items, section.id])} src={`${api.fileUrl(project.id, section.keyframe.path)}?revision=${result?.revision}&retry=${retry}`} alt={`${section.title}的关键画面`} loading="lazy"/><span><ArrowsOut aria-hidden="true"/>放大查看</span></button><figcaption>{failedFrames.includes(section.id) ? <>画面加载失败<button onClick={() => setRetry(value => value + 1)}>重试画面</button></> : "关键画面"}{onCompose ? <button onClick={() => onCompose(`关于方案「${result?.revision.slice(0,8)}」段落「${section.id}」的关键画面，我想调整：`)}>对此画面提意见</button> : null}</figcaption></figure> : <p role="status">{section.keyframe.status === 'failed' ? section.keyframe.message || '关键画面制作未完成，请在对话中重试' : '关键画面正在准备中'}</p> : null}
-      </article>)}</div>
-      {document.materials.length ? <p>使用素材：{document.materials.join('、')}</p> : null}
-      {document.missingMaterials.length ? <p className="plan-materials">需要补充：{document.missingMaterials.join('、')}</p> : null}
-    </> : result?.markdown ? <Suspense fallback={<p>正在显示方案…</p>}><MarkdownPreview projectId={project.id}>{result.markdown}</MarkdownPreview></Suspense> : !error ? <div className="plan-empty"><StudioArtwork variant="workspace" state={working || loading ? 'thinking' : 'start'} motion/><p>{loading ? '正在读取制作方案' : working ? '正在整理视频结构与关键画面' : '在对话中添加内容或参考资料'}</p><small>{working || loading ? '方案就绪后，可在这里审阅并确认制作' : '你的想法会在这里整理成可审阅的制作方案'}</small></div> : null}
-    {result && !result.ready && !working && !loading && onCompose ? <p>方案还未准备完整<button onClick={() => onCompose("请继续完善当前方案与实际关键画面，保留已确定的内容和设计，完成后再让我确认制作")}>继续完善方案</button></p> : null}
-    {result?.checkpointId && onConfirm ? <footer className="plan-confirm">{working || !result.ready ? <p>{working ? '方案更新中' : '正在准备关键画面'}</p> : null}<button className="primary-button primary-fill" disabled={!canConfirm} onClick={() => result.checkpointId && onConfirm({ checkpointId: result.checkpointId, revision: result.revision })}>{confirming ? '正在提交…' : '按这个方案制作'}<ArrowRight/></button></footer> : null}
+    <div className="plan-scroll">
+      <header className="plan-heading"><div><h2>{document?.title || '先把故事讲清楚。'}</h2><p className="plan-review-hint">先看图片与关键画面，结合参考视频确认风格，再开始制作。</p></div>{working || loading ? <span role="status"><CircleNotch className="spin"/>{loading ? '读取方案中' : '正在完善方案'}</span> : null}</header>
+      {error ? <div className="plan-read-error" role="alert"><p>{error}</p><button onClick={() => setRetry(value => value + 1)}><ArrowClockwise/>重新读取</button></div> : null}
+      {document ? <>
+        <div className="plan-overview"><p className="plan-meta">预计 {Math.round(document.durationSeconds)} 秒<span>·</span>{document.aspectRatio}<span>·</span>{document.narration}</p><details className="plan-context"><summary>视频目标与讲法</summary><dl className="plan-brief"><div><dt>讲给谁听</dt><dd>{document.audience}</dd></div><div><dt>核心问题</dt><dd>{document.question}</dd></div><div><dt>看完理解</dt><dd>{document.takeaway}</dd></div></dl></details></div>
+        <figure className="plan-feature-frame">
+          {selectedSection && selectedFrame?.status === 'ready' && selectedFrame.path && !frameFailed ? <button type="button" className="plan-keyframe-open" aria-label={`放大当前画面：${selectedSection.title}`} onClick={() => setExpandedFrame({ title: selectedSection.title, path: selectedFrame.path!, description: selectedSection.expression })}>
+            <img key={`${selectedSection.id}:${retry}`} src={`${api.fileUrl(project.id, selectedFrame.path)}?revision=${result?.revision}&retry=${retry}`} alt={`${selectedSection.title}的关键画面`} onError={() => setFailedFrames(items => items.includes(selectedSection.id) ? items : [...items, selectedSection.id])}/><span><ArrowsOut aria-hidden="true"/>放大查看</span>
+          </button> : <div className="plan-frame-pending"><p>{frameFailed ? '画面加载失败' : selectedFrame?.status === 'failed' ? selectedFrame.message || '关键画面制作未完成' : selectedFrame?.status === 'pending' ? '关键画面正在准备中' : '这一段还需要画面参考'}</p>{frameFailed ? <button onClick={() => setRetry(value => value + 1)}><ArrowClockwise/>重试画面</button> : <small>{selectedFrame ? '制作完成后会在这里显示' : '代表画面展示在已准备好的段落中'}</small>}</div>}
+          <figcaption><span>{selectedSection?.title || '关键画面'}</span><span>{selectedSection ? String(document.sections.indexOf(selectedSection) + 1).padStart(2, '0') : '00'} / {String(document.sections.length).padStart(2, '0')}</span></figcaption>
+        </figure>
+        <div className="plan-sections" role="group" aria-label="方案段落">{document.sections.map((section, index) => <button key={section.id} type="button" className="plan-scene-select" aria-pressed={selectedSection?.id === section.id} onClick={() => selectScene(index)} onKeyDown={event => {
+          const next = event.key === 'ArrowRight' ? (index + 1) % document.sections.length : event.key === 'ArrowLeft' ? (index + document.sections.length - 1) % document.sections.length : event.key === 'Home' ? 0 : event.key === 'End' ? document.sections.length - 1 : -1;
+          if (next < 0) return; event.preventDefault(); selectScene(next); (event.currentTarget.parentElement?.children[next] as HTMLButtonElement)?.focus();
+        }}><span>{String(index + 1).padStart(2, '0')}</span><b>{section.title}</b><small>{section.keyframe?.status === 'ready' ? '画面已就绪' : section.keyframe ? '画面准备中' : '查看讲法'}</small></button>)}</div>
+        {selectedSection ? <div className="plan-scene-detail" key={selectedSection.id}>
+          <div><h3>讲什么</h3><p>{selectedSection.summary}</p></div><div><h3>怎么表现</h3><p>{selectedSection.expression}</p></div>
+          {onCompose ? <div className="plan-scene-actions"><button type="button" onClick={() => onCompose(`关于方案「${result?.revision.slice(0,8)}」的段落「${selectedSection.id}」（${selectedSection.title}），我想调整：`)}><ChatText/>对此段提意见</button>{!working && selectedFrame?.status !== 'ready' ? <button type="button" onClick={() => onCompose(`请先为方案段落「${selectedSection.id}」（${selectedSection.title}）生成图片参考或实际关键画面，结合已提供的参考视频确认构图、配色与质感，再继续完善方案。`)}>补充画面参考</button> : null}{selectedFrame?.status === 'ready' ? <button type="button" onClick={() => onCompose(`关于方案「${result?.revision.slice(0,8)}」段落「${selectedSection.id}」的关键画面，我想调整：`)}>对此画面提意见</button> : null}</div> : null}
+        </div> : null}
+        {document.materials.length ? <details className="plan-material-list"><summary>使用素材 · {document.materials.length}</summary><p>{document.materials.join('、')}</p></details> : null}
+        {document.missingMaterials.length ? <p className="plan-materials">需要补充：{document.missingMaterials.join('、')}</p> : null}
+      </> : result?.markdown ? <><p className="plan-materials">文字方案已整理，可以先补充图片与关键画面来确认方向。</p>{onCompose && !working ? <div className="plan-scene-actions"><button type="button" onClick={() => onCompose('请基于当前方案与参考视频，先生成图片参考和实际关键画面，说明构图、配色与镜头关系，再一起确认制作方向。')}>补充画面参考<ArrowRight/></button></div> : null}<details className="plan-material-list"><summary>查看文字方案</summary><Suspense fallback={<p>正在显示方案…</p>}><MarkdownPreview projectId={project.id}>{result.markdown}</MarkdownPreview></Suspense></details></> : !error ? <div className="plan-empty"><p>{loading ? '正在读取制作方案' : working ? '正在整理视频结构与关键画面' : '在对话中添加内容或参考资料'}</p><small>{working || loading ? '方案就绪后，可在这里审阅并确认制作' : '你的想法会在这里整理成可审阅的制作方案'}</small></div> : null}
+      {result && !result.ready && !working && !loading && !error && onCompose && !offersFrameReference ? <div className="plan-incomplete"><p>方案还未准备完整</p><button onClick={() => onCompose("请继续完善当前方案与实际关键画面，保留已确定的内容和设计，完成后再让我确认制作")}>继续完善方案<ArrowRight/></button></div> : null}
+    </div>
+    {result?.checkpointId && onConfirm ? <footer className="plan-confirm"><p><span className={canConfirm ? 'plan-ready-dot' : 'plan-wait-dot'}/>{confirming ? '正在提交制作请求' : working ? '方案更新中' : error || failedFrames.length ? '请先恢复方案与画面' : !result.ready ? '正在准备关键画面' : '方案与关键画面已就绪'}</p><button className="primary-button primary-fill" disabled={!canConfirm} onClick={() => result.checkpointId && onConfirm({ checkpointId: result.checkpointId, revision: result.revision })}>{confirming ? '正在提交…' : '确认方案并制作'}<ArrowRight/></button></footer> : null}
   </section>;
   return <>{compact ? <details><summary>查看制作方案</summary>{content}</details> : content}
     {expandedFrame ? <PlanFramePreview title={expandedFrame.title} description={expandedFrame.description} src={`${api.fileUrl(project.id, expandedFrame.path)}?revision=${result?.revision}&retry=${retry}`} onClose={() => setExpandedFrame(null)}/> : null}

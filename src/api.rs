@@ -26,7 +26,7 @@ use crate::codex::{
 use crate::config::AppPaths;
 use crate::feedback::{self, FeedbackAsset};
 use crate::heygen::{HeyGenAudioSearchResponse, HeyGenClient, HeyGenError};
-use crate::model_settings::validate_model_settings;
+use crate::model_settings::{DEFAULT_MODEL, current_model, validate_model_settings};
 use crate::production_jobs::{self, ContinuationJournal, ProductionJob};
 use crate::render_jobs::{RenderJob, RenderJobStatus, RenderJobStore};
 use crate::studio_sessions::{StudioSession, StudioSessionManager};
@@ -363,7 +363,10 @@ async fn user_router(
         binary: env_path("YINGYA_CODEX_BIN", root.join("node_modules/.bin/codex")),
         home: paths.codex_home.clone(),
         workspace: paths.app_data.clone(),
-        model: env::var("YINGYA_CODEX_MODEL").unwrap_or_else(|_| "gpt-5.6-terra".to_owned()),
+        model: current_model(
+            &env::var("YINGYA_CODEX_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned()),
+        )
+        .to_owned(),
         network_access: env_bool("YINGYA_CODEX_NETWORK_ACCESS", true),
         browser_path,
         video_agent_skill: Some(video_agent_skill),
@@ -602,7 +605,11 @@ async fn install_bundled_video_agent_skill(
     while let Some(entry) = entries.next_entry().await? {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name == "hyperframes" || name.starts_with("hyperframes-") || name == "media-use" {
+        if name == "hyperframes"
+            || name.starts_with("hyperframes-")
+            || name == "media-use"
+            || name == "faceless-explainer"
+        {
             if entry.file_type().await?.is_dir() {
                 fs::remove_dir_all(entry.path()).await?;
             } else {
@@ -614,9 +621,10 @@ async fn install_bundled_video_agent_skill(
     // in the isolated runtime, and keep the specialization in sync as well.
     for name in [
         "yingya-video-agent",
-        "faceless-explainer",
+        "yingya-captions",
         "heygen-audio",
         "voxcpm2-tts",
+        "minimax-h3-local",
     ] {
         if !resources.join("skills").join(name).is_dir() {
             continue;
@@ -990,7 +998,7 @@ async fn create_agent_project(
     }
     request.requirements.review_mode = Some("review".into());
     if request.requirements.target_duration_seconds.is_none() {
-        request.requirements.target_duration_seconds = Some(120.0);
+        request.requirements.target_duration_seconds = Some(30.0);
     }
     if request.requirements.workflow.is_none() {
         request.requirements.workflow = Some("knowledge-explainer".into());
@@ -3564,7 +3572,7 @@ async fn run_agent_turn(
         };
         match state
             .codex
-            .start_thread_at(&project_dir, Some(&project.model))
+            .start_thread_at(&project_dir, Some(current_model(&project.model)))
             .await
         {
             Ok(thread) => {
@@ -3673,7 +3681,7 @@ async fn run_agent_turn(
         Err(error) => format!("素材用途记录需修复：{error}"),
     };
     let prompt = format!(
-        "{prompt}\n当前产品规则：先读 references/knowledge-video.md，聚焦可分享的知识讲解视频；方案包含大纲和实际内容关键画面，用户通过对话、截图或时间段反馈修改，不使用用户编辑器。不得探测或调用外部视频生成模型/API。历史 ai-video 字段仅兼容读取，未完成生成请求说明不再提供，不自动重试。\n项目结构化创作要求：{requirements}\n项目素材用途：{role_note}\npresentation 是历史项目可能保留的表现方式：存在时先读 references/presentation-choice.md，将 capabilityId 与 variant 落到适合的镜头及可用组件，写入方案并延续到制作；没有该字段则由内容决定。后续用户明确修改优先，不能在局部修改中强制恢复初始选择。需求原件保存在 .yingya/requirements.json，素材用途保存在 .yingya/asset-roles.json。目标时长 target 为近似目标，exact 为准确时长，max 为上限；字幕 none 不生成对白字幕但允许明确要求的标题。audioMode preserve 保留原声，narration 补充旁白，replace 用旁白替换原声，mute 为静音，auto 按真实素材与用户需求决定。新创作聚焦有审美且能独立讲清内容的知识视频：按 knowledge-video.md 组织内容、PPT 信息层级、图表和解释组件，用动作帮助理解。复用项目的字体、颜色与版式；已确认方案授权后制作全片和所需图像素材，不引入视频生成服务。上传视频时才按 existing-footage.md 分析内容、音轨和片段证据，复用 .yingya/content-index.json，结合目标剪辑与补充画面；不要将所有视频导向录屏教程。代表片段和完整草稿按 visual-review.md 在内部审阅实际视觉效果，不增加样片或草稿审批步骤；初稿完成供用户观看、反馈或分享。仅首次方案、关键方向改变或意见冲突需要决定，普通局部修改直接执行并复用已批准设计。required 素材必须使用或明确指出冲突，reference 仅供参考，brand 保留品牌素材原貌；不得将文件名当作内容理解证据。非本轮改变的镜头、原声和素材应复用。当前请求的编辑基线：{}。",
+        "{prompt}\n当前产品规则：先读 references/knowledge-video.md，聚焦可分享的知识讲解视频；方案包含大纲和实际内容关键画面，用户通过对话、截图或时间段反馈修改，不使用用户编辑器。需要生成镜头时先读 references/generated-footage.md，使用已安装的 minimax-h3-local skill；可先用 Image Gen 生成并检查底图，再用 H3 生成带声音的动态镜头，最后交给 Remotion 合成。提交前读取 skill 的 references/prompt-writing.md，使用具体动作、运镜、时间与声音描述；按当前服务 health/capabilities 选择模式和参数。历史 ai-video 字段仅兼容读取，不自动重启旧任务；新 H3 任务按项目保存的 ID 查询和恢复。\n项目结构化创作要求：{requirements}\n项目素材用途：{role_note}\npresentation 是历史项目可能保留的表现方式：存在时先读 references/presentation-choice.md，将 capabilityId 与 variant 落到适合的镜头及可用组件，写入方案并延续到制作；没有该字段则由内容决定。后续用户明确修改优先，不能在局部修改中强制恢复初始选择。需求原件保存在 .yingya/requirements.json，素材用途保存在 .yingya/asset-roles.json。目标时长 target 为近似参考，未明确要求时默认约 30 秒，可按真实素材、叙事和用户需求调整；创作描述中的明确时长优先于初始参考值，不能为了默认值压缩或拉长内容。exact 为用户要求的准确时长，max 为用户要求的上限；字幕 none 不生成对白字幕但允许明确要求的标题。audioMode preserve 保留原声，narration 补充旁白，replace 用旁白替换原声，mute 为静音，auto 按真实素材与用户需求决定。新创作聚焦有审美且能独立讲清内容的知识视频：按 knowledge-video.md 组织内容、PPT 信息层级、图表和解释组件，用动作帮助理解。复用项目的字体、颜色与版式；已确认方案授权后制作全片和所需图像或 H3 镜头素材；服务上传属于已批准的素材制作，不另加确认关卡。有上传或已下载生成的视频时按 existing-footage.md 分析内容、音轨和片段证据，复用 .yingya/content-index.json，结合目标剪辑与补充画面；不要将所有视频导向录屏教程。代表片段和完整草稿按 visual-review.md 在内部审阅实际视觉效果，不增加样片或草稿审批步骤；初稿完成供用户观看、反馈或分享。仅首次方案、关键方向改变或意见冲突需要决定，普通局部修改直接执行并复用已批准设计。required 素材必须使用或明确指出冲突，reference 仅供参考，brand 保留品牌素材原貌；不得将文件名当作内容理解证据。非本轮改变的镜头、原声和素材应复用。当前请求的编辑基线：{}。",
         if queued.feedback.is_empty() {
             queued.base_version_id.as_deref()
         } else {
@@ -3760,7 +3768,9 @@ async fn run_agent_turn(
             &reference_images,
             TurnOptions {
                 use_imagegen: false,
-                model: Some(queued.model.as_deref().unwrap_or(&project.model)),
+                model: Some(current_model(
+                    queued.model.as_deref().unwrap_or(&project.model),
+                )),
                 effort: Some(
                     queued
                         .reasoning_effort
@@ -3793,7 +3803,7 @@ async fn run_agent_turn(
             };
             match state
                 .codex
-                .start_thread_at(&project_dir, Some(&project.model))
+                .start_thread_at(&project_dir, Some(current_model(&project.model)))
                 .await
             {
                 Ok(thread) => {
@@ -3813,7 +3823,9 @@ async fn run_agent_turn(
                             &reference_images,
                             TurnOptions {
                                 use_imagegen: false,
-                                model: Some(queued.model.as_deref().unwrap_or(&project.model)),
+                                model: Some(current_model(
+                                    queued.model.as_deref().unwrap_or(&project.model),
+                                )),
                                 effort: Some(
                                     queued
                                         .reasoning_effort
@@ -4025,7 +4037,9 @@ async fn run_agent_turn(
                 &[],
                 TurnOptions {
                     use_imagegen: false,
-                    model: Some(queued.model.as_deref().unwrap_or(&project.model)),
+                    model: Some(current_model(
+                        queued.model.as_deref().unwrap_or(&project.model),
+                    )),
                     effort: Some(
                         queued
                             .reasoning_effort
@@ -4453,7 +4467,7 @@ fn classify_completed_workflow(
             status: "incomplete",
             label: "检查已通过，草稿待封存",
             needs_recovery: true,
-            guidance: "质量检查已经通过，但草稿尚未完成封存。现有报告和视频已保留；请登记不可变版本、currentDraft 与 draft checkpoint 后提交审核。".to_owned(),
+            guidance: "质量检查已经通过，但草稿尚未完成封存。现有报告和视频已保留；请登记不可变版本、currentDraft 和视频产物，清除 checkpoint 并完成交付；仅用户明确要求草稿审批时保留 draft checkpoint。".to_owned(),
         },
         "briefing" | "plan_review" | "production" | "draft_review" | "final_render"
         | "completed" => WorkflowCompletion {
@@ -4655,11 +4669,24 @@ async fn execute_turn(
                 event_tx: None,
             },
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            if use_imagegen {
+                warn!(%error, "image generation failed");
+                ApiError::External(image_generation_error(&error).into())
+            } else {
+                ApiError::Codex(error)
+            }
+        })?;
     let images = state
         .assets
         .import_generated(turn.generated_images, Some(request.prompt.trim()))
         .await?;
+    if use_imagegen && images.is_empty() {
+        return Err(ApiError::External(
+            "这次没有生成图片，请补充画面描述或更换参考图后重试。".into(),
+        ));
+    }
 
     Ok(Json(TurnResponse {
         thread_id: turn.thread_id,
@@ -4668,6 +4695,20 @@ async fn execute_turn(
         text: turn.text,
         images,
     }))
+}
+
+fn image_generation_error(error: &CodexError) -> &'static str {
+    match error {
+        CodexError::TurnFailed(message) if message.contains("Invalid prompt") => {
+            "模型服务拒绝了这次请求，请调整描述或参考图后重试；如果简单描述也失败，请联系管理员检查模型服务。"
+        }
+        CodexError::TurnOverloaded { .. } => "图片生成服务繁忙，请稍后重试或切换模型。",
+        CodexError::TurnTimeout(_) | CodexError::RequestTimeout(_) => {
+            "图片生成等待超时，请先查看素材库中是否已有结果，再重试。"
+        }
+        CodexError::TurnInterrupted(_) => "图片生成已中断，描述和参考图已保留，可以重新生成。",
+        _ => "图片生成服务暂时不可用，描述和参考图已保留，请稍后重试。",
+    }
 }
 
 async fn upload_image(
@@ -5189,7 +5230,7 @@ impl AssetStore {
             .await?;
             let relative = format!("generated/{filename}");
             assets.push(ImageAsset {
-                id: event.id,
+                id,
                 url: format!("/assets/{relative}"),
                 project_path: format!("assets/{relative}"),
                 mime_type: image_mime(extension).to_owned(),
@@ -5893,7 +5934,7 @@ mod tests {
     async fn completion_and_startup_audit_preserve_explicit_queue_pause() {
         let root = env::temp_dir().join(format!("yingya-pause-{}", Uuid::new_v4()));
         let store = AgentProjectStore::new(root.clone()).await.unwrap();
-        let request = serde_json::from_value(json!({"prompt":"test", "aspectRatio":"16:9", "model":"gpt-5.6-terra", "reasoningEffort":"medium", "voiceId":"default"})).unwrap();
+        let request = serde_json::from_value(json!({"prompt":"test", "aspectRatio":"16:9", "model":"gpt-6.1-sol", "reasoningEffort":"medium", "voiceId":"default"})).unwrap();
         let project = store.create(&request).await.unwrap();
         for text in ["first", "second"] {
             store
@@ -5933,6 +5974,48 @@ mod tests {
         reloaded.set_queue_paused(&project.id, false).await.unwrap();
         assert!(reloaded.claim_next(&project.id).await.unwrap().is_some());
         fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn generated_result_ids_match_library_management_ids() {
+        let root = env::temp_dir().join(format!("yingya-generated-{}", Uuid::new_v4()));
+        let store = AssetStore::new(root.join("assets")).await.unwrap();
+        let source = root.join("output.png");
+        fs::write(&source, b"generated image bytes").await.unwrap();
+        let results = store
+            .import_generated(
+                vec![GeneratedImageEvent {
+                    id: "provider-event-id".into(),
+                    status: "completed".into(),
+                    saved_path: Some(source),
+                    revised_prompt: None,
+                    failure: None,
+                }],
+                Some("orange pinwheel"),
+            )
+            .await
+            .unwrap();
+        let image = &results[0];
+        assert_ne!(image.id, "provider-event-id");
+        let listed = store.library_item(&image.id).await.unwrap();
+        assert_eq!(listed.url, image.url);
+        assert_eq!(listed.prompt.as_deref(), Some("orange pinwheel"));
+        store.rename_asset(&image.id, "pinwheel.png").await.unwrap();
+        store.delete_asset(&image.id).await.unwrap();
+        assert!(store.list_library().await.unwrap().is_empty());
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[test]
+    fn image_errors_give_recovery_without_internal_routing_details() {
+        let routing = CodexError::TurnFailed("workspace routing discovery failed".into());
+        assert!(image_generation_error(&routing).contains("已保留"));
+        assert!(!image_generation_error(&routing).contains("routing"));
+        let rejected = CodexError::TurnFailed("Invalid prompt: rejected".into());
+        assert!(image_generation_error(&rejected).contains("模型服务拒绝"));
+        assert!(
+            image_generation_error(&CodexError::TurnTimeout("t".into())).contains("先查看素材库")
+        );
     }
 
     #[tokio::test]
@@ -6046,16 +6129,35 @@ mod tests {
         )
         .await
         .unwrap();
-        fs::create_dir_all(resources.join("skills/faceless-explainer"))
+        fs::create_dir_all(resources.join("skills/yingya-captions"))
             .await
             .unwrap();
         fs::write(
-            resources.join("skills/faceless-explainer/SKILL.md"),
-            "explainer v1",
+            resources.join("skills/yingya-captions/SKILL.md"),
+            "captions v1",
         )
         .await
         .unwrap();
 
+        for (relative, content) in [
+            ("SKILL.md", "H3 skill"),
+            ("scripts/h3.py", "print('H3 client')"),
+            ("references/prompt-writing.md", "H3 prompt reference"),
+        ] {
+            let path = resources.join("skills/minimax-h3-local").join(relative);
+            fs::create_dir_all(path.parent().unwrap()).await.unwrap();
+            fs::write(path, content).await.unwrap();
+        }
+
+        fs::create_dir_all(codex_home.join("skills/faceless-explainer"))
+            .await
+            .unwrap();
+        fs::write(
+            codex_home.join("skills/faceless-explainer/SKILL.md"),
+            "retired",
+        )
+        .await
+        .unwrap();
         let installed = install_bundled_video_agent_skill(&resources, &codex_home)
             .await
             .unwrap();
@@ -6065,6 +6167,17 @@ mod tests {
             codex_home.join("skills/yingya-video-agent/SKILL.md")
         );
         assert!(installed.is_file());
+        for relative in ["SKILL.md", "scripts/h3.py", "references/prompt-writing.md"] {
+            assert_eq!(
+                fs::read(codex_home.join("skills/minimax-h3-local").join(relative))
+                    .await
+                    .unwrap(),
+                fs::read(resources.join("skills/minimax-h3-local").join(relative))
+                    .await
+                    .unwrap()
+            );
+        }
+
         assert!(
             codex_home
                 .join("skills/yingya-video-agent/agents/openai.yaml")
@@ -6079,10 +6192,10 @@ mod tests {
             "Measure narration before assembling the timeline."
         );
         assert_eq!(
-            fs::read_to_string(codex_home.join("skills/faceless-explainer/SKILL.md"))
+            fs::read_to_string(codex_home.join("skills/yingya-captions/SKILL.md"))
                 .await
                 .unwrap(),
-            "explainer v1"
+            "captions v1"
         );
         fs::create_dir_all(codex_home.join("skills/hyperframes-core"))
             .await
@@ -6112,8 +6225,8 @@ mod tests {
             .await
             .unwrap();
         fs::write(
-            resources.join("skills/faceless-explainer/SKILL.md"),
-            "explainer v2",
+            resources.join("skills/yingya-captions/SKILL.md"),
+            "captions v2",
         )
         .await
         .unwrap();
@@ -6121,13 +6234,14 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            fs::read_to_string(codex_home.join("skills/faceless-explainer/SKILL.md"))
+            fs::read_to_string(codex_home.join("skills/yingya-captions/SKILL.md"))
                 .await
                 .unwrap(),
-            "explainer v2"
+            "captions v2"
         );
         assert!(!codex_home.join("skills/hyperframes-core").exists());
         assert!(!codex_home.join("skills/media-use").exists());
+        assert!(!codex_home.join("skills/faceless-explainer").exists());
         assert!(
             !codex_home
                 .join("skills/yingya-video-agent/references/obsolete.md")

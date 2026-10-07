@@ -93,6 +93,8 @@ def build(args):
         shutil.copy2(REPO / name, root / name)
     run(['python3', root / 'scripts/setup-python.py', '--resources', root,
          '--store', args.runtime / 'python'])
+    run(['python3', root / 'scripts/setup-captions.py', '--resources', root,
+         '--store', args.runtime / 'captions'])
     run(['npm', 'ci'], cwd=root)
     run(['npm', 'run', 'browser:ensure'], cwd=root)
     run(['python3', root / 'scripts/setup-remotion.py', '--resources', root,

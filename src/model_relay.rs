@@ -194,8 +194,18 @@ impl ModelRelay {
         {
             return StatusCode::NOT_FOUND.into_response();
         }
+        let image_api = request
+            .uri()
+            .path()
+            .strip_prefix("/api/internal/model/backend-api/")
+            .is_some_and(image_endpoint);
         let charge = if request.method() == Method::POST {
-            match accounts.reserve_model(user) {
+            let reservation = if image_api {
+                accounts.reserve_image_generation(user)
+            } else {
+                accounts.reserve_model(user)
+            };
+            match reservation {
                 Ok(charge)=>Some(charge),
                 Err(message)=>return (StatusCode::PAYMENT_REQUIRED,axum::Json(json!({"error":{"message":message,"type":"quota_exceeded"},"message":message}))).into_response(),
             }
@@ -221,6 +231,7 @@ impl ModelRelay {
         if !allowed_endpoint(request.method(), path) {
             return Ok(StatusCode::NOT_FOUND.into_response());
         }
+        let image_api = image_endpoint(path);
         let mut diagnostic = diagnostics::Diagnostic::new(self.diagnostics.clone());
         let auth = self.credentials().await.inspect_err(|_| {
             diagnostic.record.outcome = "auth_error";
@@ -276,7 +287,12 @@ impl ModelRelay {
             .await
             .map_err(|_| "模型请求过大")?;
         let body = if let Some(charge) = charge.as_mut() {
-            match model_body(&body, &encoding, charge) {
+            let prepared = if image_api {
+                image_body(&body, &encoding)
+            } else {
+                model_body(&body, &encoding, charge)
+            };
+            match prepared {
                 Ok(body) => body,
                 Err(error) => {
                     diagnostic.record.outcome = "invalid_request";
@@ -403,6 +419,12 @@ impl ModelRelay {
                 }
             }
             usage.finish();
+            if image_api && (usage.image_response || usage.error_code.is_some()) {
+                // Images has its own model and accounting. Do not assign text
+                // model prices or fabricate Responses tokens for its result.
+                usage.tokens = Some(0);
+                usage.detail = None;
+            }
             if diagnostic.record.outcome == "completed" {
                 diagnostic.record.outcome = if usage.error_code.is_some() || usage.failed {
                     "provider_error"
@@ -435,6 +457,35 @@ fn model_body(
     encoding: &str,
     charge: &crate::accounts::ModelCharge,
 ) -> Result<Vec<u8>, String> {
+    let mut value = decoded_body(bytes, encoding)?;
+    let model = value["model"]
+        .as_str()
+        .filter(|model| crate::model_settings::model_allowed(model))
+        .ok_or("请选择已开放的四个模型")?;
+    charge.set_billing_model(model)?;
+    if let Some(tools) = value.get_mut("tools").and_then(Value::as_array_mut)
+        && tools.iter().any(|t| t["type"] == "image_generation")
+        && !charge.reserve_image()?
+    {
+        tools.retain(|t| t["type"] != "image_generation");
+        if value.pointer("/tool_choice/type").and_then(Value::as_str) == Some("image_generation") {
+            return Err("素材生成额度已用完，请联系管理员".into());
+        }
+    }
+    serde_json::to_vec(&value).map_err(|e| e.to_string())
+}
+
+fn image_body(bytes: &[u8], encoding: &str) -> Result<Vec<u8>, String> {
+    let value = decoded_body(bytes, encoding)?;
+    // This is the native image_gen model emitted by the pinned Codex SDK,
+    // independent of the four selectable assistant models.
+    if value["model"] != "gpt-image-2" {
+        return Err("图片生成模型不可用".into());
+    }
+    serde_json::to_vec(&value).map_err(|e| e.to_string())
+}
+
+fn decoded_body(bytes: &[u8], encoding: &str) -> Result<Value, String> {
     use std::io::Read;
     let decoded = match encoding {
         "" | "identity" => bytes.to_vec(),
@@ -453,22 +504,7 @@ fn model_body(
     if decoded.len() > 25 * 1024 * 1024 {
         return Err("模型请求过大".into());
     }
-    let mut value: Value = serde_json::from_slice(&decoded).map_err(|_| "模型请求格式无效")?;
-    let model = value["model"]
-        .as_str()
-        .filter(|model| crate::model_settings::model_allowed(model))
-        .ok_or("请选择已开放的四个模型")?;
-    charge.set_billing_model(model)?;
-    if let Some(tools) = value.get_mut("tools").and_then(Value::as_array_mut)
-        && tools.iter().any(|t| t["type"] == "image_generation")
-        && !charge.reserve_image()?
-    {
-        tools.retain(|t| t["type"] != "image_generation");
-        if value.pointer("/tool_choice/type").and_then(Value::as_str) == Some("image_generation") {
-            return Err("素材生成额度已用完，请联系管理员".into());
-        }
-    }
-    serde_json::to_vec(&value).map_err(|e| e.to_string())
+    serde_json::from_slice(&decoded).map_err(|_| "模型请求格式无效".into())
 }
 
 #[derive(Default)]
@@ -477,6 +513,7 @@ struct RelayUsage {
     tokens: Option<i64>,
     detail: Option<crate::accounts::TokenUsage>,
     images: i64,
+    image_response: bool,
     json_body: Option<bool>,
     tier: Option<String>,
     error_code: Option<String>,
@@ -533,6 +570,17 @@ impl RelayUsage {
         }) {
             return;
         }
+        if let Some(data) = response["data"].as_array() {
+            self.image_response = true;
+            self.images = data
+                .iter()
+                .filter(|item| {
+                    item["b64_json"]
+                        .as_str()
+                        .is_some_and(|data| !data.is_empty())
+                })
+                .count() as i64;
+        }
         if let Some(detail) = crate::accounts::TokenUsage::from_response(response) {
             self.detail = Some(detail);
         }
@@ -569,12 +617,21 @@ impl RelayUsage {
 fn allowed_endpoint(method: &Method, path: &str) -> bool {
     match method.as_str() {
         "GET" => matches!(path, "codex/models" | "wham/usage"),
-        "POST" => matches!(
-            path,
-            "codex/responses" | "codex/responses/compact" | "codex/memories/trace_summarize"
-        ),
+        "POST" => {
+            image_endpoint(path)
+                || matches!(
+                    path,
+                    "codex/responses"
+                        | "codex/responses/compact"
+                        | "codex/memories/trace_summarize"
+                )
+        }
         _ => false,
     }
+}
+
+fn image_endpoint(path: &str) -> bool {
+    matches!(path, "codex/images/generations" | "codex/images/edits")
 }
 
 fn access_token_expiring(auth: &Value) -> bool {
@@ -647,6 +704,32 @@ mod tests {
         assert_eq!(usage.tokens, Some(10));
     }
     #[test]
+    fn current_models_pass_relay_billing_and_retired_models_are_rejected() {
+        let db = crate::accounts::Accounts::open(Path::new(":memory:"), vec![]).unwrap();
+        let (user, _) = db.login("model-catalog@example.test").unwrap();
+        for model in crate::model_settings::ALLOWED_MODELS {
+            let charge = db.reserve_model(&user.id).unwrap();
+            let input = serde_json::to_vec(&json!({"model": model})).unwrap();
+            let output = model_body(&input, "", &charge).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output).unwrap()["model"],
+                model
+            );
+        }
+        for model in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+            let charge = db.reserve_model(&user.id).unwrap();
+            assert!(
+                model_body(
+                    &serde_json::to_vec(&json!({"model": model})).unwrap(),
+                    "",
+                    &charge
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn streamed_input_output_usage_is_recorded_once_at_the_relay_boundary() {
         let db = crate::accounts::Accounts::open(Path::new(":memory:"), vec![]).unwrap();
         let (user, _) = db.login("bill-relay@example.test").unwrap();
@@ -664,7 +747,7 @@ mod tests {
         let month = db.billing_report(Some(&user.id), "2026-09").unwrap();
         // This assertion does not depend on the wall-clock month.
         assert_eq!(db.quota(&user.id).unwrap().used_tokens, 110000);
-        assert_eq!(month["priceVersion"], "openai-standard-2026-09-11");
+        assert_eq!(month["priceVersion"], "openai-standard-2026-09-30");
         let mut partial = RelayUsage::default();
         partial.read(&json!({"type":"response.created","response":{"usage":{"input_tokens":0,"output_tokens":0}}}));
         assert!(partial.tokens.is_none());
@@ -710,12 +793,19 @@ mod tests {
     #[test]
     fn relay_only_accepts_model_operations() {
         assert!(allowed_endpoint(&Method::POST, "codex/responses"));
+        for path in ["codex/images/generations", "codex/images/edits"] {
+            assert!(allowed_endpoint(&Method::POST, path));
+            assert!(!allowed_endpoint(&Method::GET, path));
+        }
         for path in [
             "codex/../accounts",
             "codex/responses/../secrets",
             "codex/responses/https://evil.example",
             "accounts",
             "codex/auth",
+            "codex/images",
+            "codex/images/generations/../accounts",
+            "codex/images/variations",
         ] {
             assert!(!allowed_endpoint(&Method::POST, path));
         }

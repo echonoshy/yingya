@@ -1,3 +1,4 @@
+import { SelectControl } from "../components/SelectControl";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Check, Copy, Eye, EyeSlash, Key, Plus, SignOut, X } from '@phosphor-icons/react';
 import { date, number, type Invite, type Member } from './api';
@@ -26,8 +27,8 @@ export function UserEditor({member,currentId,busy,onSave,onAction,onClose,error}
       <label>姓名<input name="name" defaultValue={member?.name??''} maxLength={100}/></label>
       <label>用户名<input name="username" defaultValue={member?.username??''} minLength={3} maxLength={32} pattern="[A-Za-z0-9_.\-]+" autoComplete="off"/></label>
       <label className="admin-wide">邮箱<input name="email" type="email" defaultValue={member?.email??''} maxLength={254} required disabled={member?.configuredAdmin}/></label>
-      <label>角色<select aria-label="角色" value={role} onChange={event=>setRole(event.target.value)} disabled={own||member?.configuredAdmin}><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
-      {member?<label>账号状态<select aria-label="账号状态" name="status" defaultValue={member.archived?'archived':member.quota.disabled?'disabled':'active'} disabled={own}><option value="active">启用</option><option value="disabled">停用</option><option value="archived">归档</option></select></label>:null}
+      <label>角色<SelectControl aria-label="角色" value={role} onChange={event=>setRole(event.target.value)} disabled={own||member?.configuredAdmin}><option value="user">普通用户</option><option value="admin">管理员</option></SelectControl></label>
+      {member?<label>账号状态<SelectControl aria-label="账号状态" name="status" defaultValue={member.archived?'archived':member.quota.disabled?'disabled':'active'} disabled={own}><option value="active">启用</option><option value="disabled">停用</option><option value="archived">归档</option></SelectControl></label>:null}
       {!member?<label className="admin-wide">初始密码<div className="admin-password"><input name="password" type={showPassword?'text':'password'} minLength={10} maxLength={128} autoComplete="new-password" required/><button type="button" className="admin-icon" title={showPassword?'隐藏密码':'显示密码'} aria-label={showPassword?'隐藏密码':'显示密码'} onClick={()=>setShowPassword(value=>!value)}>{showPassword?<EyeSlash/>:<Eye/>}</button></div></label>:null}
     </div>
     <section className="admin-form-section"><h3>使用额度</h3>{member?<div className="admin-balance"><span>已用 Token <b>{number(member.quota.usedTokens)}</b></span><span>剩余 Token <b>{number(member.quota.remainingTokens)}</b></span><span>运行中预留 <b>{number(member.quota.reservedTokens)}</b></span><span>已用素材次数 <b>{number(member.quota.usedMedia)}</b></span></div>:null}<div className="admin-fields"><label>Token 总额度<input type="number" name="tokens" min={member?member.quota.usedTokens+member.quota.reservedTokens:0} max={1000000000000} step={1} defaultValue={member?.quota.tokenLimit??DEFAULT_ACCOUNT_QUOTA.tokenLimit} required/></label><p className="admin-help">素材生成不限次数</p></div></section>

@@ -23,7 +23,8 @@ workflow. Author TSX and rebuild generated previews after source changes.
   `from`, `durationInFrames`, `trimBefore`, and `volume` (0–1). `muted` is optional.
   Audio also has `role`: `narration`, `replacement`, `music`, `sfx`, or `original`.
   Video may have `style` for placement/objectFit. No looping or speed changes in
-  the current runtime. Probe source media duration before declaring its frame interval.
+  the current runtime. For fades, loudness normalization and ducking prepare a
+  new WAV with [audio-mixing.md](audio-mixing.md), then declare that asset. Probe source media duration before declaring its frame interval.
 - Match measured narration duration and the approved requirements. The frame rate
   belongs to the source; export at that same FPS. Changing FPS requires retiming
   frame-based animations and rebuilding, not simply passing another CLI value.

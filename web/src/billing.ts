@@ -12,7 +12,7 @@ export type BillingReport = z.infer<typeof billingReportSchema>;
 
 const currency = new Intl.NumberFormat('en-US', {style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:6});
 export const money = (amount:number) => amount>0&&amount<0.000001?'<$0.000001':currency.format(amount);
-export const modelName = (id:string) => ({'gpt-6-astra':'GPT-6 Astra','gpt-5.6-sol':'GPT-5.6 Sol','gpt-5.6-terra':'GPT-5.6 Terra','gpt-5.6-luna':'GPT-5.6 Luna',unknown:'未记录模型'}[id]||id);
+export const modelName = (id:string) => ({'gpt-6.1-sol':'GPT-6.1 Sol','gpt-6-sol':'GPT-6 Sol','gpt-6-luna':'GPT-6 Luna','gpt-6-astra':'GPT-6 Astra','gpt-5.6-sol':'GPT-5.6 Sol','gpt-5.6-terra':'GPT-5.6 Terra','gpt-5.6-luna':'GPT-5.6 Luna',unknown:'未记录模型'}[id]||id);
 export const billingMonth = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit'}).format(new Date());
 
 export function invoiceCsv(invoice: Invoice): string {

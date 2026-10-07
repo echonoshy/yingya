@@ -16,6 +16,7 @@ pub struct Sandbox {
     socket: PathBuf,
     browser: Option<PathBuf>,
     python: Option<PathBuf>,
+    captions: Option<PathBuf>,
     _gateway: Arc<Mutex<Child>>,
 }
 impl Sandbox {
@@ -28,6 +29,13 @@ impl Sandbox {
     ) -> Result<Self, String> {
         let python = resources
             .join(".runtime/python-runtime")
+            .canonicalize()
+            .ok()
+            .filter(|root| {
+                root.join("ready.json").is_file() && root.join("venv/bin/python").is_file()
+            });
+        let captions = resources
+            .join(".runtime/captions-runtime")
             .canonicalize()
             .ok()
             .filter(|root| {
@@ -71,6 +79,7 @@ impl Sandbox {
             socket,
             browser,
             python,
+            captions,
             _gateway: Arc::new(Mutex::new(gateway)),
         })
     }
@@ -133,6 +142,9 @@ impl Sandbox {
         if let Some(python) = &self.python {
             c.arg("--ro-bind").arg(python).arg(python);
         }
+        if let Some(captions) = &self.captions {
+            c.arg("--ro-bind").arg(captions).arg(captions);
+        }
         c.arg("--bind")
             .arg(&self.root)
             .arg(&self.root)
@@ -181,10 +193,23 @@ impl Sandbox {
                 self.resources.join("runtime/media-analysis.py"),
             )
             .env("CODEX_HOME", self.root.join("runtime/codex-home"))
+            .env(
+                "YINGYA_CAPTIONS",
+                self.resources.join("runtime/captions.py"),
+            )
+            .env(
+                "YINGYA_AUDIO_TOOLS",
+                self.resources.join("runtime/audio-tools.py"),
+            )
             .env("YINGYA_API_BASE", "http://127.0.0.1:8797")
             .env("VOXCPM2_API_BASE", "http://127.0.0.1:8791");
         if let Some(python) = &self.python {
             c.env("VIRTUAL_ENV", python.join("venv"));
+        }
+        if let Some(captions) = &self.captions {
+            c.env("YINGYA_CAPTIONS_PYTHON", captions.join("venv/bin/python"))
+                .env("YINGYA_CAPTIONS_MODEL", captions.join("model"))
+                .env("HF_HUB_OFFLINE", "1");
         }
         if let Some(browser) = &self.browser {
             c.env("YINGYA_BROWSER_PATH", &browser_wrapper)
@@ -213,7 +238,7 @@ impl Sandbox {
             "当前沙箱没有可用的 Chromium 入口，Browser 专用工具也未提供。不要尝试默认 Chrome/Playwright 路径、安装浏览器或反复运行截图命令。网页文本改用 Python requests/BeautifulSoup 或 Node.js fetch；图片检查用 Pillow，视频信息用 ffprobe/ffmpeg。可做静态检查，但无法宣称浏览器预览或渲染通过；需要渲染时报告具体缺失能力。"
         };
         format!(
-            "\n运行工具说明（当前用户沙箱）：{python}\n{browser}\n组件源码可从 node \"$YINGYA_COMPONENT_LIBRARY\" search 查找，使用原生 React/Remotion 帧时钟适配；先读 references/third-party-components.md。\n执行工具必须返回完整结果：functions.exec 中使用 text(await tools.exec_command(...))，不能只输出 r.output。session_id 表示命令仍在运行，使用 write_stdin 轮询同一 session_id，直到获得 exit_code；等待窗口结束、空日志、Script completed 都不是命令完成或超时的证据。不要因此结束制作任务。检查和渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\"，用当前请求编号登记任务，按 references/runtime-tools.md 查询已有任务，不启动重复进程。\n需要理解上传视频时，其元数据与关键帧使用 python3 \"$YINGYA_MEDIA_ANALYSIS\" --project . --source 项目内素材路径 --json，自动复用内容指纹缓存。先读 references/existing-footage.md，查看素材后按 Remotion media 帧表剪辑，遵循用户声音要求。\n当前中继未接通内置网页搜索和 Apps 连接器，已停用这些工具。网页资料用 Python requests/BeautifulSoup 或 Node.js fetch 读取已知官方页面；需要搜索才能找到来源时如实说明限制，不编造来源。\n所有项目先读 references/remotion.md，使用 YINGYA_REMOTION 构建原生 React 预览，不覆盖生成的入口。\n详细用法见 yingya-video-agent 的 references/runtime-tools.md。"
+            "\n运行工具说明（当前用户沙箱）：{python}\n{browser}\n原生讲解组件用 node \"$YINGYA_COMPONENT_LIBRARY\" catalog/view/install；公共组件源码用 search/view/add，按 references/third-party-components.md 适配 Remotion 帧时钟。字幕用 python3 \"$YINGYA_CAPTIONS\"，先读 yingya-captions skill；离线识别结果仍须校对文字和实际声音。混音准备与响度检查用 python3 \"$YINGYA_AUDIO_TOOLS\"，见 references/audio-mixing.md。\n执行工具必须返回完整结果：functions.exec 中使用 text(await tools.exec_command(...))，不能只输出 r.output。session_id 表示命令仍在运行，使用 write_stdin 轮询同一 session_id，直到获得 exit_code；等待窗口结束、空日志、Script completed 都不是命令完成或超时的证据。不要因此结束制作任务。检查和渲染使用 python3 \"$YINGYA_PRODUCTION_TASK\"，用当前请求编号登记任务，按 references/runtime-tools.md 查询已有任务，不启动重复进程。\n需要理解上传视频时，其元数据与关键帧使用 python3 \"$YINGYA_MEDIA_ANALYSIS\" --project . --source 项目内素材路径 --json，自动复用内容指纹缓存。先读 references/existing-footage.md，查看素材后按 Remotion media 帧表剪辑，遵循用户声音要求。\n当前中继未接通内置网页搜索和 Apps 连接器，已停用这些工具。网页资料用 Python requests/BeautifulSoup 或 Node.js fetch 读取已知官方页面；需要搜索才能找到来源时如实说明限制，不编造来源。\n所有项目先读 references/remotion.md，使用 YINGYA_REMOTION 构建原生 React 预览，不覆盖生成的入口。\n详细用法见 yingya-video-agent 的 references/runtime-tools.md。"
         )
     }
 }
@@ -221,6 +246,111 @@ impl Sandbox {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires host-provisioned offline captions"]
+    async fn caption_runtime_and_native_catalog_work_inside_user_sandbox() {
+        let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root = std::env::temp_dir().join(format!("yingya-captions-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(root.join("runtime/home"))
+            .await
+            .unwrap();
+        let sandbox = Sandbox::new(
+            root.clone(),
+            resources.clone(),
+            None,
+            "test-only",
+            "http://127.0.0.1:8797",
+        )
+        .await
+        .unwrap();
+        let output = sandbox
+            .command("python3")
+            .arg(resources.join("runtime/captions.py"))
+            .arg("health")
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["ok"], true);
+        let output = sandbox
+            .command("node")
+            .arg(resources.join("runtime/component-library.mjs"))
+            .arg("catalog")
+            .output()
+            .await
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result.as_array().unwrap().len(), 6);
+        let socket = sandbox.socket.clone();
+        drop(sandbox);
+        let _ = tokio::fs::remove_file(socket).await;
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "requires the configured public H3 service"]
+    async fn h3_client_reaches_service_inside_user_sandbox() {
+        let resources = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let root = std::env::temp_dir().join(format!("yingya-h3-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(root.join("runtime/home"))
+            .await
+            .unwrap();
+        let sandbox = Sandbox::new(
+            root.clone(),
+            resources.clone(),
+            None,
+            "test-only",
+            "http://127.0.0.1:8797",
+        )
+        .await
+        .unwrap();
+        for action in ["health", "capabilities"] {
+            let output = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                sandbox
+                    .command("python3")
+                    .arg(resources.join("skills/minimax-h3-local/scripts/h3.py"))
+                    .arg(action)
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await
+            .expect("H3 sandbox probe exceeded 30 seconds")
+            .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            if action == "health" {
+                assert!(value["models"]["fl2va"]["downloaded"].as_bool().unwrap());
+            } else {
+                assert!(
+                    value["modes"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!("frames"))
+                );
+            }
+            println!("H3 {action} passed through user sandbox gateway");
+        }
+        let socket = sandbox.socket.clone();
+        drop(sandbox);
+        let _ = tokio::fs::remove_file(socket).await;
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
 
     #[tokio::test]
     #[ignore = "requires installed shadcn and public React Bits registry connectivity"]

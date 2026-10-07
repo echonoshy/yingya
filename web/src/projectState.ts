@@ -1,6 +1,11 @@
 import type { ProjectDetail, ProjectRecord } from "./types";
 
 export type ProjectGroup = "active" | "review" | "ready" | "completed" | "failed";
+/** Library categories stay broad while the workspace retains precise task states. */
+export function projectCategory(project: ProjectRecord): "active" | "review" | "ready" {
+  const group = projectGroup(project);
+  return group === "failed" ? "review" : group === "completed" ? "ready" : group;
+}
 export function projectGroup(project: ProjectRecord): ProjectGroup {
   if (project.activeTurnId || ["starting", "queued", "running"].includes(project.status)) return "active";
   if (project.workflowStatus === "active") return "active";

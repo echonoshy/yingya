@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "source": "public/voice.wav",
+  "sourceSha256": "b48ee19d5956f18b15057c48ee76ba9104cbb51814f44c35af12cc3a7b31266d",
+  "durationSeconds": 4.48,
+  "language": "zh",
+  "method": "faster-whisper-small-word-timestamps",
+  "reviewRequired": true,
+  "timingVerifiedByListening": false,
+  "scriptComparison": null,
+  "words": [
+    {
+      "text": "让",
+      "start": 0.05,
+      "end": 0.57,
+      "probability": 0.46940651535987854
+    },
+    {
+      "text": "声",
+      "start": 0.57,
+      "end": 0.77,
+      "probability": 0.9886528849601746
+    },
+    {
+      "text": "音",
+      "start": 0.77,
+      "end": 0.99,
+      "probability": 0.9976887702941895
+    },
+    {
+      "text": "有",
+      "start": 0.99,
+      "end": 1.35,
+      "probability": 0.9377996921539307
+    },
+    {
+      "text": "画",
+      "start": 1.35,
+      "end": 1.57,
+      "probability": 0.9894928932189941
+    },
+    {
+      "text": "面,",
+      "start": 1.57,
+      "end": 1.79,
+      "probability": 0.9999468326568604
+    },
+    {
+      "text": "每",
+      "start": 2.31,
+      "end": 2.49,
+      "probability": 0.8520309925079346
+    },
+    {
+      "text": "一个",
+      "start": 2.49,
+      "end": 2.65,
+      "probability": 0.9932456612586975
+    },
+    {
+      "text": "重",
+      "start": 2.65,
+      "end": 2.83,
+      "probability": 0.9938418865203857
+    },
+    {
+      "text": "点",
+      "start": 2.83,
+      "end": 3.07,
+      "probability": 0.9996962547302246
+    },
+    {
+      "text": "都",
+      "start": 3.07,
+      "end": 3.39,
+      "probability": 0.9948252439498901
+    },
+    {
+      "text": "值",
+      "start": 3.39,
+      "end": 3.53,
+      "probability": 0.9995530247688293
+    },
+    {
+      "text": "得",
+      "start": 3.53,
+      "end": 3.67,
+      "probability": 0.9999338388442993
+    },
+    {
+      "text": "被",
+      "start": 3.67,
+      "end": 3.77,
+      "probability": 0.9908271431922913
+    },
+    {
+      "text": "看",
+      "start": 3.77,
+      "end": 3.97,
+      "probability": 0.9696242213249207
+    },
+    {
+      "text": "见。",
+      "start": 3.97,
+      "end": 4.21,
+      "probability": 0.9946380257606506
+    }
+  ],
+  "captions": [
+    {
+      "text": "让声音有画面,每一个重点都值得被看见。",
+      "startMs": 50,
+      "endMs": 4210
+    }
+  ]
+}

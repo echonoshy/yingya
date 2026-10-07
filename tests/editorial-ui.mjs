@@ -13,13 +13,22 @@ const page = await browser.newPage({ viewport: { width: 1536, height: 1024 }, re
 page.on('pageerror', error => errors.push(error.message));
 try {
   await installApiMock(page);
-  let loggedIn = false, loginPayload, renamePayload;
+  let loggedIn = false, loginPayload, renamePayload, deleteCount = 0, failDelete = true;
+  const creations = [];
+  page.on('request', request => { if (request.method() === 'POST' && /\/agent-projects$/.test(new URL(request.url()).pathname)) creations.push(request.url()); });
   await page.route('**/api/auth/me', route => route.fulfill({ status: loggedIn ? 200 : 401, json: loggedIn ? { user: { id: 'qa-user', email: 'qa@example.com', isAdmin: false } } : { message: '未登录' } }));
   await page.route('**/api/auth/login', route => { loginPayload = route.request().postDataJSON(); loggedIn = true; return route.fulfill({ json: { user: { id: 'qa-user', email: 'qa@example.com', isAdmin: false } } }); });
-  await page.route('**/qa-editorial-cover.webp', async route => route.fulfill({ contentType: 'image/webp', body: await readFile(new URL('../web/src/assets/home-cinema/02-sunset-panorama.webp', import.meta.url)) }));
+  await page.route('**/qa-editorial-cover.webp', async route => route.fulfill({ contentType: 'image/webp', body: await readFile(new URL('./fixtures/media/project-cover.webp', import.meta.url)) }));
   const records = Array.from({ length: 6 }, (_, i) => ({ ...detail, id: `${i + 1}1111111-1111-4111-8111-111111111111`, title: ['把想法变成故事', '一段城市里的光', '春日记录', '产品介绍', '灵感笔记', '第一次创作'][i], posterUrl: '/qa-editorial-cover.webp', updatedAt: detail.updatedAt + i }));
   await page.route(url => /^\/api(?:\/u\/[^/]+)?\/agent-projects$/.test(url.pathname), route => route.request().method() === 'GET' ? route.fulfill({ json: records }) : route.fallback());
   await page.route(url => /^\/api(?:\/u\/[^/]+)?\/agent-projects\/[^/]+$/.test(url.pathname), route => {
+    if (route.request().method() === 'DELETE') {
+      deleteCount++;
+      if (failDelete) return route.fulfill({ status: 500, json: { message: '测试删除失败，请重试' } });
+      const index = records.findIndex(item => item.id === new URL(route.request().url()).pathname.split('/').at(-1));
+      records.splice(index, 1);
+      return route.fulfill({ json: {} });
+    }
     if (route.request().method() !== 'PATCH') return route.fallback();
     renamePayload = route.request().postDataJSON();
     const record = records.find(item => item.id === new URL(route.request().url()).pathname.split('/').at(-1));
@@ -27,21 +36,39 @@ try {
     return route.fulfill({ json: record });
   });
   await page.goto(base + '/');
-  await page.getByRole('heading', { name: '让想法 有声有色' }).waitFor();
-  assert.equal(await page.getByRole('link', { name: 'GitHub' }).getAttribute('href'), 'https://github.com/echonoshy/yingya');
+  await page.locator('#marketing-title').waitFor();
+  assert.equal(await page.getByRole('link', { name: '能做什么', exact: true }).getAttribute('href'), '#creation-process');
   await page.screenshot({ path: out + '/home.png' });
-  await page.getByRole('link', { name: '开始创作', exact: true }).click();
+  await page.evaluate(() => localStorage.setItem('yingya-user:qa-user:yingya-home-prompt', JSON.stringify('已有草稿')));
+  await page.getByRole('button', { name: '参考视频', exact: true }).click();
+  await page.locator('#home-idea').fill('首页的新想法');
+  await page.getByRole('button', { name: '准备创作', exact: true }).click();
   await page.locator('#login-email').waitFor();
   await page.evaluate(() => document.fonts.ready);
   await page.screenshot({ path: out + '/login.png' });
-  assert.equal(await page.locator('.editorial-character video').evaluate(video => video.hasAttribute('controls')), false);
+  assert.equal(await page.locator('.editorial-character').count(), 0);
   await page.locator('#login-email').fill('qa@example.com');
   await page.locator('#login-password').fill('test-password-only');
   await page.getByRole('button', { name: '登录并开始创作' }).click();
   await page.locator('.home-create textarea').waitFor();
+  await page.waitForFunction(() => document.querySelector('.home-create textarea').value === '已有草稿\n首页的新想法');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('yingya-marketing-draft-v1')), null);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('yingya-marketing-source-v1')), null);
+  const preparation = page.getByRole('group', { name: '准备创作内容' });
+  assert.equal(await preparation.getByRole('button', { name: '参考视频', exact: true }).getAttribute('aria-pressed'), 'true', 'Homepage preparation choice survives login');
+  await page.getByRole('button', { name: '添加素材', exact: true }).click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('menu', { name: '添加素材' }).getByRole('menuitem', { name: '参考视频', exact: true }).click();
+  await (await chooser).setFiles({ name: 'style-reference.mp4', mimeType: 'video/mp4', buffer: Buffer.from('isolated UI fixture') });
+  assert.equal(await page.getByRole('combobox', { name: 'style-reference.mp4的素材用途', exact: true }).textContent(), '仅供参考', 'Reference upload is marked only for reference');
+  assert.equal(await page.locator('.home-create textarea').inputValue(), '已有草稿\n首页的新想法');
+  await page.getByRole('button', { name: '移除 style-reference.mp4', exact: true }).click();
+  await preparation.getByRole('button', { name: '剧本', exact: true }).click();
+  assert.equal(await page.locator('.home-create textarea').evaluate(el => el === document.activeElement), true);
   assert.equal(loginPayload.email, 'qa@example.com');
   assert.equal(new URL(page.url()).pathname, '/app');
-  assert.equal(await page.locator('.recent-creations').count(), 0);
+  assert.deepEqual(creations, [], 'Preparing content does not submit or generate a video');
+  assert.equal(await page.locator('.recent-creations').count(), 1);
   assert.equal(await page.getByText('账号信息未提交', { exact: false }).count(), 0);
   await page.locator('.home-create textarea').fill('讲清楚一个有趣的想法');
   for (const width of [1536, 1280, 1920, 390, 320]) {
@@ -50,13 +77,14 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `create overflow ${width}`);
   }
   await page.setViewportSize({ width: 1536, height: 1024 });
-  await page.getByRole('button', { name: '我的作品', exact: true }).click();
+  await page.getByRole('button', { name: '我的项目', exact: true }).click();
   await page.locator('.home-project-list > article').first().waitFor();
   assert.equal(new URL(page.url()).hash, '#/projects');
   await page.getByLabel('搜索项目', { exact: true }).fill('春日');
   assert.equal(await page.locator('.home-project-list > article').count(), 1);
   await page.getByRole('button', { name: '清除搜索' }).click();
-  await page.getByLabel('作品排序').selectOption('oldest');
+  await page.getByRole('combobox', { name: '作品排序', exact: true }).click();
+  await page.getByRole('option', { name: '最早更新' }).click();
   const menu = page.getByRole('button', { name: '项目操作 把想法变成故事' });
   await menu.click();
   await page.getByRole('button', { name: '重命名', exact: true }).click();
@@ -65,9 +93,24 @@ try {
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(renamePayload.title, '作品新名称');
   assert.ok(await page.getByRole('button', { name: '项目操作 作品新名称' }).isVisible());
+  await page.getByRole('button', { name: '项目操作 作品新名称' }).click();
+  await page.getByRole('button', { name: '删除项目', exact: true }).click();
+  await page.getByRole('button', { name: '保留项目', exact: true }).click();
+  assert.equal(deleteCount, 0, 'Cancel keeps the project');
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '项目操作 作品新名称' }).click();
+  await page.getByRole('button', { name: '删除项目', exact: true }).click();
+  await page.getByRole('button', { name: '确认删除', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: '测试删除失败' }).waitFor();
+  assert.equal(await page.getByRole('dialog').isVisible(), true, 'Failed delete keeps confirmation and retry');
+  failDelete = false;
+  await page.getByRole('button', { name: '确认删除', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  assert.equal(deleteCount, 2);
+  assert.equal(await page.getByRole('button', { name: '项目操作 作品新名称' }).count(), 0);
   await page.getByRole('button', { name: '新建视频', exact: true }).click();
   assert.equal(await page.locator('.home-create textarea').inputValue(), '讲清楚一个有趣的想法');
-  await page.getByRole('button', { name: '我的作品', exact: true }).click();
+  await page.getByRole('button', { name: '我的项目', exact: true }).click();
   for (const width of [1536, 1280, 1920, 390, 320]) {
     await page.setViewportSize({ width, height: 1024 });
     await page.screenshot({ path: `${out}/projects-${width}.png` });
@@ -84,7 +127,8 @@ try {
   assert.equal(await page.locator('.asset-card-item').count(), 1);
   await page.getByLabel('搜索素材', { exact: true }).fill('');
   await page.waitForFunction(() => document.querySelectorAll('.asset-card-item').length === 4);
-  await page.getByLabel('素材排序').selectOption('name');
+  await page.getByRole('combobox', { name: '素材排序', exact: true }).click();
+  await page.getByRole('option', { name: '名称排序' }).click();
   await page.locator('.asset-card-item').first().locator('button').click();
   const inspector = page.locator('.editorial-inspector');
   await inspector.waitFor();
@@ -95,7 +139,8 @@ try {
   assert.equal(await page.locator('.asset-card-item button').first().evaluate(button => button === document.activeElement), true);
   await page.getByRole('button', { name: '批量整理', exact: true }).click();
   await page.getByRole('button', { name: '选择素材 秋日背景音乐.mp3', exact: true }).click();
-  await page.getByRole('toolbar', { name: '批量整理素材' }).getByLabel('批量移动到文件夹').selectOption('folder-brand');
+  await page.getByRole('toolbar', { name: '批量整理素材' }).getByRole('combobox', { name: '批量移动到文件夹' }).click();
+  await page.getByRole('option', { name: '品牌素材', exact: true }).click();
   await page.getByRole('button', { name: '移动', exact: true }).click();
   await page.getByText('已将 1 项素材移动到“品牌素材”', { exact: true }).waitFor();
   const tabs = page.getByRole('navigation', { name: '素材类型' });
@@ -107,8 +152,24 @@ try {
     await page.screenshot({ path: `${out}/assets-${width}.png` });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `assets overflow ${width}`);
   }
+  // The compact folder rail retains create/rename/delete on a narrow screen.
+  const folderToggle = page.locator('.app-navigation-extra > summary');
+  await folderToggle.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: '新建文件夹', exact: true }).click();
+  await page.getByRole('textbox', { name: '文件夹名称', exact: true }).fill('手机素材');
+  await page.locator('.asset-folder-form').getByRole('button', { name: '创建', exact: true }).click();
+  await page.getByRole('button', { name: '重命名文件夹 手机素材', exact: true }).click();
+  await page.getByRole('dialog').getByRole('textbox').fill('移动端资料');
+  await page.getByRole('dialog').getByRole('button', { name: '保存名称', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '删除文件夹 移动端资料', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '确认删除', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '删除文件夹 移动端资料', exact: true }).waitFor({ state: 'detached' });
+  await page.screenshot({ path: out + '/mobile-folders.png' });
   assert.deepEqual(errors, []);
-  console.log('PASS editorial UI: login API and routing, creation draft persistence, project search/sort/rename, asset search/type/sort/bulk move, modal keyboard/focus, five viewport widths, reduced motion. API fixtures only.');
+  console.log('PASS editorial UI: login API and routing, creation draft persistence, project search/sort/rename/delete with failure recovery, asset search/type/sort/bulk move, modal keyboard/focus, five viewport widths, mobile folder create/rename/delete, reduced motion. API fixtures only.');
 } catch (error) {
   await page.screenshot({ path: out + '/failure.png' });
   throw error;

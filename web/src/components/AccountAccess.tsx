@@ -1,7 +1,7 @@
-import { EditorialCharacter } from "./EditorialCharacter";
+import { UpdateBadge } from './AppUpdate';
 import { BrandLogo } from "../marketing/BrandLogo";
 import "./editorial-login.css";
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowLeft, ArrowRight, CircleNotch, Eye, EyeSlash, Prohibit } from '@phosphor-icons/react';
 import { z } from 'zod';
 import { sessionFetch } from '../session';
@@ -24,6 +24,8 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmation, setConfirmation] = useState('');
+  const [confirmationError, setConfirmationError] = useState(false);
+  const confirmationInput = useRef<HTMLInputElement>(null);
   const [inviteCode, setInviteCode] = useState(invitation.get('invite') ?? '');
   const [busy, setBusy] = useState(false), [error, setError] = useState(initialError);
   useEffect(() => { if (invitation.has('invite') || invitation.has('reset')) window.history.replaceState(null, '', window.location.pathname + window.location.search); }, [invitation]);
@@ -37,31 +39,32 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
   }, []);
   async function submit(event: FormEvent) {
     event.preventDefault(); if (busy) return;
-    if (mode !== 'login' && password !== confirmation) { setError('两次输入的密码不一致'); return; }
-    setBusy(true); setError('');
+    if (mode !== 'login' && password !== confirmation) { setConfirmationError(true); confirmationInput.current?.focus(); return; }
+    setBusy(true); setError(''); setConfirmationError(false);
     try {
       const body = await accountCall(`/api/auth/${mode}`, { method: 'POST', body: JSON.stringify({ email, password, ...(mode === 'register' ? { invite_code: inviteCode } : mode === 'reset' ? { reset_code: invitation.get('reset') } : {}) }) });
       onLogin(z.object({ id: z.string(), email: z.string(), isAdmin: z.boolean() }).parse(body.user));
     } catch (error) { setError(message(error)); } finally { setBusy(false); }
   }
-  return <div className="auth-preview cinema-home editorial-login">
-    <header className="auth-header"><BrandLogo compact /><a className="auth-back" href="/"><ArrowLeft aria-hidden="true" />返回首页</a></header>
+  return <div className="auth-preview editorial-login">
+    <header className="auth-header"><BrandLogo compact /><div className="auth-header-actions"><UpdateBadge /><a className="auth-back" href="/"><ArrowLeft aria-hidden="true" />返回首页</a></div></header>
     <main className="auth-layout">
       <section className="auth-form-area" aria-labelledby="auth-heading">
-        <h1 id="auth-heading">{mode === 'reset' ? '重新出发' : mode === 'register' ? '开始创作' : '欢迎回来'}</h1>
-        <p className="auth-subtitle">{mode === 'reset' ? '设置新密码，继续你的创作' : mode === 'register' ? '用邀请码，开启你的第一个故事' : '登录映芽，继续你的创作'}</p>
+        <code className="auth-code-label" aria-hidden="true"><span>&lt;</span>YingYa<span>&gt;</span></code>
+        <h1 id="auth-heading">{mode === 'reset' ? '重置密码' : mode === 'register' ? '开始创作' : '欢迎回来'}</h1>
+        <p className="auth-subtitle">{mode === 'reset' ? '设置新密码，继续你的创作' : mode === 'register' ? '用邀请码，开启你的第一个故事' : '登录 YingYa，继续你的创作。'}</p>
         <form onSubmit={event => void submit(event)} aria-busy={busy}>
           <div className="auth-field"><label htmlFor="login-email">邮箱地址</label><input id="login-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} disabled={busy} /></div>
           {mode === 'register' ? <div className="auth-field"><label htmlFor="login-invite">邀请码</label><input id="login-invite" autoComplete="off" placeholder="输入你的邀请码" value={inviteCode} onChange={event => setInviteCode(event.target.value)} required maxLength={128} disabled={busy} /></div> : null}
-          <div className="auth-field"><label htmlFor="login-password">{mode !== 'login' ? '设置密码' : '密码'}</label><div className="auth-password"><input id="login-password" type={passwordVisible ? 'text' : 'password'} autoComplete={mode !== 'login' ? 'new-password' : 'current-password'} minLength={mode !== 'login' ? 10 : undefined} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} required disabled={busy} aria-describedby={mode === 'login' ? undefined : 'password-hint'} /><button type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)} disabled={busy}>{passwordVisible ? <EyeSlash/> : <Eye/>}</button></div>{mode !== 'login' ? <small id="password-hint">至少 10 个字符</small> : null}</div>
-          {mode !== 'login' ? <div className="auth-field"><label htmlFor="login-confirmation">确认密码</label><input id="login-confirmation" type="password" autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} required maxLength={128} disabled={busy} /></div> : null}
-          <button className="auth-submit" disabled={busy}>{busy ? '正在处理…' : mode === 'reset' ? '重置密码并登录' : mode === 'register' ? '注册并开始创作' : '登录并开始创作'}{busy ? <CircleNotch className="spin" /> : <ArrowRight />}</button>
+          <div className="auth-field"><label htmlFor="login-password">{mode !== 'login' ? '设置密码' : '密码'}</label><div className="auth-password"><input id="login-password" type={passwordVisible ? 'text' : 'password'} autoComplete={mode !== 'login' ? 'new-password' : 'current-password'} minLength={mode !== 'login' ? 10 : undefined} maxLength={128} value={password} onChange={event => { setPassword(event.target.value); setConfirmationError(false); }} required disabled={busy} aria-describedby={mode === 'login' ? undefined : 'password-hint'} /><button type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)} disabled={busy}>{passwordVisible ? <EyeSlash/> : <Eye/>}</button></div>{mode !== 'login' ? <small id="password-hint">至少 10 个字符</small> : null}</div>
+          {mode !== 'login' ? <div className="auth-field"><label htmlFor="login-confirmation">确认密码</label><input ref={confirmationInput} aria-invalid={confirmationError || undefined} aria-describedby={confirmationError ? "confirmation-error" : undefined} id="login-confirmation" type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setConfirmationError(false); }} required maxLength={128} disabled={busy} />{confirmationError ? <p id="confirmation-error" className="auth-error" role="alert">两次输入的密码不一致，请重新确认</p> : null}</div> : null}
           {error ? <p className="auth-error" role="alert">{error}</p> : null}
+          <button className="auth-submit" disabled={busy}><span>{busy ? (mode === 'login' ? '正在登录…' : mode === 'register' ? '正在注册…' : '正在重置密码…') : mode === 'reset' ? '重置密码并登录' : mode === 'register' ? '注册并开始创作' : '登录并开始创作'}</span>{busy ? <CircleNotch className="spin" aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}</button>
         </form>
-        <p className="auth-switch">{mode === 'login' ? '有邀请码？' : '已有账号？'}<button disabled={busy} onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setPasswordVisible(false); }}>{mode === 'login' ? '注册账号' : '返回登录'}</button></p>
-        <p className="auth-help">{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员' : '忘记密码或首次激活账号，请联系管理员'}</p>
+        <p className="auth-switch">{mode === 'login' ? '有邀请码？' : '已有账号？'}<button disabled={busy} onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setConfirmationError(false); setPasswordVisible(false); }}>{mode === 'login' ? '注册账号' : '返回登录'}</button></p>
+        <div className="auth-help"><p>{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员' : '忘记密码或首次激活账号，请联系管理员'}</p><a href="mailto:echonoshy@gmail.com">联系管理员<ArrowRight aria-hidden="true" /></a></div>
+        <code className="auth-code-label auth-code-label--close" aria-hidden="true"><span>&lt;/</span>YingYa<span>&gt;</span></code>
       </section>
-      <aside className="auth-art" aria-label="映芽角色"><EditorialCharacter variant="login" /><p>每一个想法，<br />都值得被看见</p></aside>
     </main>
   </div>;
 }

@@ -7,12 +7,12 @@ description: Turn ideas, source material and supplied media into clear, narrated
 
 This is Yingya's outer production workflow. Work inside the current project directory. Conversation carries decisions; `.yingya/manifest.json` is the only UI workflow manifest. Keep the user informed in concise Chinese about the current production step, usable result, and any blocker.
 
-Read [knowledge-video.md](references/knowledge-video.md) for the current product contract: shareable knowledge videos, real keyframes before approval, no user editor or video-generation service, and version-bound feedback outcomes. Its planning rules supersede older text-only/direct-editor guidance.
+Read [knowledge-video.md](references/knowledge-video.md) for the current product contract: shareable knowledge videos, real keyframes before approval, no user editor, generated footage through the bundled H3 skill, and version-bound feedback outcomes. Its planning rules supersede older text-only/direct-editor guidance.
 
 ## Video engine
 
 Read [remotion.md](references/remotion.md) before authoring or resuming production.
-Remotion is the only engine. New projects use it automatically. Author React/TSX
+Remotion is the only engine. New projects use it automatically. Read [remotion-authoring.md](references/remotion-authoring.md) for native scene components, measured timeline assembly, Chinese typography and caption rendering. Author React/TSX
 source and a frame-based media schedule; build the generated preview before checks.
 An existing HTML-only project cannot render: preserve its source and explain that
 it needs a new Remotion project. Planning, approval, visual review, durable tasks
@@ -43,7 +43,7 @@ path-following motion, read [GSAP for video](references/gsap/index.md). It route
 to pinned official references and installs only the needed offline plugins.
 Use it within this production workflow; Remotion owns the video clock.
 
-A request for new photorealistic footage, character performance, or complex camera action needs supplied or reliably sourced existing footage. Video-generation services are not available in this product; never discover or call them. Do not imply Remotion synthesizes those shots. When required inputs are missing, explain the gap before approval and propose either supplied footage or an animation treatment for the user to choose; never silently change the requested result. Videos generated elsewhere can be used as source footage.
+For new photorealistic footage, character performance, image-to-video, or complex camera action, read [generated-footage.md](references/generated-footage.md). Use the bundled `minimax-h3-local` skill; a supported route is Image Gen for a reviewed first frame, H3 for the moving audiovisual shot, then Remotion for editable assembly and delivery. Supplied footage and procedural animation remain valid choices. Check the service and use detailed shot prompts before promising generation. Do not imply Remotion synthesizes footage or silently substitute still images for requested motion.
 
 ## Communicate in the product's language
 
@@ -79,7 +79,7 @@ Choose the smallest route that fulfills the request:
 | Plan confirmed; `production` | Continue the saved plan from the first incomplete dependency. |
 | Local revision to an existing video | State affected scenes and dependencies, then build a new draft without repeating whole-project planning. |
 | New narrative, visual direction, format, or delivery scope | Update only affected plan decisions and return to `plan_review` before production. |
-| Draft confirmed; `final_render` | Verify the approved source and produce the final MP4. |
+| Explicit staged draft confirmed; `final_render` | Verify the approved source and produce the final MP4. |
 | Inspection, explanation, or scene inventory only | Answer or update requested metadata; do not generate media or rerender. |
 | Interrupted / inconsistent project | Read [recovery.md](references/recovery.md) and reconcile files before resuming. |
 
@@ -92,7 +92,7 @@ Preserve real
 events and required content; generated additions must not masquerade as recorded
 evidence. Respect original-audio requirements and the approved creative direction.
 
-User instructions and existing authorization take precedence. Normally stop at two kinds of checkpoint: the production plan and each reviewable draft. Do not add separate style, script, storyboard, or preview approvals. A plain “生成视频” starts planning; it does not by itself confirm a plan that has not been presented. Explicit authorization to proceed without review must not cause repeated permission requests.
+User instructions and existing authorization take precedence. Normally the combined production plan is the only approval checkpoint. After approval, complete internal review, rendering and version registration without requesting draft approval. Preserve an explicit user request for staged draft review and existing legacy draft checkpoints; do not add separate style, script, storyboard or preview approvals. A plain “生成视频” starts planning; it does not by itself confirm a plan that has not been presented. Explicit authorization to proceed without review must not cause repeated permission requests.
 
 ## Plan once
 
@@ -108,7 +108,7 @@ Register the plan and scene outline as manifest artifacts, set `phase: "plan_rev
 
 ## Produce in dependency order
 
-Read [production.md](references/production.md) after plan approval. Use [remotion.md](references/remotion.md) for technical authoring and CLI syntax; load specialized media skills only for the chosen route. `faceless-explainer` supplies narration and storytelling guidance, not another approval workflow.
+Read [production.md](references/production.md) after plan approval. Use [remotion.md](references/remotion.md) for technical authoring and CLI syntax; load specialized media skills only for the chosen route. For narration and storytelling, read [explainer-storytelling.md](references/explainer-storytelling.md). For measured subtitles, use the installed `yingya-captions` skill; for level measurement, fades and ducking read [audio-mixing.md](references/audio-mixing.md). These capabilities share this workflow.
 
 ### Required authoring and delivery contract
 
@@ -128,14 +128,14 @@ Open and inspect the actual scene/transition snapshots; listen to the rendered n
 3. Build the composition from `scenes.json` using stable scene IDs. For every new visual treatment, follow [representative-scene.md](references/representative-scene.md): produce and inspect a meaningful dynamic passage with its actual subjects, assets and motion before expanding across the film. A complete script or short runtime does not establish visual quality. Existing verified treatments and local edits can reuse matching evidence. This is internal iteration, not another user checkpoint.
 4. Build with `node "$YINGYA_REMOTION" build --project .`, then run the durable check and render commands in [runtime-tools.md](references/runtime-tools.md). Preserve full results and poll the same session/job until it exits. Inspect representative frames and actual motion; do not invent quality gates the runtime does not provide.
 5. Fix failed gates and rerun the affected check. A gate passes only with successful process exit and complete JSON whose top-level `ok` is `true`. Save reports atomically under `.yingya/reports/check-*.json`. Check timestamps cover short scenes and meaningful transitions; do not assume default samples cover every scene.
-6. Render review-quality video only after required checks pass. Follow [visual-review.md](references/visual-review.md) to review the actual MP4's composition, assets, movement, editing and sound. Open its decoded frames and inspect meaningful motion over time; technical success alone does not establish aesthetic quality. Repair concrete defects and recheck the affected result. Preserve editable source and bind the review evidence to this draft's source and output.
-7. Follow [recovery.md](references/recovery.md) to snapshot an immutable `.yingya/versions/draft-N/` and commit the draft. The final write updates artifacts, versions, `currentDraft`, `dirty: false`, `phase: "draft_review"`, and a `draft` checkpoint together. Return the draft and a short account of what was checked; stop for review.
+6. Render the shareable high-quality video only after required checks pass; use a lower-quality internal sample only when it helps iteration. Follow [visual-review.md](references/visual-review.md) to review the actual MP4's composition, assets, movement, editing and sound. Open its decoded frames and inspect meaningful motion over time; technical success alone does not establish aesthetic quality. Repair concrete defects and recheck the affected result. Preserve editable source and bind the review evidence to this draft's source and output.
+7. Follow [recovery.md](references/recovery.md) to snapshot an immutable `.yingya/versions/draft-N/` and register the checked, shareable MP4. The final write updates artifacts, versions, `currentDraft`, `dirty: false`, `phase: "completed"`, and `checkpoint: null` together. Include a `final-video` artifact with `version` equal to this version ID. Return the video and a short account of actual checks; the user can request further changes. Only an explicit staged-review request uses `draft_review` and a `draft` checkpoint.
 
 ## Revise and finish
 
 Video-frame feedback includes attached marked screenshots and structured version, time, region, and note data. Inspect those images as modification evidence; never insert annotated screenshots as composition assets. Match the referenced version against current source before editing. Feedback on an older draft does not itself request a rollback. If the target no longer corresponds to current scenes, explain the mismatch rather than claiming a precise match. Preserve the feedback IDs in your revision summary so changes can be traced to the request.
 
-Map timestamp / scene / Studio-selection feedback onto existing source before editing. Reuse clean upstream work. A visual-only edit keeps narration; a spoken-copy edit regenerates only affected speech and captions, then recomputes dependent timing. A global voice change invalidates all speech. See the dependency table in [production.md](references/production.md). Preserve all prior drafts and render the next numbered version.
+Map timestamp / scene / screenshot feedback onto existing source before editing. Reuse clean upstream work. A visual-only edit keeps narration; a spoken-copy edit regenerates only affected speech and captions, then recomputes dependent timing. A global voice change invalidates all speech. See the dependency table in [production.md](references/production.md). Preserve all prior drafts and render the next numbered version.
 
 Workbench changes to a scene's explanation, focal area or effect are already
 saved source edits. Read the current scene and bindings instead of undoing them
@@ -144,7 +144,7 @@ new render; a saved source edit is not a new MP4 version. Previewing an older
 version does not authorize changing the current one or rolling it back. Use
 the actual base version supplied with the turn and preserve version boundaries.
 
-After draft confirmation, render the high-quality MP4 from the approved source. Reuse valid checks only when their source dependencies still match; otherwise run the unified check. Verify the output before adding the final video artifact, clearing checkpoint and dirty, and setting `phase: "completed"`. Return the final local artifact path and a compact verification summary. Check for an already-running or completed equivalent export before starting another one.
+Plan approval authorizes the shareable high-quality MP4 and internal quality review. A verified high-quality render can serve as the delivered version without rendering it again. For an explicit staged-review request or legacy draft checkpoint, draft confirmation authorizes the final MP4 from that approved source. Reuse valid checks only when their source dependencies still match; otherwise run the unified check. Verify the output before adding the final video artifact, clearing checkpoint and dirty, and setting `phase: "completed"`. Return the final local artifact path and a compact verification summary. Check for an already-running or completed equivalent export before starting another one.
 
 ## Capability boundaries
 

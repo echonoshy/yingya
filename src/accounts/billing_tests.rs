@@ -45,8 +45,11 @@ fn prices_use_actual_input_output_cache_and_do_not_duplicate_settlement() {
 }
 
 #[test]
-fn all_four_models_and_long_context_are_priced_in_integer_nanodollars() {
+fn current_and_historical_models_and_long_context_are_priced_in_integer_nanodollars() {
     for (model, total) in [
+        ("gpt-6.1-sol", 0.3),
+        ("gpt-6-sol", 0.3),
+        ("gpt-6-luna", 0.015),
         ("gpt-6-astra", 1.5),
         ("gpt-5.6-sol", 0.6),
         ("gpt-5.6-terra", 0.32),
@@ -202,4 +205,13 @@ fn malformed_counts_and_reasoning_subtotals_do_not_create_extra_charges() {
     ] {
         assert!(TokenUsage::from_response(&json!({"usage":usage})).is_none());
     }
+}
+
+#[test]
+fn sol_61_uses_its_own_cached_input_rate() {
+    let (db, user) = fixture();
+    record(&db, &user, "gpt-6.1-sol", 100_000, 10_000, 20_000);
+    let data = db.billing_report(Some(&user), &this_month(&db)).unwrap();
+    assert_eq!(data["totals"]["totalCostUsd"], 0.262);
+    assert_eq!(data["lines"][0]["cachedInputPerMillion"], 0.1);
 }

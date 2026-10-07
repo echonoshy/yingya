@@ -5,13 +5,12 @@ export const productVersion = history.releases[0].version;
 type DevelopmentVersion = {
   version: string;
   date: string;
-  title?: string;
-  summary?: string;
+  changes: readonly string[];
 };
 
 export function releaseNotes(releases: readonly DevelopmentVersion[]) {
-  return releases.filter((release): release is DevelopmentVersion & {title: string; summary: string} =>
-    release.version.endsWith('.0') && Boolean(release.title?.trim()) && Boolean(release.summary?.trim()));
+  return releases.filter(release => !release.version.endsWith('.0')).slice(0, 5)
+    .map(({version, date, changes}) => ({version, date, summary: changes.join(' ')}));
 }
 
 export const publicReleaseNotes = releaseNotes(history.releases);

@@ -26,6 +26,10 @@ export function useMotionPresence<T>(value: T | null) {
     const animation = animateElement(element, opacity, duration, easing);
     const slide = animateElement(target, positions.map(transform => ({ transform })), duration, easing);
     if (!entering) {
+      // Hold the transparent, displaced frame until React unmounts the shell.
+      // fill:none restores the visible base styles before the finished callback commits.
+      animation?.effect?.updateTiming({ fill: "forwards" });
+      slide?.effect?.updateTiming({ fill: "forwards" });
       if (animation) void animation.finished.then(() => { if (!cancelled) setRetained(null); }).catch(() => undefined);
       else setRetained(null);
     }

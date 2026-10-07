@@ -32,13 +32,13 @@ export function validateVersions(history, manifest, lock) {
     const [, , patch] = parseVersion(release.version);
     if (!validDate(release.date)) throw Error(`${release.version} 的日期无效`);
     if (!Array.isArray(release.changes) || !release.changes.length || !release.changes.every(nonempty)) throw Error(`${release.version} 必须记录开发变更`);
-    if (patch === 0 && (!nonempty(release.title) || !nonempty(release.summary))) throw Error(`${release.version} 是中版本，必须填写网页标题和摘要`);
+    if (patch === 0 && (release.title !== undefined || release.summary !== undefined) && (!nonempty(release.title) || !nonempty(release.summary))) throw Error(`${release.version} 的历史标题和摘要必须同时填写`);
     if (patch !== 0 && (release.title !== undefined || release.summary !== undefined)) throw Error(`${release.version} 是修订版本，只记录开发变更，不填写网页摘要`);
     const previous = history.releases[index + 1];
     if (previous && (compareVersions(release.version, previous.version) <= 0 || release.date < previous.date)) throw Error('版本记录必须按版本和日期从新到旧排列，且版本不能重复');
   }
   const [major, minor] = parseVersion(current);
-  if (!history.releases.some(release => release.version === `${major}.${minor}.0`)) throw Error('当前中版本缺少起始版本的网页说明');
+  if (!history.releases.some(release => release.version === `${major}.${minor}.0`)) throw Error('当前中版本缺少起始版本记录');
   return current;
 }
 
@@ -63,7 +63,7 @@ async function main() {
     change: {type: 'string', multiple: true}, title: {type: 'string'}, summary: {type: 'string'}, date: {type: 'string'}, help: {type: 'boolean'},
   }});
   if (values.help) {
-    console.log('npm run version:check\nnpm run version:record -- patch --change "修复说明"\nnpm run version:record -- minor --title "更新标题" --summary "网页简要说明" --change "开发变更"');
+    console.log('npm run version:check\nnpm run version:record -- patch --change "一句简要更新"\nnpm run version:record -- minor --change "重要功能变化"');
     return;
   }
   const [history, manifest, lock] = await Promise.all(['versions.json', 'package.json', 'package-lock.json'].map(async name => JSON.parse(await readFile(path.join(root, name), 'utf8'))));

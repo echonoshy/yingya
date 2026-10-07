@@ -1,4 +1,4 @@
-import { StudioArtwork } from "../components/StudioTheme";
+import { SelectControl } from "../components/SelectControl";
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CircleNotch, Copy, LinkBreak, LinkSimple, ArrowSquareOut, Warning } from '@phosphor-icons/react';
@@ -7,7 +7,7 @@ import { api } from '../api';
 import { absoluteShareUrl, listShares, message, shareDate, shareRequest, shareSchema, shareSize, shareStatus, type Share } from './api';
 import './sharing.css';
 
-function ExpiryOptions() { return <><option value={7}>7 天</option><option value={30}>30 天</option><option value={0}>长期有效</option></>; }
+const expiryOptions = <><option value={7}>7 天</option><option value={30}>30 天</option><option value={0}>长期有效</option></>;
 export type ShareSource = { path: string; label: string } & ({ artifactId: string; versionId?: never } | { versionId: string; artifactId?: never });
 export function ShareDialog({ projectId, title, source, onClose }: { projectId: string; title: string; source: ShareSource; onClose: () => void }) {
   const [items, setItems] = useState<Share[]>([]), [days, setDays] = useState(7), [loading, setLoading] = useState(true);
@@ -35,8 +35,8 @@ export function ShareDialog({ projectId, title, source, onClose }: { projectId: 
   return createPortal(<ActionDialog title="分享当前视频" busy={busy} onClose={onClose} className="share-dialog"><div className="share-dialog-body">
     <div className="share-selected"><video src={api.fileUrl(projectId, source.path)} controls playsInline preload="metadata" aria-label="将要分享的视频"/><div><b>{title}</b><p>{source.label.replace(/草稿/g, '视频')}</p><small>直接分享当前视频，无需重新导出；分享保存独立副本，后续修改不会改变链接中的视频</small></div></div>
     <p className="share-help"><LinkSimple/>持有链接的人无需登录即可观看，也可以继续转发链接</p>
-    <div className="share-create"><label>新链接有效期<select aria-label="新链接有效期" value={days} disabled={busy} onChange={event => setDays(Number(event.target.value))}><ExpiryOptions/></select></label><button className="share-primary" disabled={busy || loading} onClick={() => void create()}>{busy ? <CircleNotch className="spin"/> : <LinkSimple/>}{busy ? '正在处理…' : '创建分享链接'}</button></div>
-    {notice ? <div className="share-notice" role="status"><StudioArtwork variant="account" state="ready"/><p>{notice}</p></div> : null}
+    <div className="share-create"><label>新链接有效期<SelectControl aria-label="新链接有效期" value={days} disabled={busy} onChange={event => setDays(Number(event.target.value))}>{expiryOptions}</SelectControl></label><button className="share-primary" disabled={busy || loading} onClick={() => void create()}>{busy ? <CircleNotch className="spin"/> : <LinkSimple/>}{busy ? '正在处理…' : '创建分享链接'}</button></div>
+    {notice ? <div className="share-notice" role="status"><p>{notice}</p></div> : null}
     {error ? <p className="share-error" role="alert"><Warning/>{error}<button disabled={busy} onClick={() => setRetry(value => value + 1)}>重新读取</button></p> : null}
     <div className="share-list-heading"><h3>此项目的分享</h3><span>{loading ? '正在读取…' : `${items.length} 个链接`}</span></div>
     {!loading && !items.length ? <p className="share-empty">还没有分享链接；创建后可在这里复制、调整有效期或取消</p> : null}
@@ -51,6 +51,6 @@ function ShareRow({ item, busy, onRevoke, onUpdate }: { item: Share; busy: boole
   const editable = item.status === 'active' || item.status === 'expired';
   return <article className="share-row"><div className="share-row-heading"><b>{item.version}</b><span><LinkSimple/>{shareStatus(item.status)}</span></div><p>{shareSize(item.bytes)} · 创建于 {shareDate(item.createdAt)}</p><p>{item.expiresAt ? `有效至 ${shareDate(item.expiresAt)}` : '长期有效'}</p>
     {item.url ? <><div className="share-link"><input ref={input} readOnly aria-label={`${item.version}分享链接`} value={absoluteShareUrl(item.url)} onFocus={event => event.target.select()}/><button disabled={busy} onClick={() => void copy()}><Copy/>{copied ? '已复制' : '复制链接'}</button></div>{copyError ? <p role="status">{copyError}</p> : null}</> : null}
-    {editable ? <div className="share-row-actions">{item.url && item.status === 'active' ? <a href={item.url} target="_blank" rel="noreferrer"><ArrowSquareOut/>打开分享</a> : null}<button disabled={busy} onClick={onRevoke}><LinkBreak/>取消分享</button><details><summary>调整有效期</summary><div><label>从现在起<select aria-label={`${item.version}新的有效期`} value={days} disabled={busy} onChange={event => setDays(Number(event.target.value))}><ExpiryOptions/></select></label><button disabled={busy} onClick={() => onUpdate(days)}>保存有效期</button></div></details></div> : null}
+    {editable ? <div className="share-row-actions">{item.url && item.status === 'active' ? <a href={item.url} target="_blank" rel="noreferrer"><ArrowSquareOut/>打开分享</a> : null}<button disabled={busy} onClick={onRevoke}><LinkBreak/>取消分享</button><details><summary>调整有效期</summary><div><label>从现在起<SelectControl aria-label={`${item.version}新的有效期`} value={days} disabled={busy} onChange={event => setDays(Number(event.target.value))}>{expiryOptions}</SelectControl></label><button disabled={busy} onClick={() => onUpdate(days)}>保存有效期</button></div></details></div> : null}
   </article>;
 }

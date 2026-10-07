@@ -63,11 +63,11 @@ usage accounting, and the handling of existing shared data.
 Authenticated users get their own projects, assets, voices, and Agent runtime.
 The default admin example in `.env.example` is `admin@yingya.local`.
 
-The homepage initially shows six motion references and expands to twelve, with
-copyable creation briefs, a workflow demo, and a 66-second product introduction.
-[Media sources](../web/public/marketing/SOURCES.md) identify the current assets.
-Gallery videos load when opened; reduced motion uses static gallery posters.
-The retired homepage prototype is no longer shipped.
+The homepage combines a creation brief with the YingYa film, nine style references,
+and four capability examples. The current media and source metadata live in
+`web/src/assets/showcase/` and `design-assets/capability-reels/`. Videos respect
+visibility, manual playback intent, and reduced motion. Retired design media live
+only in the ignored `local-ui-archive/` and are not build inputs.
 
 ## Production runtime
 

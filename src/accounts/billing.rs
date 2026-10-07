@@ -1,7 +1,7 @@
 use super::*;
 use std::collections::BTreeMap;
 
-pub const PRICE_VERSION: &str = "openai-standard-2026-09-11";
+pub const PRICE_VERSION: &str = "openai-standard-2026-09-30";
 
 #[derive(Clone, Debug)]
 pub struct TokenUsage {
@@ -33,6 +33,12 @@ impl TokenUsage {
 // Integer nanodollars per token: $1 / 1M tokens = 1,000 nanodollars/token.
 fn rates(model: &str) -> Option<(i64, i64, i64)> {
     match model {
+        // https://developers.openai.com/api/docs/models/gpt-6.1-sol
+        "gpt-6.1-sol" => Some((2_000, 100, 10_000)),
+        // https://developers.openai.com/api/docs/models/gpt-6-sol
+        "gpt-6-sol" => Some((2_000, 200, 10_000)),
+        // https://developers.openai.com/api/docs/models/gpt-6-luna
+        "gpt-6-luna" => Some((100, 10, 500)),
         "gpt-6-astra" => Some((10_000, 1_000, 50_000)),
         "gpt-5.6-sol" => Some((4_000, 400, 20_000)),
         "gpt-5.6-terra" => Some((2_000, 200, 12_000)),

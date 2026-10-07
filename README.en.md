@@ -5,13 +5,8 @@
   <a href="README.md">简体中文</a> · <strong>English</strong>
 </p>
 
-<p align="center">
-  <img src="docs/images/yingya-workspace.jpg" alt="Yingya workspace with chat on the left and video preview and export settings on the right" width="100%" />
-</p>
-<p align="center"><sub>Chinese-language interface with sample project data and an original Yingya brand film</sub></p>
-
 To make a video, visit [yingya.art](https://yingya.art/).
-To see it in action, watch the [66-second product demo](https://youtu.be/DuEsvIO0zt4) or explore the [showcase](https://yingya.art/#showcase).
+Explore the current [style references](https://yingya.art/#style-references) and capability examples on the homepage.
 To run Yingya on your own server, follow the setup below.
 
 ---

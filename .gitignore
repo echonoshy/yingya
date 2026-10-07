@@ -31,3 +31,6 @@ __pycache__/
 
 # Release-local native Remotion loader, rebuilt from a pinned Ubuntu package.
 /runtime/remotion/native/
+
+# Machine-local archive of retired UI assets and prototypes.
+/local-ui-archive/

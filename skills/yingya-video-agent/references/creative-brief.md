@@ -1,6 +1,6 @@
 # Develop ideas and manuscripts into an explanatory video
 
-Follow [knowledge-video.md](knowledge-video.md) as the current product contract. Favor PPT information hierarchy, legible diagrams and motion that helps explain facts. This creative reference does not authorize a video-generation service or extra approval gate.
+Follow [knowledge-video.md](knowledge-video.md) as the current product contract. Favor PPT information hierarchy, legible diagrams and motion that helps explain facts. Use the bundled H3 route in [generated-footage.md](generated-footage.md) when the treatment needs generated action; keep the existing approval flow.
 
 Read this for an idea or manuscript whose visual treatment is not established,
 including a fully written script with no supplied pictures. Also use it when
@@ -78,7 +78,7 @@ It is not limited to small supplements. Choose deliberately per scene:
 | Relationships, mechanisms, processes or sourced data | Editable text, SVG, charts or procedural animation |
 | A key visual, illustration, environment or texture | Generate with an available image tool after authorization; define shared subject, palette and material first |
 | Actual product, interface, person or event | Use reliable supplied/retrieved material or request the necessary source; invented visuals cannot stand in as evidence |
-| Continuous character action or complex photoreal camera motion | Use supplied or reliably sourced existing footage; disclose missing material and agree on a diagram/illustration treatment when appropriate. Do not probe or call video-generation services |
+| Continuous character action or complex photoreal camera motion | Use supplied footage or the bundled H3 route, optionally starting from an Image Gen first frame. Check availability and disclose missing inputs; see generated-footage.md |
 
 In each scene's existing `assetStrategy`, identify its visual subject, source
 route (supplied, generated, retrieved or procedural), shared consistency needs

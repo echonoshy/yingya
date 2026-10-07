@@ -1,4 +1,4 @@
-import { Images, Plus, UploadSimple, Waveform } from "@phosphor-icons/react";
+import { CaretDown, Images, Plus, UploadSimple, Waveform } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { VoiceSelector } from "./VoiceSelector";
@@ -14,6 +14,8 @@ export function ComposerMoreMenu({
   narration = false,
   settings,
   triggerLabel,
+  materialActions,
+  includeVoice = true,
 }: {
   onUpload: () => void;
   onSelectAssets: () => void;
@@ -24,6 +26,8 @@ export function ComposerMoreMenu({
   narration?: boolean;
   settings?: ReactNode;
   triggerLabel?: string;
+  materialActions?: { label: string; icon: ReactNode; onSelect: () => void; disabled?: boolean; hint?: string }[];
+  includeVoice?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const presence = useMotionPresence(open ? "menu" : null);
@@ -31,7 +35,7 @@ export function ComposerMoreMenu({
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  const position = usePopoverPosition(open, trigger, settings ? 480 : 280);
+  const position = usePopoverPosition(open, trigger, materialActions ? 320 : settings ? 480 : 280);
   const voiceName = voiceId === "default" ? "默认音色" : voiceId;
   function close() {
     setOpen(false);
@@ -41,7 +45,7 @@ export function ComposerMoreMenu({
   useEffect(() => {
     if (!open) return;
     root.current
-      ?.querySelector<HTMLButtonElement>('.composer-more-action')
+      ?.querySelector<HTMLButtonElement>('.composer-more-action:not(:disabled)')
       ?.focus({ preventScroll: true });
     const outside = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);
@@ -100,8 +104,8 @@ export function ComposerMoreMenu({
         ref={trigger}
         type="button"
         className="icon-button composer-more-trigger"
-        aria-label="添加素材与设置"
-        title="添加素材与设置"
+        aria-label={triggerLabel || (settings ? "添加素材与设置" : "添加素材")}
+        title={triggerLabel || (settings ? "添加素材与设置" : "添加素材")}
         aria-haspopup={settings ? "dialog" : "menu"}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -109,6 +113,7 @@ export function ComposerMoreMenu({
       >
         <Plus aria-hidden="true" />
         {triggerLabel ? <span>{triggerLabel}</span> : null}
+        {triggerLabel ? <CaretDown className="control-chevron" aria-hidden="true" /> : null}
       </button>
       {presence.value ? (
         <div
@@ -118,10 +123,19 @@ export function ComposerMoreMenu({
           className="composer-more-menu"
           id={menuId}
           role={settings ? "dialog" : "menu"}
-          aria-label="素材与旁白设置"
+          aria-label={settings ? "素材与旁白设置" : "添加素材"}
           style={position}
         >
-          <button
+          {materialActions ? materialActions.map(action => <button
+            key={action.label}
+            type="button"
+            className="composer-more-action"
+            role={settings ? undefined : "menuitem"}
+            disabled={action.disabled}
+            onClick={() => { close(); action.onSelect(); }}
+          >
+            {action.icon}<span>{action.label}</span>{action.hint ? <small>{action.hint}</small> : null}
+          </button>) : <><button
             type="button"
             className="composer-more-action"
             role={settings ? undefined : "menuitem"}
@@ -146,7 +160,8 @@ export function ComposerMoreMenu({
             <span>选择素材</span>
             {selectedCount ? <small>已选 {selectedCount} 项</small> : null}
           </button>
-          {narration ? (
+          </>}
+          {includeVoice && (narration ? (
             <>
               <div className="composer-more-divider" role="separator" />
               <button
@@ -174,7 +189,7 @@ export function ComposerMoreMenu({
             <p className="composer-audio-note">
               需要新增配音时，可在对话中说明音色要求
             </p>
-          )}
+          ))}
           {settings ? (
             <div
               className="composer-extra-settings"

@@ -1,0 +1,16 @@
+.kinetic-type { display: inline; }
+.kinetic-hit { display: inline-block; }
+.kinetic-letter { display: inline-block; transform-origin: 50% 80%; pointer-events: none; }
+.kinetic-letter--serif { font-family: "Yingya Serif", var(--font-display); font-weight: 900; }
+.playful-word { position: relative; appearance: none; font: inherit; letter-spacing: inherit; color: inherit; padding: 0; border: 0; border-radius: 0; text-align: inherit; cursor: pointer; }
+.playful-word-hint { position: absolute; right: 0; top: calc(100% + 8px); color: var(--muted); font: 11px/1.4 var(--font-ui); letter-spacing: 0; white-space: nowrap; }
+.playful-word:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: 6px; }
+.paper-delivery { position: absolute; top: 10px; right: 18px; z-index: 3; pointer-events: none; }
+.paper-delivery-plane { position: absolute; right: 0; top: 0; color: var(--signal-blue); opacity: 0; }
+.paper-delivery-plane svg { width: 30px; height: 30px; }
+.paper-delivery-receipt { display: flex; align-items: center; gap: 9px; padding: 3px 8px; color: #155cac; background: #fff; font: 12px/1.8 var(--font-ui); opacity: 0; }
+.paper-delivery-receipt > span { font: 18px var(--font-mono); }
+@media (prefers-reduced-motion: reduce) {
+  .paper-delivery { display: none; }
+  .playful-word-hint { display: none; }
+}

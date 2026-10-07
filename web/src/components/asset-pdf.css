@@ -1,0 +1,18 @@
+.asset-card-pdf { display: grid; place-items: center; padding: 8px; }
+.asset-card-pdf > svg { width: 38px; height: 38px; color: var(--muted); }
+.asset-pdf-page { width: 100%; min-width: 0; }
+.asset-pdf-page canvas { display: block; margin: 0 auto; background: white; }
+.asset-pdf-page--thumbnail { height: 100%; display: grid; place-items: center; overflow: hidden; }
+.asset-pdf-thumb-hint { position: absolute; bottom: 30px; font-size: 11px; color: var(--muted); }
+.asset-pdf-preview { display: flex; flex-direction: column; }
+.asset-pdf-toolbar { flex: 0 0 auto; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; padding: 6px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.asset-pdf-toolbar > div { display: flex; align-items: center; gap: 2px; }
+.asset-pdf-toolbar [aria-live] { min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
+.asset-pdf-toolbar button { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; padding: 6px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text); font: inherit; }
+.asset-pdf-toolbar button:hover:not(:disabled) { background: var(--selection); }
+.asset-pdf-toolbar button:disabled { opacity: .4; }
+.asset-pdf-toolbar svg { width: 16px; height: 16px; }
+.asset-pdf-preview :is(button, a, [tabindex]):focus-visible { outline: 2px solid var(--signal-blue); outline-offset: -2px; }
+.asset-pdf-scroll { height: min(60dvh, 720px); min-height: 180px; padding: 12px; overflow: auto; scrollbar-gutter: stable; overflow-anchor: none; overscroll-behavior: contain; background: var(--surface); }
+.asset-expanded-content .asset-pdf-scroll { flex: 1; height: auto; min-height: 0; }
+.asset-pdf-preview .asset-document-status :is(button, a) { display: inline-flex; align-items: center; min-height: 40px; padding: 6px 10px; color: var(--accent-text); }

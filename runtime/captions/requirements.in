@@ -1,0 +1,2 @@
+# Host-provisioned CPU transcription, never installed by a customer video task.
+faster-whisper==1.2.1

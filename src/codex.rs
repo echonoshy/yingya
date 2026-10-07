@@ -989,17 +989,27 @@ fn spawn_app_server(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     if let Some(sandbox) = &config.sandbox {
+        // Production skills retain image generation, but cannot route a video
+        // task into developer setup/maintenance workflows. Do not delete SDK files
+        // or change the developer's Codex home/configuration.
+        command
+            .arg("-c")
+            .arg(production_skill_overrides(&config.home));
         command
             .arg("-c")
             .arg(sandbox.component_library_mcp_override());
-        // Keep the OpenAI capability name, but use HTTP/SSE through the host
-        // relay so no provider bearer token enters the sandbox.
+        // Authenticate the custom provider with a non-secret relay key, so SDK
+        // sampling stays on this scoped endpoint instead of rebasing through
+        // ChatGPT workspace discovery. Keep ChatGPT capabilities (image_gen)
+        // enabled; the host still attaches real credentials and enforces quotas.
+        command.env("YINGYA_MODEL_RELAY_KEY", "yingya-host-relay");
         for setting in [
             "model_provider=\"yingya\"",
             "model_providers.yingya.name=\"OpenAI\"",
             "model_providers.yingya.base_url=\"http://127.0.0.1:8797/api/internal/model/backend-api/codex\"",
             "model_providers.yingya.wire_api=\"responses\"",
             "model_providers.yingya.requires_openai_auth=true",
+            "model_providers.yingya.env_key=\"YINGYA_MODEL_RELAY_KEY\"",
             "model_providers.yingya.supports_websockets=false",
             // The relay does not implement standalone search or Apps MCP.
             "model_providers.yingya.supports_standalone_web_search=false",
@@ -1024,6 +1034,27 @@ fn spawn_app_server(
         spawn_stderr_reader(stderr);
     }
     Ok((child, stdin))
+}
+
+fn production_skill_overrides(home: &Path) -> String {
+    let entries = [
+        "skill-installer",
+        "skill-creator",
+        "plugin-creator",
+        "openai-docs",
+        "review-agent",
+    ]
+    .iter()
+    .map(|name| {
+        let path = home.join("skills/.system").join(name).join("SKILL.md");
+        format!(
+            "{{path={},enabled=false}}",
+            serde_json::to_string(&path.to_string_lossy()).unwrap()
+        )
+    })
+    .collect::<Vec<_>>()
+    .join(",");
+    format!("skills.config=[{entries}]")
 }
 
 fn spawn_stdout_reader(
@@ -1128,6 +1159,9 @@ assert not (pathlib.Path.cwd().parent/'private-sentinel').exists()
 assert os.environ['HTTPS_PROXY']=='http://127.0.0.1:18888'
 assert os.environ['NODE_USE_ENV_PROXY']=='1'
 assert 'features.apps=false' in sys.argv
+assert 'model_providers.yingya.requires_openai_auth=true' in sys.argv
+assert 'model_providers.yingya.env_key="YINGYA_MODEL_RELAY_KEY"' in sys.argv
+assert os.environ['YINGYA_MODEL_RELAY_KEY'] == 'yingya-host-relay'
 assert any(x.startswith('mcp_servers.yingya_shadcn={') for x in sys.argv)
 for line in sys.stdin:
  request=json.loads(line)

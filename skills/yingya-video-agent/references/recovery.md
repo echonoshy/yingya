@@ -41,7 +41,7 @@ Treat registration as a commit:
 
 1. Complete the immutable source bundle, report, and readable review video.
 2. Verify every path the next manifest will reference. `sourcePath` can identify the bundle entry or source directory; retain the project's established convention.
-3. Prepare the complete next manifest in a temporary file. Include new artifacts and version, set `currentDraft`, clear `dirty`, set `phase: "draft_review"`, and add a `draft` checkpoint referencing review artifacts.
+3. Prepare the complete next manifest in a temporary file. Include new artifacts and version, set `currentDraft`, clear `dirty`, set `phase: "completed"`, register the delivered `final-video` artifact with its `version` ID and set `checkpoint: null`. Use `draft_review` with a `draft` checkpoint only for an explicit staged-review request or when continuing a legacy draft review.
 4. Save the manifest snapshot into the draft bundle, validate complete JSON and references, then atomically rename the temporary manifest over `.yingya/manifest.json` **as the last write**.
 
 If packaging fails, retain the render and incomplete bundle for recovery; do not advertise an unregistered draft as ready. On retry, inspect partial files and finish or allocate a fresh unused version without changing any registered version.

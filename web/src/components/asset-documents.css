@@ -1,0 +1,15 @@
+.asset-card-document-content { isolation: isolate; }
+.asset-document-sheet { position: absolute; inset: 10px auto auto 10px; width: 560px; min-height: 790px; padding: 26px 30px; transform: scale(var(--document-scale, .4)); transform-origin: left top; background: #fff; color: #202322; font: 20px/1.65 var(--font-ui); text-align: left; pointer-events: none; overflow-wrap: anywhere; }
+.asset-document-sheet :is(h1, h2, h3) { margin: 0 0 18px; font: 700 30px/1.4 var(--font-ui); }
+.asset-document-sheet :is(h2, h3) { margin-top: 22px; font-size: 25px; }
+.asset-document-sheet p { margin: 0 0 14px; }
+.asset-document-sheet :is(pre, code) { margin: 0; font: 18px/1.7 var(--font-mono), var(--font-ui); white-space: pre-wrap; }
+.asset-document-sheet ul, .asset-document-sheet ol { margin: 12px 0; padding-left: 24px; }
+.asset-document-sheet table, .asset-office-body table { border-collapse: collapse; width: 100%; }
+.asset-document-sheet td, .asset-office-body td { padding: 8px; border: 1px solid var(--line); white-space: pre-wrap; }
+.asset-document-sheet tr:first-child { font-weight: 600; background: var(--surface); }
+.asset-document-sheet blockquote { margin: 14px 0; padding-left: 14px; border-left: 3px solid var(--line-strong); }
+.asset-office-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.8 var(--font-ui); }
+.asset-office-body section + section { margin-top: 24px; }
+.asset-document-note { margin: 0; padding: 8px 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+.editorial-assets .asset-view--list .asset-card-document-content .asset-document-sheet { inset: 4px auto auto 4px; }

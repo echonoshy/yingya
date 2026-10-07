@@ -1,18 +1,22 @@
 # Knowledge videos: plan, production and review contract
 
-The deliverable is a self-contained narrated video for sharing. Favor clear
+The deliverable is a self-contained video for sharing. Narration, subtitles and
+music follow the user brief and actual media; do not add them by default. Favor clear
 explanations of concepts, processes and data; supplied footage supports the
-explanation. No user-facing timeline, parameter panel or layer editor. Do not
-call video-generation providers, probe their availability, recommend keys or
-restart historical footage jobs. Existing image/voice tools and uploaded videos
-remain available according to their actual capabilities.
+explanation. No user-facing timeline, parameter panel or layer editor. Generated
+shots are available through the bundled H3 skill: follow [generated-footage.md](generated-footage.md)
+for Image Gen first frames, detailed H3 prompts and reviewed footage. Existing
+image/voice tools and uploaded videos remain available. Keep factual diagrams
+and labels editable; generated scenes are illustrative, not recorded evidence.
 
 ## Plan before the full video
 
 Read the source material, distinguish facts from assumptions, choose a teaching
-spine and a visual explanation for each segment. Recommend 1–3 minutes, Chinese,
-16:9 / 1080p / 30fps when not otherwise specified. Do not impose these on existing
-projects or explicit requests. One coherent art direction uses PPT information
+spine and a visual explanation for each segment. Start with roughly 30 seconds
+when no duration is requested, then adjust to the actual content and media.
+Explicit duration in the user brief takes priority over the initial target.
+Use Chinese, 16:9 / 1080p / 30fps when not otherwise specified. Do not impose
+these on existing projects or explicit requests. One coherent art direction uses PPT information
 hierarchy, whitespace, consistent typography and diagrams adapted to narration.
 
 Create `.yingya/explanation-plan.json`, register kind `explanation-plan` in the
@@ -45,14 +49,14 @@ revisions update files atomically; confirmation is bound to their content hash.
 Do not require the user to edit segments or select technical recipes. Ordinary
 local feedback produces a new version directly. Broader narrative changes return
 to one combined plan review. Production's representative-motion check is internal
-and adds no approval step. Ignore legacy `reviewMode:auto` for a new unreviewed
+and adds no approval step. After internal review, deliver a checked MP4 with an immutable version, a `final-video` artifact bound to that version, `phase: completed` and `checkpoint: null`; draft review is reserved for an explicit staged-review request or an existing legacy checkpoint. Ignore legacy `reviewMode:auto` for a new unreviewed
 plan unless the user's current instruction explicitly authorizes proceeding.
 
 ## Reusable explanation components
 
 Use `$YINGYA_COMPONENT_LIBRARY catalog` to find the installed `explain-*` pack:
 concept decomposition, process, comparison, data change, causality and footage
-annotation. Read its installed guide. Compose these as needed rather than using
+annotation. Use `view --component explain-process` (or another catalog ID), then `install --project . --component explain-process`; read [remotion-authoring.md](remotion-authoring.md) for the copied React source and props. Compose these as needed rather than using
 one compulsory template. Choose color/type from the project's DESIGN.md. GSAP
 interpolates visual presentation; math/formulas or verified data determine truth.
 Do not invent numerical evidence or imply a diagram is recorded footage.
@@ -64,7 +68,7 @@ final scene timing and caption alignment. A failed voice service is a recoverabl
 blocker for a narrated video, not permission to silently produce a mute result.
 Multi-sentence narration needs separate timed sentence captions; do not leave a
 whole paragraph on screen for an entire scene. Align against actual speech (use
-local transcription when available), correct ASR homophones and numbers against
+the installed `yingya-captions` skill), correct ASR homophones and numbers against
 the verified script, and retain alignment evidence. Never claim the 300 ms
 sentence-boundary criterion from estimated character counts or audio duration alone.
 Preserve each finished version's `scenes.json`, media, source, DESIGN.md, video and

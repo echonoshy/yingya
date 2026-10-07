@@ -1647,7 +1647,7 @@ fn default_aspect() -> String {
     "9:16".to_owned()
 }
 fn default_model() -> String {
-    "gpt-5.6-terra".to_owned()
+    crate::model_settings::DEFAULT_MODEL.to_owned()
 }
 fn default_effort() -> String {
     "high".to_owned()
@@ -1957,7 +1957,7 @@ mod tests {
             let store = AgentProjectStore::new(root.clone()).await.unwrap();
             let project = store.create(&request()).await.unwrap();
             let mut input = turn("preserve my original task");
-            input.model = Some("gpt-5.6-terra".into());
+            input.model = Some("gpt-6.1-sol".into());
             input.reasoning_effort = Some("high".into());
             input.attachments = vec!["assets/original.png".into()];
             let accepted = store.submit_turn(&project.id, input, false).await.unwrap();
@@ -2057,7 +2057,7 @@ mod tests {
             client_request_id: None,
             title: None,
             aspect_ratio: "16:9".to_owned(),
-            model: "gpt-5.6-terra".to_owned(),
+            model: "gpt-6.1-sol".to_owned(),
             reasoning_effort: "high".to_owned(),
             voice_id: "default".to_owned(),
         }
@@ -2608,7 +2608,7 @@ mod tests {
         let mut input = turn("apply this now");
         input.attachments = vec!["assets/reference.png".into()];
         input.context = vec!["keep the current narration".into()];
-        input.model = Some("gpt-5.6-terra".into());
+        input.model = Some("gpt-6.1-sol".into());
         let target = store.submit_turn(&project.id, input, false).await.unwrap();
         let last = store
             .submit_turn(&project.id, turn("last queued"), false)

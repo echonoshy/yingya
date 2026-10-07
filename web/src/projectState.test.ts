@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { projectDetailSchema } from './schemas';
-import { workflowState, projectSummary } from './projectState';
+import { workflowState, projectSummary, projectCategory } from './projectState';
 const make = () => projectDetailSchema.parse({ id: 'p', title: '视频', status: 'waiting_input', statusLabel: '等待输入', queueDepth: 0, model: 'model', reasoningEffort: 'high', aspectRatio: '9:16', createdAt: 1, updatedAt: 2, messages: [], queue: [], eventCursor: 0, manifest: { schemaVersion: 1, phase: 'briefing', dirty: true, outputSpec: {}, artifacts: [], versions: [], studioEntry: '' } });
 describe('workflow status scope', () => {
   it('does not label an unfinished brief as an edited video', () => { const p = make(); expect(workflowState(p).label).toBe('等待补充要求'); expect(workflowState(p).sourceNotice).toBe(''); expect(projectSummary(p).workflowLabel).toBe('等待补充要求'); });
@@ -35,5 +35,21 @@ describe('workflow status scope', () => {
   it('keeps active and failed task states above review metadata', () => {
     const p = make(); p.activeTurnId = 't'; expect(workflowState(p).label).toBe('正在制作');
     p.activeTurnId = undefined; p.status = 'failed'; expect(workflowState(p).label).toBe('制作失败');
+  });
+});
+
+
+describe('library categories', () => {
+  it('keeps recoverable work in pending and exports available for further editing', () => {
+    for (const status of ['failed', 'incomplete', 'interrupted'] as const) {
+      const project = make(); project.status = status;
+      expect(projectCategory(project)).toBe('review');
+    }
+    const project = make(); project.status = 'completed';
+    expect(projectCategory(project)).toBe('ready');
+    project.activeTurnId = 'next-edit';
+    expect(projectCategory(project)).toBe('active');
+    project.activeTurnId = undefined; project.status = 'waiting_input'; project.workflowStatus = 'review';
+    expect(projectCategory(project)).toBe('review');
   });
 });

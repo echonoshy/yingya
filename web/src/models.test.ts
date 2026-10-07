@@ -1,45 +1,36 @@
-import { describe, expect, it } from "vitest";
-import { includeAstra, prioritizeAstra, selectableModels, allowedModelIds, modelAllowed } from "./models";
+import { expect, it } from "vitest";
+import { selectableModels, allowedModelIds, modelAllowed, defaultModelId } from "./models";
+import { readModelSelection } from "./storage";
 
-it('limits the product catalog to four exact IDs, preserving provider metadata', () => {
-  const [astra]=includeAstra([]);
-  const catalog=[{...astra,id:'older',model:'gpt-5.5'},{...astra,description:'provider metadata'}];
-  const result=selectableModels(catalog);
-  expect(result.map(model=>model.model)).toEqual([...allowedModelIds]);
-  expect(result[0].description).toBe('provider metadata');
-  expect(modelAllowed('gpt-5.5-sol')).toBe(false);
-  expect(selectableModels([])).toHaveLength(4);
+it("offers only GPT-6.1 Sol and GPT-6 models, with a usable offline catalog", () => {
+  const result = selectableModels([]);
+  expect(result.map(model => model.model)).toEqual(["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]);
+  expect(result.filter(model => model.isDefault).map(model => model.model)).toEqual([defaultModelId]);
+  expect(result[0].displayName).toBe("GPT-6.1-Sol");
+  expect(result[3].supportedReasoningEfforts.some(option => option.reasoningEffort === "ultra")).toBe(false);
+  for (const model of allowedModelIds) expect(modelAllowed(model)).toBe(true);
+  for (const model of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-6.1-sol "]) expect(modelAllowed(model)).toBe(false);
 });
 
-describe("includeAstra", () => {
-  it("adds Astra to an older catalog without changing existing defaults", () => {
-    const [astra] = includeAstra([]);
-    const terra = { ...astra, id: "gpt-5.6-terra", model: "gpt-5.6-terra", isDefault: true };
-    const models = includeAstra([terra]);
-    expect(models.map(model => model.model)).toEqual(["gpt-5.6-terra", "gpt-6-astra"]);
-    expect(models[0]).toBe(terra);
-    expect(models[1].isDefault).toBe(false);
-    expect(models[1].supportedReasoningEfforts.map(option => option.reasoningEffort)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
-  });
-
-  it("preserves server-provided Astra metadata without duplicating it", () => {
-    const [astra] = includeAstra([]);
-    const models = [{ ...astra, id: "server-astra", defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Server setting" }] }];
-    expect(includeAstra(models)).toBe(models);
-  });
+it("preserves provider capabilities while removing retired catalog entries", () => {
+  const [fallback] = selectableModels([]);
+  const sol = { ...fallback, id: "provider-sol", description: "provider metadata", supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Server setting" }] };
+  const result = selectableModels([{ ...fallback, model: "gpt-5.6-sol" }, sol]);
+  expect(result[0]).toBe(sol);
+  expect(result.map(model => model.model)).toEqual([...allowedModelIds]);
 });
 
-
-describe("prioritizeAstra", () => {
-  it("pins the server entry without changing other order, metadata or defaults", () => {
-    const [astra] = includeAstra([]);
-    const terra = { ...astra, model: "gpt-5.6-terra", isDefault: true };
-    const sol = { ...astra, model: "gpt-5.6-sol" };
-    const catalog = [terra, astra, sol];
-    expect(prioritizeAstra(catalog)).toEqual([astra, terra, sol]);
-    expect(catalog).toEqual([terra, astra, sol]);
-    expect(prioritizeAstra(catalog)[0]).toBe(astra);
-    expect(prioritizeAstra(catalog)[1].isDefault).toBe(true);
-    expect(prioritizeAstra([terra, sol])).toEqual([terra, sol]);
-  });
+it("recovers retired saved selections without replacing supported selections", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const fallback = { model: defaultModelId, reasoningEffort: "high" };
+  try {
+    for (const model of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", ...allowedModelIds]) {
+      const saved = { model, reasoningEffort: "medium" };
+      Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => JSON.stringify({ version: 1, value: saved }) } });
+      expect(readModelSelection(fallback)).toEqual(modelAllowed(model) ? saved : fallback);
+    }
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
 });

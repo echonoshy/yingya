@@ -124,7 +124,7 @@ console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
     def seed_completed_render(self, verified=True):
-        project = self.request('/api/agent-projects', {'prompt': 'render recovery fixture', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high', 'aspectRatio': '16:9'})['id']
+        project = self.request('/api/agent-projects', {'prompt': 'render recovery fixture', 'model': 'gpt-6.1-sol', 'reasoningEffort': 'high', 'aspectRatio': '16:9'})['id']
         root = self.data / 'users' / self.user['id'] / 'projects' / project
         version = 'draft-test'
         source = root / '.yingya/versions' / version
@@ -231,7 +231,7 @@ console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media
     def test_retired_delivery_audit_does_not_block_drafts_and_clears_old_status(self):
         self.release('v1')
         self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
-        project = self.request('/api/agent-projects', {'prompt': 'delivery audit fixture', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high'})['id']
+        project = self.request('/api/agent-projects', {'prompt': 'delivery audit fixture', 'model': 'gpt-6.1-sol', 'reasoningEffort': 'high'})['id']
         root = self.data / 'users' / self.user['id'] / 'projects' / project
         for number, blank in [(1, True), (2, False)]:
             source = root / f'.yingya/versions/draft-{number}'
@@ -302,7 +302,7 @@ console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media
         try:
             self.release('v1')
             self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
-            project = self.request('/api/agent-projects', {'prompt': 'voice test', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high'})['id']
+            project = self.request('/api/agent-projects', {'prompt': 'voice test', 'model': 'gpt-6.1-sol', 'reasoningEffort': 'high'})['id']
             for index, expected in enumerate((200, 502), 1):
                 if index == 2:
                     unhealthy.set()
@@ -319,12 +319,30 @@ console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media
             tts.shutdown()
             tts.server_close()
 
+    def test_h3_route_reaches_actual_worker_turn_without_retired_ban(self):
+        self.release('v1')
+        self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
+        project = self.request('/api/agent-projects', {'prompt': 'Image Gen 底图制作动态镜头'})['id']
+        prefix = '/api/agent-projects/' + project
+        self.request(prefix + '/turns', {'text': '只读检查生成镜头的可用流程', 'clientRequestId': str(uuid.uuid4())})
+        self.wait(lambda: any(x['event'] == 'done' for x in self.log(project)))
+        prompt = next(x['prompt'] for x in self.log(project) if x['event'] == 'start')
+        self.assertIn('minimax-h3-local', prompt)
+        self.assertIn('references/generated-footage.md', prompt)
+        self.assertIn('references/prompt-writing.md', prompt)
+        self.assertNotIn('不得探测或调用外部视频生成模型/API', prompt)
+        self.assertNotIn('不引入视频生成服务', prompt)
+        skill = self.data / 'users' / self.user['id'] / 'runtime/codex-home/skills/minimax-h3-local'
+        self.assertTrue((skill / 'SKILL.md').is_file())
+        self.assertIn('timeout=600', (skill / 'scripts/h3.py').read_text())
+        self.assertTrue((skill / 'references/prompt-writing.md').is_file())
+
     def test_retired_style_input_does_not_reach_worker_or_scaffold(self):
         self.release('v1')
         self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
         request_id = str(uuid.uuid4())
         created = self.request('/api/agent-projects', {
-            'prompt': '品牌故事', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high',
+            'prompt': '品牌故事', 'model': 'gpt-6.1-sol', 'reasoningEffort': 'high',
             'clientRequestId': request_id, 'visualStyleId': 'warm-editorial', 'visualStyleVersion': 1})
         project = created['id']
         prefix = '/api/agent-projects/' + project
@@ -406,7 +424,7 @@ console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media
     def test_rolling_handoff_crash_recovery_rollback_and_failed_candidate(self):
         self.release('v1')
         self.request('/api/auth/login', {'email': 'rolling@example.com', 'password': self.user['password']})
-        project = self.request('/api/agent-projects', {'prompt': 'test', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high'})['id']
+        project = self.request('/api/agent-projects', {'prompt': 'test', 'model': 'gpt-6.1-sol', 'reasoningEffort': 'high'})['id']
         prefix = '/api/agent-projects/' + project
         first = self.request(prefix + '/turns', {'text': 'WAIT original task', 'clientRequestId': str(uuid.uuid4())})
         self.wait(lambda: any(x['event'] == 'start' for x in self.log(project)))
@@ -441,7 +459,7 @@ console.log(JSON.stringify({ok:true,engine:'remotion',scope:'build-runtime-media
             # and uncertain paid work must not be silently replayed.
             render_project, render_job, output, output_digest, preview = self.seed_completed_render()
             unverified_project, unverified_job, _, _, _ = self.seed_completed_render(verified=False)
-            crash = self.request(prefix + '/turns', {'text': 'WAIT crash task', 'model': 'gpt-5.6-terra', 'reasoningEffort': 'high', 'clientRequestId': str(uuid.uuid4())})
+            crash = self.request(prefix + '/turns', {'text': 'WAIT crash task', 'model': 'gpt-6.1-sol', 'reasoningEffort': 'high', 'clientRequestId': str(uuid.uuid4())})
             self.wait(lambda: len([x for x in self.log(project) if x['event'] == 'start']) == 3)
             victim = self.worker()
             pid = subprocess.check_output([self.tmux, '-L', self.socket, 'display-message', '-p', '-t', '=' + victim['session'] + ':', '#{pane_pid}'], text=True).strip()

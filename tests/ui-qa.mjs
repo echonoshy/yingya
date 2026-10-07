@@ -198,35 +198,39 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("button", { name: "选择素材 秋日背景音乐.mp3" }).click();
   const bulkToolbar = page.getByRole("toolbar", { name: "批量整理素材" });
   await bulkToolbar.getByText("2 项已选", { exact: true }).waitFor();
-  await bulkToolbar.getByLabel("批量移动到文件夹").selectOption("folder-brand");
+  await bulkToolbar.getByRole("combobox", { name: "批量移动到文件夹" }).click();
+  await page.getByRole("option", { name: "品牌素材", exact: true }).click();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-bulk-select.png", fullPage: true });
   const moveRequests = [];
   page.on("request", request => { if (/\/api\/u\/qa-user\/assets\/library\/[^/]+$/.test(request.url()) && request.method() === "PATCH") moveRequests.push(request); });
   await bulkToolbar.getByRole("button", { name: "移动", exact: true }).click();
-  await page.getByText("已将 2 项素材移动到“品牌素材”", { exact: true }).waitFor();
+  await page.getByText("已将 1 项素材移动到“品牌素材”", { exact: true }).waitFor();
   await page.locator(".asset-card-item.batch-selected").first().waitFor({ state: "detached" });
-  if (moveRequests.length !== 2 || moveRequests.some(request => request.postDataJSON().folderId !== "folder-brand")) throw new Error(`Unexpected batch move requests: ${moveRequests.length}`);
+  // The video is already in the destination; only the audio needs a request.
+  if (moveRequests.length !== 1 || moveRequests.some(request => request.postDataJSON().folderId !== "folder-brand")) throw new Error(`Unexpected batch move requests: ${moveRequests.length}`);
   await page.locator(".asset-card-item", { hasText: "秋日背景音乐.mp3" }).getByText("品牌素材", { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-bulk-moved.png", fullPage: true });
   await page.getByRole("button", { name: "新建文件夹" }).click();
-  await page.getByPlaceholder("文件夹名称").fill("活动素材");
+  await page.getByRole("textbox", { name: "文件夹名称", exact: true }).fill("活动素材");
   await page.getByRole("button", { name: "创建", exact: true }).click();
   await page.getByRole("button", { name: /^活动素材/ }).waitFor();
   const uploadRequest = page.waitForRequest(request => request.url().endsWith("/assets/library") && request.method() === "POST");
   await page.locator('.asset-library-header input[type="file"]').setInputFiles({ name: "活动执行方案.pdf", mimeType: "application/pdf", buffer: Buffer.from("pdf-test") });
   await uploadRequest;
-  await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).waitFor();
-  await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
+  await page.getByRole("button", { name: /活动执行方案\.pdf.*上传/ }).waitFor();
+  await page.getByRole("button", { name: /活动执行方案\.pdf.*上传/ }).click();
   if (await page.getByRole("heading", { name: "使用位置", exact: true }).count() || await page.getByLabel("选择项目", { exact: true }).count()) throw new Error("Removed asset usage controls reappeared");
-  const folderSelect = page.locator('select[aria-label="素材文件夹"]');
+  const folderSelect = page.getByRole('combobox', { name: '素材文件夹', exact: true });
   const clearFolder = page.waitForResponse(response => response.url().includes('/assets/library/') && response.request().method() === 'PATCH');
-  await folderSelect.selectOption("");
+  await folderSelect.click();
+  await page.getByRole("option", { name: "未整理", exact: true }).click();
   await clearFolder;
   // Moving out of the current folder removes the selected item and its inspector.
   await folderSelect.waitFor({ state: 'detached' });
   await page.getByRole("button", { name: /全部素材/ }).click();
-  await page.getByRole("button", { name: /活动执行方案\.pdf.*已上传/ }).click();
-  await folderSelect.selectOption({ label: "活动素材" });
+  await page.getByRole("button", { name: /活动执行方案\.pdf.*上传/ }).click();
+  await folderSelect.click();
+  await page.getByRole("option", { name: "活动素材", exact: true }).click();
   await page.keyboard.press("Escape");
   await page.locator(".editorial-inspector").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: /全部素材/ }).click();
@@ -234,7 +238,7 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("button", { name: /深色背景中的发光新芽，电影级侧光.*AI 生成/ }).waitFor();
   await page.getByRole("button", { name: "全部来源" }).click();
   await page.getByRole("button", { name: /创建素材/ }).click();
-  await page.getByRole("button", { name: "生成图片" }).click();
+  await page.getByRole("menuitem", { name: "生成图片" }).click();
   const prompt = page.getByPlaceholder("主体、场景、构图、光线和画幅要求");
   await prompt.fill("极简桌面上的透明智能设备，冷色轮廓光，16:9");
   const requestPromise = page.waitForRequest(request => request.url().endsWith("/codex/threads/image-thread-1/images") && request.method() === "POST");
@@ -272,8 +276,7 @@ async function assertWorkflowRecovery(browser) {
     manifest: { ...structuredClone(manifest), phase: "briefing", dirty: true, checkpoint: null, artifacts: [], versions: [], currentDraft: null },
   };
   await installApiMock(page, failed);
-  await page.goto(`${workspaceUrl}#/projects`);
-  await page.getByRole("button", { name: /^秋季新品短片/ }).click();
+  await page.goto(`${workspaceUrl}#/projects/${detail.id}`);
   await page.getByText("制作需要恢复").waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
   await page.getByRole("button", { name: /重新生成制作方案/ }).click();
@@ -289,8 +292,7 @@ async function assertIncompleteWorkflowRecovery(browser) {
     manifest: { ...structuredClone(manifest), phase: "production", dirty: true, checkpoint: null, versions: [], currentDraft: null },
   };
   await installApiMock(page, incomplete);
-  await page.goto(`${workspaceUrl}#/projects`);
-  await page.getByRole("button", { name: /^秋季新品短片/ }).click();
+  await page.goto(`${workspaceUrl}#/projects/${detail.id}`);
   const recovery = page.getByRole("status");
   await recovery.getByText("检查已通过，草稿待封存", { exact: true }).waitFor();
   await recovery.getByText("只补齐缺失的版本与审核登记", { exact: false }).waitFor();
@@ -316,8 +318,7 @@ async function assertWaitingInputPrompt(browser) {
     page.on("pageerror", error => errors.push(error.message));
     page.on("console", message => { if (["error", "warning"].includes(message.type())) errors.push(`${message.type()}: ${message.text()}`); });
     await installApiMock(page, waiting);
-    await page.goto(`${workspaceUrl}#/projects`);
-    await page.getByRole("button", { name: /^秋季新品短片/ }).click();
+    await page.goto(`${workspaceUrl}#/projects/${detail.id}`);
     if (viewport.name === "mobile") await page.setViewportSize(viewport);
     const prompt = page.getByLabel("等待你的确认");
     await prompt.waitFor();

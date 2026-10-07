@@ -1,14 +1,11 @@
-.account-menu .account-version { border-top: 1px solid var(--line); margin-top: 4px; border-radius: 0; }
-.account-version small { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
 .action-dialog.version-history { width: min(540px, calc(100vw - 28px)); padding: clamp(20px, 4vw, 32px); }
 .version-history-current { display: flex; align-items: baseline; gap: 12px; margin-top: 28px; }
-.version-history-current > span { font-size: 13px; color: var(--muted); }
-.version-history-current strong { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.version-history .version-history-intro { margin: 8px 0 28px; color: var(--muted); font-size: 14px; }
+.version-history-current > span { font-size: var(--text-control); color: var(--muted); }
+.version-history-current strong { font-size: 28px; font-weight: var(--weight-emphasis); font-variant-numeric: tabular-nums; }
+.version-history .version-history-intro { margin: 8px 0 28px; color: var(--muted); font-size: var(--text-control); }
 .version-history-list { list-style: none; padding: 0; margin: 0; }
 .version-history-list > li { border-top: 1px solid var(--line); padding: 22px 0; }
 .version-history-list > li:last-child { padding-bottom: 0; }
-.version-history-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
-.version-history-meta > span { font-weight: 600; color: var(--text); }
-.version-history-list h3 { margin: 14px 0 8px; font-size: 19px; line-height: 1.5; }
-.version-history-list p { margin: 0; font-size: 14px; line-height: 1.9; color: var(--muted); }
+.version-history-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: var(--text-control); font-variant-numeric: tabular-nums; color: var(--muted); }
+.version-history-meta > span { font-weight: var(--weight-emphasis); color: var(--text); }
+.version-history-list p { margin: 10px 0 0; font-size: var(--text-control); line-height: var(--leading-body); color: var(--muted); }

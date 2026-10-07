@@ -1,0 +1,4 @@
+interface:
+  display_name: "MiniMax H3 本机视频"
+  short_description: "通过公网 IP 调用本机 H3，支持图片底图、首尾帧与多模态参考，无需 API key"
+  default_prompt: "使用 $minimax-h3-local 调用本机 H3，根据我的提示词和参考素材生成有声音的视频。"

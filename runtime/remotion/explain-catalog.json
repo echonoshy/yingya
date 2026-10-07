@@ -1,0 +1,8 @@
+[
+  {"id":"explain-concept","export":"ExplainConcept","purpose":"概念拆解：主体与组成部分","props":"subject: string, items: {id,label,detail?}[]"},
+  {"id":"explain-process","export":"ExplainProcess","purpose":"有顺序的步骤与流程","props":"items: {id,label,detail?}[]"},
+  {"id":"explain-comparison","export":"ExplainComparison","purpose":"同一维度的两侧对比","props":"labels: [string,string], rows: {id,label,left,right}[]"},
+  {"id":"explain-data-change","export":"ExplainDataChange","purpose":"共享零基线和比例的数据变化","props":"items: {id,label,value}[], unit: string, domain?: [number,number]"},
+  {"id":"explain-causality","export":"ExplainCausality","purpose":"原因、机制、结果","props":"cause: string, mechanism: string, effect: string"},
+  {"id":"explain-footage","export":"ExplainFootage","purpose":"已有视频的透明聚焦标注","props":"label: string, focus: {x,y,width,height}, coordinates: 0..1"}
+]

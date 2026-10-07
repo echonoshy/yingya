@@ -63,10 +63,10 @@ WebSocket 需要独立测试协议、代理、取消及计费，不能仅通过�
 
 ## Codex 参考
 
-项目固定版本为 `@openai/codex@0.154.0`。官方配置文档列出 HTTP 请求默认重试 4 次、
+项目当前固定版本为 `@openai/codex@0.160.1`；下述源码分析与真实项目记录基于升级前的 `0.154.0`。官方配置文档列出 HTTP 请求默认重试 4 次、
 SSE 中断默认重试 5 次：[Configuration Reference](https://developers.openai.com/codex/config-reference/)。
 
-核对相同版本的实现：
+当时核对的 `0.154.0` 实现：
 
 - [retry.rs](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/codex-client/src/retry.rs)：
   按错误类型和次数上限重试，指数退避并加入 ±10% 随机延迟。

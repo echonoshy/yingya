@@ -66,6 +66,9 @@ All project reads and writes use the current `/api/agent-projects` API. Imported
 files are served from that project's `/files/` endpoint; do not construct or
 reuse any legacy project-file URL.
 
-The build workflow reads `assets.json`: unassigned `mediaType=music` becomes
-background music, while assigned `mediaType=sound_effects` is placed at a key
-action or transition in that scene.
+Import and scene assignment update `assets.json`; they do not mount audio in a
+Remotion composition. The production Agent must probe the imported local file
+and declare it explicitly in `remotion.json.media` with role `music` or `sfx`,
+measured frame ranges and an appropriate volume. Use an unassigned music asset
+as the global-track candidate and assigned SFX at the intended scene action.
+For fades/ducking, use yingya-video-agent references/audio-mixing.md.

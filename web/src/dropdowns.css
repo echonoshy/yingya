@@ -1,4 +1,4 @@
-/* Shared menu surfaces; native selects retain form and keyboard semantics. */
+/* Shared menu surfaces and selection feedback across product routes. */
 :root {
   --menu-padding: 6px;
   --menu-option-height: 40px;
@@ -6,10 +6,10 @@
 
 :is(.model-menu, .aspect-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--canvas);
+  border-radius: 8px;
+  background: var(--menu-background);
   color: var(--text);
-  box-shadow: var(--shadow-popover);
+  box-shadow: 0 12px 36px #1113101a;
 }
 
 :is(.aspect-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
@@ -20,7 +20,7 @@
 .usage-model-option {
   min-height: var(--menu-option-height);
   padding: 8px 10px;
-  border-radius: var(--radius-control);
+  border-radius: 4px;
   font-family: var(--font-ui);
   font-size: var(--text-control);
   font-weight: var(--weight-medium);
@@ -45,14 +45,3 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-
-/* Keep the system picker: it truncates long selected names without losing the
-   arrow and preserves platform keyboard/touch behavior. The experimental
-   base-select value box can wrap or paint over the arrow at constrained widths. */
-select:not([multiple]):not([size]) {
-  appearance: auto;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-select:not([multiple]):not([size]):disabled { cursor: not-allowed; opacity: .5; }

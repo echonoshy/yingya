@@ -17,9 +17,9 @@ Use the local service at `http://127.0.0.1:8791`. It serves the model name
    node "${skill_client}" health
    ```
 
-2. If the health check fails and the current project is Yingya, start the
-   service with `./deploy/voxcpm2/start.sh`, then wait until
-   `./deploy/voxcpm2/status.sh` reports `api=ready`.
+2. If health fails in a customer video project, preserve completed audio and
+   report the service failure; do not start or repair host services from its
+   sandbox. Repository development uses the documented tmux service workflow.
 
 3. Synthesize speech to an explicit output path:
 

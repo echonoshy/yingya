@@ -1,0 +1,2 @@
+.yingya-wordmark { display: inline-flex; align-items: baseline; gap: .085em; color: inherit; font: 950 var(--wordmark-size,28px)/1.2 "Arial Black",var(--font-ui); letter-spacing: -.065em; white-space: nowrap; }
+.yingya-wordmark-dot { display: inline-block; width: .16em; height: .16em; flex: 0 0 .16em; border-radius: 50%; background: #fa4c0c; }

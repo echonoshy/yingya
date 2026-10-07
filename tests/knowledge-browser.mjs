@@ -21,8 +21,8 @@ try{
  assert.equal(await page.locator('.home-projects, .knowledge-example-grid, .home-header').count(),0,'Home contains only the composer');
  for(const width of [390,320]) {
   await page.setViewportSize({width,height:844});
-  await page.getByRole('button',{name:'我的作品',exact:true}).click();
-  const heading=await page.getByRole('heading',{name:'我的作品',exact:true}).boundingBox();
+  await page.getByRole('button',{name:'我的项目',exact:true}).click();
+  const heading=await page.getByRole('heading',{name:'我的项目',exact:true}).boundingBox();
   const navigation=await page.locator('.app-navigation').boundingBox();
   assert.ok(heading.y>=navigation.y+navigation.height,'Projects heading must clear sticky mobile navigation');
   await page.locator('.app-primary-navigation').getByRole('button',{name:'新建视频',exact:true}).click();
@@ -33,19 +33,19 @@ try{
  }
  await page.setViewportSize({width:1440,height:900});
  await page.locator('.home-create textarea').fill('面向初学者，用生活例子解释单摆的周期。');
- await page.getByRole('button',{name:'我的作品',exact:true}).click();
+ await page.getByRole('button',{name:'我的项目',exact:true}).click();
  assert.equal(await page.locator('.home-create').count(),0,'Library does not duplicate the creation composer');
  await page.locator('.app-primary-navigation').getByRole('button',{name:'新建视频',exact:true}).click();
  assert.match(await page.locator('.home-create textarea').inputValue(),/初学者/,'Draft survives navigation');
  await page.screenshot({path:out+'/home.png'});
 
  const creationRequest=page.waitForRequest(request=>new URL(request.url()).pathname.endsWith('/agent-projects')&&request.method()==='POST');
- await page.getByRole('button',{name:'生成方案',exact:true}).click();
+ await page.getByRole('button',{name:'生成图文方案',exact:true}).click();
  const creation=(await creationRequest).postDataJSON();assert.equal(creation.requirements.workflow,'knowledge-explainer');for(const key of ['presentation','styleId','referenceExample'])assert.equal(key in creation.requirements,false,`retired setting ${key} must not affect creation`);
  await page.waitForURL('**/app#/projects/22222222-2222-4222-8222-222222222222');
 
- await page.goto(base+`/app#/projects/${seed.id}`);await page.getByRole('button',{name:'按这个方案制作',exact:true}).waitFor();assert.equal(await page.locator('.motion-editor').count(),0);await page.getByText('已确认方案，开始制作',{exact:true}).waitFor();assert.equal(await page.getByText('内部测试标记',{exact:false}).count(),0);assert.equal(await page.getByText('plan-revision:',{exact:false}).count(),0);
- const keyframe=page.getByRole('button',{name:'放大查看：从生活观察开始',exact:true});
+ await page.goto(base+`/app#/projects/${seed.id}`);await page.getByRole('button',{name:'确认方案并制作',exact:true}).waitFor();assert.equal(await page.locator('.motion-editor').count(),0);await page.getByText('已确认方案，开始制作',{exact:true}).waitFor();assert.equal(await page.getByText('内部测试标记',{exact:false}).count(),0);assert.equal(await page.getByText('plan-revision:',{exact:false}).count(),0);
+ const keyframe=page.getByRole('button',{name:'放大当前画面：从生活观察开始',exact:true});
  await keyframe.focus();await page.keyboard.press('Enter');
  const frameDialog=page.getByRole('dialog',{name:'从生活观察开始',exact:true});
  await frameDialog.waitFor();await frameDialog.locator('img').evaluate(img=>img.decode());
@@ -56,22 +56,62 @@ try{
  await page.keyboard.press('Escape');await frameDialog.waitFor({state:'hidden'});
  assert.equal(await keyframe.evaluate(el=>el===document.activeElement),true,'Keyframe preview restores focus');
 
- const separator=page.getByRole('separator',{name:'调整创作对话宽度'});await separator.focus();const before=Number(await separator.getAttribute('aria-valuenow'));await page.keyboard.press('ArrowLeft');assert.ok(Number(await separator.getAttribute('aria-valuenow'))<before);const saved=await separator.getAttribute('aria-valuenow');await page.reload();await separator.waitFor();assert.equal(await separator.getAttribute('aria-valuenow'),saved);await separator.dblclick();
- await page.getByRole('button',{name:'对此提意见',exact:true}).first().click();assert.match(await page.locator('.thread-footer textarea').inputValue(),/scene-0/);assert.equal(await page.locator('.thread-footer textarea').evaluate(el=>document.activeElement===el),true);
- await page.screenshot({path:out+'/plan-desktop.png'});
+ const separator=page.getByRole('separator',{name:'调整创作对话宽度'});await separator.focus();const before=Number(await separator.getAttribute('aria-valuenow'));await page.keyboard.press('ArrowLeft');assert.ok(Number(await separator.getAttribute('aria-valuenow'))>before);const saved=await separator.getAttribute('aria-valuenow');await page.reload();await separator.waitFor();assert.equal(await separator.getAttribute('aria-valuenow'),saved);await separator.dblclick();
+ await page.getByRole('button',{name:'对此段提意见',exact:true}).first().click();assert.match(await page.locator('.thread-footer textarea').inputValue(),/scene-0/);assert.equal(await page.locator('.thread-footer textarea').evaluate(el=>document.activeElement===el),true);
+ await page.locator('.plan-scroll').evaluate(el=>el.scrollTo(0,0));await page.screenshot({path:out+'/plan-desktop.png'});
  for(const [width,height] of [[1024,768],[390,844],[320,568]]){
   await page.setViewportSize({width,height});
-  if(width<1024){await page.getByRole('button',{name:'方案',exact:true}).click();assert.equal(await separator.isVisible(),false);}
+  if(width<1024){await page.getByRole('button',{name:'方案',exact:true}).click();assert.equal(await separator.isVisible(),false);const tabBoxes=await page.locator('.workspace-tabs > button').evaluateAll(buttons=>buttons.map(button=>button.getBoundingClientRect().toJSON()));assert.equal(tabBoxes.length,5);assert.ok(tabBoxes.every(box=>Math.abs(box.y-tabBoxes[0].y)<1),'All mobile views stay in one row');const marker=await page.locator('.workspace-tabs .selection-indicator').boundingBox();assert.ok(marker.height<=3,'Mobile selection must not cover its label');const navBox=await page.locator('.workspace-tabs').boundingBox();assert.ok(marker.y>=navBox.y&&marker.y+marker.height<=navBox.y+navBox.height+1,'Selection underline remains inside navigation');}
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`horizontal overflow ${width}`);
   if(width<1024){const backIcon=await page.locator(".project-back svg").boundingBox();assert.ok(backIcon?.width>=16&&backIcon?.height>=16,"Back navigation icon must remain visible on mobile");}
   await page.screenshot({path:`${out}/plan-${width}.png`});
  }
- await page.getByRole('button',{name:'按这个方案制作',exact:true}).click();assert.equal(typeof confirmation.model,'string');assert.equal(confirmation.revision,plan.revision);assert.equal(confirmation.checkpointId,plan.checkpointId);assert.match(confirmation.clientRequestId,/^[\da-f-]{36}$/);
- failPlan=true;await page.reload();await page.getByRole('button',{name:'方案',exact:true}).click();await page.getByText('方案暂不可用',{exact:false}).first().waitFor();failPlan=false;await page.getByRole('button',{name:'重新读取',exact:true}).click();await page.getByRole('button',{name:'按这个方案制作',exact:true}).waitFor();
+ await page.getByRole('button',{name:'确认方案并制作',exact:true}).click();assert.equal(typeof confirmation.model,'string');assert.equal(confirmation.revision,plan.revision);assert.equal(confirmation.checkpointId,plan.checkpointId);assert.match(confirmation.clientRequestId,/^[\da-f-]{36}$/);
+ failPlan=true;await page.reload();await page.getByRole('button',{name:'方案',exact:true}).click();await page.getByText('方案暂不可用',{exact:false}).first().waitFor();failPlan=false;await page.getByRole('button',{name:'重新读取',exact:true}).click();await page.getByRole('button',{name:'确认方案并制作',exact:true}).waitFor();
+ const visualPlanPage=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'});
+ await installApiMock(visualPlanPage,seed);
+ await visualPlanPage.route(url=>url.pathname.endsWith('/plan'),route=>route.fulfill({json:{...plan,ready:false,document:null,markdown:'# 文字大纲\n\n先展示问题，再通过画面解释。'}}));
+ await visualPlanPage.goto(base+`/app#/projects/${seed.id}`);
+ const addFrame=visualPlanPage.getByRole('button',{name:'补充画面参考',exact:true});await addFrame.waitFor();
+ assert.equal(await visualPlanPage.locator('.plan-material-list').getAttribute('open'),null,'Text-only plan is secondary to visual preparation');
+ assert.ok(await visualPlanPage.getByRole('button',{name:'确认方案并制作',exact:true}).isDisabled());
+ await visualPlanPage.getByText('查看文字方案',{exact:true}).click();await visualPlanPage.getByRole('heading',{name:'文字大纲',exact:true}).waitFor();
+ await addFrame.click();assert.match(await visualPlanPage.locator('.thread-footer textarea').inputValue(),/先生成图片参考和实际关键画面/);
+ assert.ok(await visualPlanPage.locator('.thread-footer textarea').evaluate(el=>el===document.activeElement));
+ await visualPlanPage.screenshot({path:out+'/plan-visual-preparation.png'});await visualPlanPage.close();
  const videoSeed={...seed,manifest:{...seed.manifest,checkpoint:null,phase:'draft_review',currentDraft:'draft-1',versions:[{id:'draft-1',label:'初稿 1',sourcePath:'.yingya/versions/draft-1',videoPath:'video.mp4',createdAt:Date.now()}]}};
  await page.route(url=>url.pathname.endsWith(`/agent-projects/${seed.id}`),route=>route.fulfill({json:videoSeed}));
  await page.route('**/files/video.mp4',async route=>{const body=await readFile('tests/fixtures/media/explainer.mp4');const range=route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);const start=range?Number(range[1]):0,end=range&&range[2]?Math.min(Number(range[2]),body.length-1):body.length-1;return route.fulfill({status:range?206:200,contentType:'video/mp4',headers:{'accept-ranges':'bytes','content-length':String(end-start+1),...(range?{'content-range':`bytes ${start}-${end}/${body.length}`}:{})},body:body.subarray(start,end+1)});});
  await page.setViewportSize({width:1440,height:900});await page.reload();await page.getByRole('tab',{name:'视频',exact:true}).click();const video=page.getByLabel('视频预览',{exact:true});await video.waitFor();await video.evaluate(v=>new Promise(resolve=>{if(v.readyState>=2)return resolve();v.addEventListener('loadeddata',resolve,{once:true});}));
+ await page.getByRole('button',{name:'播放视频',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.video-stage video').currentTime>.2);
+ await page.getByRole('button',{name:'暂停视频',exact:true}).click();
+ assert.equal(await video.evaluate(v=>v.paused),true);
+ await page.getByRole('combobox',{name:'播放速度',exact:true}).click();await page.getByRole('option',{name:'1.5×',exact:true}).click();assert.equal(await video.evaluate(v=>v.playbackRate),1.5);
+ await page.getByRole('button',{name:'静音视频',exact:true}).click();assert.equal(await video.evaluate(v=>v.muted),true);
+ await page.getByRole('button',{name:'开启视频声音',exact:true}).click();
+ await page.getByLabel('视频播放位置',{exact:true}).focus();await page.keyboard.press('ArrowRight');assert.ok(await video.evaluate(v=>v.currentTime>.2));
+ const controls=page.getByRole('group',{name:'视频播放控制',exact:true});
+ await controls.focus();
+ await video.evaluate(v=>{v.currentTime=1;});
+ await page.keyboard.press('ArrowRight');assert.equal(await video.evaluate(v=>v.currentTime),6);
+ await page.keyboard.press('ArrowLeft');assert.equal(await video.evaluate(v=>v.currentTime),1);
+ await page.keyboard.press('ArrowLeft');assert.equal(await video.evaluate(v=>v.currentTime),0);
+ await page.keyboard.press('m');assert.equal(await video.evaluate(v=>v.muted),true);
+ await page.keyboard.press('m');assert.equal(await video.evaluate(v=>v.muted),false);
+ await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('.video-stage video').paused);
+ await page.keyboard.press('k');assert.equal(await video.evaluate(v=>v.paused),true);
+ await page.keyboard.press('f');await page.waitForFunction(()=>Boolean(document.fullscreenElement));
+ await page.keyboard.press('f');await page.waitForFunction(()=>!document.fullscreenElement);
+ await page.getByRole('button',{name:'标记时间范围',exact:true}).click();
+ const rangeDialog=page.getByRole('dialog',{name:'标记时间范围',exact:true});await rangeDialog.waitFor();
+ await rangeDialog.getByLabel('范围开始时间').fill('4');await rangeDialog.getByLabel('范围结束时间').fill('2');
+ assert.equal(await rangeDialog.getByRole('button',{name:'添加这段的修改意见'}).isDisabled(),true);
+ await rangeDialog.getByLabel('范围结束时间').fill('8');await rangeDialog.getByRole('button',{name:'添加这段的修改意见'}).click();
+ await page.locator('.feedback-drafts textarea').fill('通过范围选择添加的修改');
+ await page.getByRole('button',{name:'发送消息',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelectorAll('.feedback-drafts textarea').length===0);
+ assert.equal(submitted.feedback[0].kind,'video-range');assert.equal(submitted.feedback[0].timeSeconds,4);assert.equal(submitted.feedback[0].endSeconds,8);
  await page.locator('.thread-footer textarea').fill('12–18 秒缩短一些');await page.getByText('将针对 初稿 1 · 12–18 秒提交修改').waitFor();await page.locator('.thread-footer form').evaluate(form=>form.requestSubmit());await page.waitForFunction(()=>document.querySelector('.thread-footer textarea').value==='');assert.equal(submitted.feedback[0].kind,'video-range');assert.equal(submitted.feedback[0].endSeconds,18);
  await page.locator('.thread-footer textarea').fill('29–99 秒加一点说明');await page.locator('.thread-footer form').evaluate(form=>form.requestSubmit());await page.getByText('反馈时间超出所选视频时长，请调整范围后重试；文字已保留').waitFor();assert.equal(await page.locator('.thread-footer textarea').inputValue(),'29–99 秒加一点说明');await page.locator('.thread-footer textarea').fill('');
  await page.screenshot({path:out+'/video-desktop.png'});
@@ -86,7 +126,7 @@ try{
  await page.waitForFunction(()=>document.querySelectorAll('.feedback-drafts textarea').length===2);await page.reload();await page.waitForFunction(()=>document.querySelectorAll('.feedback-drafts textarea').length===2);assert.equal(await page.locator('.feedback-drafts img').count(),1);
  await page.getByRole('tab',{name:'视频',exact:true}).click();
  videoSeed.manifest.versions.push({id:'draft-2',label:'修改版 2',sourcePath:'.yingya/versions/draft-2',videoPath:'video.mp4',createdAt:Date.now()+1});videoSeed.manifest.currentDraft='draft-2';
- await page.reload();await page.getByRole('tab',{name:'视频',exact:true}).click();await page.getByLabel('视频版本',{exact:true}).selectOption('draft-2');
+ await page.reload();await page.getByRole('tab',{name:'视频',exact:true}).click();await page.getByRole('combobox',{name:'视频版本',exact:true}).click();await page.getByRole('option',{name:'修改版 2',exact:true}).click();
  assert.equal(await page.locator('.feedback-drafts textarea').count(),2);assert.match(await page.locator('.feedback-drafts').innerText(),/初稿 1/);
  assert.equal(requests.some(path=>path.includes('/rollback')),false);
  let createdShare;await page.route(url=>url.pathname==='/api/shares',route=>{if(route.request().method()==='GET')return route.fulfill({json:{shares:[]}});createdShare=route.request().postDataJSON();return route.fulfill({json:{id:'share-1',projectId:seed.id,ownerId:'qa-user',artifactId:'video',title:seed.title,version:'修改版 2',createdAt:1750000000,expiresAt:null,status:'active',bytes:1024,reservedBytesToday:0,url:'/s/'+ 'a'.repeat(64)}});});

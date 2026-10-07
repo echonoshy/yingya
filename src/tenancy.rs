@@ -1089,15 +1089,43 @@ fn deleted_project(method: &axum::http::Method, path: &str) -> Option<String> {
     let id = path.strip_prefix("/api/agent-projects/")?;
     Uuid::parse_str(id).ok().map(|_| id.to_owned())
 }
-async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
-    if !request.uri().path().starts_with("/api/") && !request.uri().path().starts_with("/assets/") {
-        let dir = g.paths.resources.join("web-dist");
-        return ServeDir::new(&dir)
+async fn frontend_response(dir: &std::path::Path, request: Request) -> Response {
+    // Stable URLs (HTML and the version manifest) must revalidate, including
+    // conditional 304 responses. Hashed /static assets are cached by nginx.
+    let revalidate = !request.uri().path().starts_with("/static/");
+    let path = request.uri().path();
+    let entry = path == "/app"
+        || path.starts_with("/app/")
+        || path == "/admin"
+        || path.starts_with("/admin/");
+    let mut response = if entry {
+        // SPA entry routes must preserve the file service's 200/304 status.
+        ServeFile::new(dir.join("index.html"))
+            .oneshot(request)
+            .await
+            .unwrap()
+            .into_response()
+    } else {
+        ServeDir::new(dir)
             .not_found_service(ServeFile::new(dir.join("index.html")))
             .oneshot(request)
             .await
             .unwrap()
-            .into_response();
+            .into_response()
+    };
+    if revalidate {
+        response.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-cache"),
+        );
+    }
+    response
+}
+
+async fn dispatch(State(g): State<Gateway>, mut request: Request) -> Response {
+    if !request.uri().path().starts_with("/api/") && !request.uri().path().starts_with("/assets/") {
+        let dir = g.paths.resources.join("web-dist");
+        return frontend_response(&dir, request).await;
     }
 
     if let Some(pool) = &g.pool {
@@ -1553,6 +1581,48 @@ pub(super) async fn voice_proxy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn frontend_entry_and_version_revalidate_after_release() {
+        let root = env::temp_dir().join(format!("yingya-frontend-cache-{}", Uuid::new_v4()));
+        fs::create_dir_all(root.join("static")).await.unwrap();
+        fs::write(
+            root.join("index.html"),
+            "<!doctype html><html>release</html>",
+        )
+        .await
+        .unwrap();
+        fs::write(root.join("app-version.json"), r#"{"buildId":"release"}"#)
+            .await
+            .unwrap();
+        fs::write(root.join("static/app-hash.js"), "export default 1;")
+            .await
+            .unwrap();
+        for path in ["/", "/app", "/admin/users", "/app-version.json"] {
+            let request = Request::builder().uri(path).body(Body::empty()).unwrap();
+            let response = frontend_response(&root, request).await;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(response.headers()["cache-control"], "no-cache", "{path}");
+            let modified = response.headers()["last-modified"].clone();
+            let conditional = Request::builder()
+                .uri(path)
+                .header("if-modified-since", modified)
+                .body(Body::empty())
+                .unwrap();
+            let response = frontend_response(&root, conditional).await;
+            assert_eq!(response.status(), StatusCode::NOT_MODIFIED, "{path}");
+            assert_eq!(response.headers()["cache-control"], "no-cache", "{path}");
+        }
+        let response = frontend_response(
+            &root,
+            Request::builder()
+                .uri("/static/app-hash.js")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert!(!response.headers().contains_key("cache-control"));
+        fs::remove_dir_all(root).await.unwrap();
+    }
     #[tokio::test]
     async fn preview_fonts_allow_opaque_origins_only_after_valid_grant_and_session() {
         let root = env::temp_dir().join(format!("yingya-preview-fonts-{}", Uuid::new_v4()));

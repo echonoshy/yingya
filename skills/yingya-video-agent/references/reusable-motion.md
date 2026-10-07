@@ -12,3 +12,5 @@ No independent animation clock may control exported pixels. Media belongs in
 
 For GSAP-specific SVG/text effects, read [gsap/index.md](gsap/index.md). Verify
 direct, backward and repeated seeking and inspect the actual exported frames.
+
+The offline `catalog`, `view --component explain-*` and `install --project . --component explain-*` commands provide six native explanation components and sentence captions. Read [remotion-authoring.md](remotion-authoring.md) for integration and scene-local timing.

@@ -1,19 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@fontsource-variable/noto-sans-sc";
-import "@fontsource-variable/noto-serif-sc";
+import "@fontsource/fragment-mono/latin-400.css";
+import "./typography.css";
 import { WebsiteRouter } from "./marketing/WebsiteRouter";
 import "./styles.css";
-import "./dropdowns.css";
-import "./home.css";
-import "./knowledge-layout.css";
-import "./creation-library.css";
-import "./print-studio.css";
-import "./editorial-studio.css";
 import { StudioThemeProvider } from "./components/StudioTheme";
+import { AppUpdateProvider } from "./components/AppUpdate";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <StudioThemeProvider><WebsiteRouter /></StudioThemeProvider>
+    <StudioThemeProvider><AppUpdateProvider><WebsiteRouter /></AppUpdateProvider></StudioThemeProvider>
   </StrictMode>,
 );

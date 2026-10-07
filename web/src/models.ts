@@ -1,35 +1,23 @@
 import type { CodexModel } from "./types";
 
-export const allowedModelIds = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'] as const;
+export const defaultModelId = "gpt-6.1-sol";
+export const allowedModelIds = [defaultModelId, "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"] as const;
 export const modelAllowed = (model: string) => allowedModelIds.some(id => id === model);
 
-const astra: CodexModel = {
-  id: "gpt-6-astra",
-  model: "gpt-6-astra",
-  displayName: "GPT-6 Astra",
-  description: "复杂创作与深度推理",
+// Fallback metadata mirrors the installed Codex catalog; prefer provider metadata.
+const fallbackModels: CodexModel[] = [
+  [defaultModelId, "GPT-6.1-Sol", "复杂创作与高质量推理", "low"],
+  ["gpt-6-astra", "GPT-6-Astra", "复杂创作与深度推理", "medium"],
+  ["gpt-6-sol", "GPT-6-Sol", "均衡的质量与速度", "medium"],
+  ["gpt-6-luna", "GPT-6-Luna", "快速迭代", "medium"],
+].map(([model, displayName, description, defaultReasoningEffort]) => ({
+  id: model, model, displayName, description, defaultReasoningEffort,
   hidden: false,
-  supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map(reasoningEffort => ({ reasoningEffort, description: "" })),
-  defaultReasoningEffort: "medium",
-  isDefault: false,
-};
-
-export function includeAstra(models: CodexModel[]): CodexModel[] {
-  // Older Codex catalogs may omit Astra. Prefer server metadata when available.
-  return models.some(model => model.model === astra.model) ? models : [...models, astra];
-}
+  isDefault: model === defaultModelId,
+  supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", ...(model === "gpt-6-luna" ? [] : ["ultra"])]
+    .map(reasoningEffort => ({ reasoningEffort, description: "" })),
+}));
 
 export function selectableModels(models: CodexModel[]): CodexModel[] {
-  const catalog = includeAstra(models);
-  return allowedModelIds.map(id => catalog.find(model => model.model === id) ?? {
-    ...astra, id, model: id, displayName: id === 'gpt-6-astra' ? 'GPT-6 Astra' : `GPT-5.6 ${id.split('-').at(-1)!.replace(/^./, letter => letter.toUpperCase())}`,
-    isDefault: id === 'gpt-5.6-terra',
-  });
-}
-
-/** Pin Astra in menus while keeping the catalog's defaults and relative order intact. */
-export function prioritizeAstra(models: CodexModel[]): CodexModel[] {
-  const index = models.findIndex(model => model.model === astra.model);
-  if (index <= 0) return models;
-  return [models[index], ...models.slice(0, index), ...models.slice(index + 1)];
+  return fallbackModels.map(fallback => models.find(model => model.model === fallback.model) ?? fallback);
 }

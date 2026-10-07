@@ -76,12 +76,16 @@ class ReleasePruneTest(unittest.TestCase):
         source.mkdir()
         for name in ['src', 'web', 'skills', 'scripts', 'runtime']:
             (source / name).mkdir()
-        for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'tsconfig.json']:
+        for name in ['Cargo.toml', 'Cargo.lock', 'package.json', 'package-lock.json', 'tsconfig.json', 'versions.json']:
             (source / name).write_text('{}')
+        (source / 'package.json').write_text(json.dumps({'version': '0.1.2'}))
+        (source / 'versions.json').write_text(json.dumps({'schemaVersion': 1, 'releases': [{'version': '0.1.2'}]}))
         self.args.release = '10-new'
         cache_binary = self.args.runtime / 'release-build/release/yingya-server'
+        commands = []
 
         def run(command, **kwargs):
+            commands.append(command)
             if command[0] == 'cargo':
                 self.assertEqual(command[-2:], ['--target-dir', self.args.runtime / 'release-build'])
                 cache_binary.parent.mkdir(parents=True)
@@ -94,6 +98,9 @@ class ReleasePruneTest(unittest.TestCase):
         self.assertEqual((snapshot / 'yingya-server').read_text(), 'compiled snapshot')
         self.assertFalse((snapshot / 'target').exists())
         self.assertEqual(json.loads((snapshot / 'release.json').read_text())['resources'], str(snapshot))
+        self.assertEqual(json.loads((snapshot / 'release.json').read_text())['appVersion'], '0.1.2')
+        self.assertEqual((snapshot / 'versions.json').read_text(), (source / 'versions.json').read_text())
+        self.assertEqual(commands[0], ['node', source / 'scripts/versions.mjs', 'check'])
 
 
 if __name__ == '__main__':

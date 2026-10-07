@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { creationRequirements, creationSettingsSchema } from "./components/CreationSettings";
 import { defaultExportFps, materialOnlyPrompt, sceneAtTime, selectedProjectVersion, sourceClip, sourceFilePath } from "./workbench";
 import { agentManifestSchema, workbenchSchema } from "./schemas";
 import type { MediaScene, ProjectDetail, SourceBinding } from "./types";
@@ -11,30 +10,10 @@ const scenes: MediaScene[] = [
 const bindings: SourceBinding[] = [{ id: "one", mediaSrc: "assets/bundled.mp4", sourceIn: 10, sourceOut: 14, startSeconds: 0, durationSeconds: 4 }];
 const manifest = agentManifestSchema.parse({ schemaVersion: 1, phase: "draft_review", dirty: false, outputSpec: {}, artifacts: [], versions: [{ id: "old", label: "旧版", sourcePath: "snapshots/old", videoPath: "old.mp4", createdAt: 1 }, { id: "new", label: "新版", sourcePath: "snapshots/new", videoPath: "new.mp4", createdAt: 2 }], currentDraft: "new", studioEntry: "index.html" });
 
-describe("material-first creation", () => {
-  it("migrates old settings without inventing narration and sends structured constraints", () => {
-    const old = creationSettingsSchema.parse({ duration: "30 秒", audience: "新用户", style: "品牌绿色", subtitles: "不添加字幕", music: "不添加配乐" });
-    expect(creationRequirements(old)).toEqual({ targetDurationSeconds: 30, durationMode: "target", audience: "新用户", styleNotes: "品牌绿色", subtitles: "none", music: "off", audioMode: "auto" });
-    expect(creationRequirements({ ...old, audioMode: "replace", durationMode: "exact" })).toMatchObject({ audioMode: "replace", durationMode: "exact" });
+describe("version-bound source interpretation", () => {
+  it("keeps material-only creation behind plan confirmation", () => {
     expect(materialOnlyPrompt).toContain("确认方案后再开始制作视频");
   });
-  it("normalizes cached mute/music conflicts and keeps the submitted task silent", () => {
-    const cached = { duration: "30 秒", audience: "", style: "", subtitles: "", music: "添加适合主题的配乐", audioMode: "mute" as const, durationMode: "target" as const };
-    expect(creationSettingsSchema.parse(cached).music).toBe("不添加配乐");
-    expect(creationRequirements(cached)).toMatchObject({ audioMode: "mute", music: "off" });
-    expect(creationRequirements({ ...cached, music: "" }).music).toBe("off");
-  });
-  it("drops exact or maximum duration constraints when no target remains", () => {
-    for (const durationMode of ["exact", "max"] as const) {
-      const cached = { duration: "", audience: "", style: "", subtitles: "", music: "", audioMode: "auto" as const, durationMode };
-      expect(creationSettingsSchema.parse(cached).durationMode).toBe("target");
-      expect(creationRequirements(cached).durationMode).toBe("target");
-      expect(creationRequirements(cached)).not.toHaveProperty("targetDurationSeconds");
-    }
-  });
-});
-
-describe("version-bound source interpretation", () => {
   it("follows the playhead instead of selecting the first scene and uses bound source intervals", () => {
     expect(sceneAtTime(scenes, bindings, 3.999)?.id).toBe("one");
     expect(sceneAtTime(scenes, bindings, 4)?.id).toBe("two");

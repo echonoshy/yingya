@@ -13,7 +13,7 @@ const initial = () => ({
 });
 const record = (state, bump, extra = {}) => recordVersion(state.history, state.manifest, state.lock, bump, {date: '2026-09-29', changes: ['修复预览'], ...extra});
 
-test('patch keeps the previous public notes and dependencies while synchronizing all versions', () => {
+test('patch preserves earlier development records and dependencies while synchronizing all versions', () => {
   const state = initial(), next = record(state, 'patch');
   assert.equal(validateVersions(next.history, next.manifest, next.lock), '0.1.1');
   assert.equal(next.history.releases[0].summary, undefined);
@@ -22,9 +22,11 @@ test('patch keeps the previous public notes and dependencies while synchronizing
   assert.equal(state.manifest.version, '0.1.0');
 });
 
-test('minor and major reset lower numbers and require public notes', () => {
+test('minor and major reset lower numbers without requiring public introductions', () => {
   const patched = record(initial(), 'patch');
-  assert.throws(() => record(patched, 'minor'), /标题和摘要/);
+  assert.equal(record(patched, 'minor').manifest.version, '0.2.0');
+  assert.equal(record(patched, 'major').manifest.version, '1.0.0');
+  assert.throws(() => record(patched, 'minor', {title: '不完整说明'}), /标题和摘要/);
   const minor = record(patched, 'minor', {title: '新的进展', summary: '新增作品能力'});
   assert.equal(minor.manifest.version, '0.2.0');
   assert.equal(record(minor, 'major', {title: '正式版本', summary: '新的阶段'}).manifest.version, '1.0.0');
@@ -57,7 +59,7 @@ test('CLI rejects incomplete records without writing and records a valid patch i
     const state = initial(), files = {'versions.json': state.history, 'package.json': state.manifest, 'package-lock.json': state.lock};
     for (const [name, value] of Object.entries(files)) await writeFile(path.join(directory, name), JSON.stringify(value));
     const cli = (...args) => execFileSync('node', [path.join(directory, 'scripts/versions.mjs'), ...args], {encoding: 'utf8', stdio: 'pipe'});
-    assert.throws(() => cli('record', 'minor', '--change', '开发记录'));
+    assert.throws(() => cli('record', 'patch'));
     for (const [name, value] of Object.entries(files)) assert.deepEqual(JSON.parse(await readFile(path.join(directory, name))), value);
     cli('record', 'patch', '--date', '2026-09-29', '--change', '修复导出', '--change', '修复预览');
     assert.match(cli('check'), /0\.1\.1/);

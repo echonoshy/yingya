@@ -5,13 +5,8 @@
   <strong>简体中文</strong> · <a href="README.en.md">English</a>
 </p>
 
-<p align="center">
-  <img src="docs/images/yingya-workspace.jpg" alt="映芽工作台：左侧对话修改，右侧视频预览与导出设置" width="100%" />
-</p>
-<p align="center"><sub>工作台界面 · 使用示例项目数据与映芽原创品牌短片</sub></p>
-
 想直接制作视频，前往 [yingya.art](https://yingya.art/)。
-想先看看效果，观看 [66 秒产品演示](https://youtu.be/DuEsvIO0zt4)，或浏览[官网作品](https://yingya.art/#showcase)。
+想先看看效果，浏览[官网风格参考](https://yingya.art/#style-references)与用途示例。
 想在自己的服务器运行，按下方说明安装。
 
 ---

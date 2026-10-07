@@ -14,6 +14,14 @@ accepts optional local reference images, listens for structured
 `data/users/<user-id>/assets/generated/` directory, and exposes the file under
 `/assets/u/<user-id>/` with an ownership check.
 
+The selected assistant model orchestrates the turn; the pinned Codex SDK's
+native tool uses `gpt-image-2` for drawing. The host model relay forwards only
+`POST codex/images/generations` and `POST codex/images/edits` for this tool,
+validates that image model separately, and attaches the host login without
+exposing provider credentials to tenant sandboxes. Image results count as
+generated media; image usage is not billed at assistant token prices. Unknown
+or interrupted image calls retain their media reservation for reconciliation.
+
 Upload a reference image first (maximum request size: 25 MiB):
 
 ```bash
@@ -151,7 +159,7 @@ bundle from release resources. Publish changes through the normal release
 workflow and verify the active worker's reference files; a developer's local
 skill installation does not update website tasks. Run `npm run test:design` for
 offline provenance and reference-link integrity, plus the skill validator and
-actual controlled video tasks for behavioral validation. Current plan review includes real keyframes before approval, as specified in the [current product contract](YINGYA_NEXT_PRODUCT_DIRECTION.md).
+actual controlled video tasks for behavioral validation. Current plan review includes real keyframes before approval, as specified in the [video production workflow](VIDEO_PRODUCTION_WORKFLOW.md).
 
 ## VoxCPM2 speech service
 
@@ -169,3 +177,57 @@ default voice, create and save a voice from a natural-language description, or
 clone an authorized 1–30 second reference recording with its exact transcript.
 Each project stores its selected VoxCPM2 voice in `.yingya/voice.json`; every
 narration segment and revision reuses that voice ID for consistent timbre.
+
+## MiniMax H3 generated footage
+
+The bundled `skills/minimax-h3-local` is copied into each worker's Codex home,
+including its Python standard-library client and source-linked prompt guide.
+The production workflow routes suitable shots through Image Gen first-frame
+creation, H3 motion/audio generation, and Remotion assembly. See
+[generated-footage.md](../skills/yingya-video-agent/references/generated-footage.md).
+
+The service is `http://140.143.229.103:8910`, without a cloud API key. The client
+honors the sandbox proxy; its gateway permits only this exact public host/port
+and the health, capabilities, submission and individual-job routes. Shared job
+listing is excluded. Other nonstandard ports and private network destinations
+remain blocked. Do not bypass the sandbox proxy. `H3_URL` / `--url` remain useful
+for standalone client tests; they do not grant additional sandbox destinations.
+
+Sampler overrides are optional: the service profile supplies steps, quality and
+flow shifts (turbo8 at integration time). The output is 768p-short-edge, 24fps
+audiovisual material; measure each downloaded clip before scheduling it. Native
+2K regeneration and hosted Context-IR are not available. Generation receipts and
+prompts stay in the current project; recovery polls the original job rather than
+submitting another one. No persistence schema or user-facing editor was added.
+
+## Production skill set and offline media tools
+
+Yingya publishes `yingya-video-agent`, `yingya-captions`, `voxcpm2-tts`,
+`heygen-audio` and `minimax-h3-local`; system `imagegen` remains available.
+`faceless-explainer` is merged into the main skill's storytelling reference.
+The production app-server disables developer maintenance skills using per-process
+`skills.config` overrides; SDK files and the developer Codex home are preserved.
+Plan approval authorizes checked, immutable video delivery. A separate draft
+checkpoint is retained only for explicitly requested staged review or legacy tasks.
+
+`npm run captions:setup` provisions a hashed Python environment and pinned
+faster-whisper small model with CPU int8 inference. Release builds provision it
+and mount it read-only into worker sandboxes. The project tool
+`python3 "$YINGYA_CAPTIONS"` supports health, transcribe, check and export-srt;
+it decodes audio through FFmpeg and downloads nothing during a task. Source hashes,
+raw word timestamps and script comparisons accompany the JSON captions. Recognition,
+factual text and sentence boundaries still need review; automatic recognition is
+not a guarantee of 300 ms timing accuracy. See [caption skill](../skills/yingya-captions/SKILL.md).
+
+`python3 "$YINGYA_AUDIO_TOOLS"` measures loudness and prepares versioned WAVs with
+fades, two-pass normalization or narration-controlled music ducking. All resulting
+tracks still require explicit `remotion.json.media` registration and listening review.
+See [audio mixing](../skills/yingya-video-agent/references/audio-mixing.md).
+
+The offline component tool now provides real `catalog`, `view --component explain-*`
+and `install --project . --component explain-*` operations. Six React/Remotion
+explanation primitives and a sentence caption layer are copied as editable project
+source; public React Bits/Magic UI sources continue to use search/view/add.
+See [native authoring](../skills/yingya-video-agent/references/remotion-authoring.md).
+Validate with `npm run test:media-tools`, `npm run test:native-explain`, skill
+validation, and `cargo test caption_runtime_and_native_catalog_work_inside_user_sandbox -- --ignored`.

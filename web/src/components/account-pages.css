@@ -1,0 +1,19 @@
+.usage-page .usage-title-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.usage-page .usage-title-row h1 { margin: 0; }
+.usage-page .usage-title-row p { margin: 12px 0 0; color: var(--muted); font-size: var(--text-body); line-height: 1.7; }
+.usage-page .usage-refresh { flex-shrink: 0; }
+.usage-page .usage-load-error { max-width: 1200px; margin: 20px auto; color: var(--accent-text); font-size: var(--text-control); }
+.usage-page > :is(.usage-empty, .usage-pending, .account-error) { max-width: 1200px; margin-inline: auto; }
+.usage-page .usage-pending { color: var(--muted); font-size: var(--text-control); }
+.usage-page .usage-quota { max-width: 1200px; margin: 28px auto 0; border-top: 1px solid var(--line); padding-top: 20px; }
+.usage-page :is(.usage-quota, .usage-notes) > summary { width: fit-content; padding: 10px 0; color: var(--text); cursor: pointer; font-size: var(--text-control); }
+.usage-page .usage-quota .account-quota { margin: 12px 0 0; padding-top: 8px; border: 0; }
+.usage-page .usage-notes { margin-top: 8px; }
+.usage-page .usage-notes > p { max-width: 40em; }
+.usage-page :is(button, summary, .usage-table-wrap):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.usage-page input[aria-invalid="true"] { border-color: var(--accent-text); }
+@media (max-width: 599px) {
+ .usage-page .usage-title-row { align-items: flex-start; gap: 12px; }
+ .usage-page .usage-title-row .usage-refresh { margin-top: 2px; padding-inline: 6px; }
+ .usage-page .usage-metrics { gap: 12px; padding-block: 24px; }
+}

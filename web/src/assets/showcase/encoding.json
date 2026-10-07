@@ -1,0 +1,64 @@
+{
+  "intro-1": {
+    "original": 20719852,
+    "sourceSha256": "763f0d389a5b7b84b5171bdaccb8e06484af7fd85b6cffd41941c1f03bf218c1",
+    "poster": 40424,
+    "1440p": 5772369,
+    "frameRate": 60
+  },
+  "demo-1": {
+    "original": 17047350,
+    "sourceSha256": "1bb668327a8ff3728c3b941803af952fe1ca24759cbde0c4174e86525219caa7",
+    "1080p": 5781955,
+    "poster": 15562
+  },
+  "demo-2": {
+    "original": 71975973,
+    "sourceSha256": "ad806324199abe056075bf624391ab3b86754a5371461123791ac799e3e39d6d",
+    "1080p": 8746605,
+    "poster": 34936
+  },
+  "demo-3": {
+    "original": 16492982,
+    "sourceSha256": "0cf028a896aacc7eb3e436d7590cd44212b1c370e5b194a6394301741c0c39d0",
+    "1080p": 2546528,
+    "poster": 6050
+  },
+  "demo-4": {
+    "original": 14882910,
+    "sourceSha256": "c44e420fac95e45550d36863885332cf550b4c1b73f4128bd90bc38e4d33d3bc",
+    "1080p": 3641270,
+    "poster": 15990
+  },
+  "demo-5": {
+    "original": 39407362,
+    "sourceSha256": "95fece061fa2f84ffb990dfe60d7638980ee5351534fd2137869bc0592544260",
+    "1080p": 6661627,
+    "poster": 11088
+  },
+  "demo-6": {
+    "original": 47242840,
+    "sourceSha256": "6df107a8bf740aa36e1c7343a9f9af7281d82668853f548dc30c32ef96063e9b",
+    "1080p": 6290218,
+    "poster": 19536
+  },
+  "demo-7": {
+    "original": 40379555,
+    "sourceSha256": "a0d6c75e7d1e33d13f921620c9ebd58af7e011f80e32ac64b5c9c41b4d83a29d",
+    "1080p": 8511750,
+    "poster": 19408
+  },
+  "demo-8": {
+    "original": 7262031,
+    "sourceSha256": "cbe6f3998faa59104ba986a1e14e7a3c8b3175b51e3ef18412285a8b5735cdba",
+    "1080p": 1908017,
+    "poster": 8718
+  },
+  "demo-9": {
+    "original": 12875397,
+    "sourceSha256": "31c5f0bcc5f12b02e3c8a27c984e0db0ee525c3f07799129820d1bb160c7290f",
+    "1080p": 6791357,
+    "frameRate": 30,
+    "poster": 29844
+  }
+}

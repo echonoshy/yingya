@@ -1,8 +1,8 @@
 import { selectableModels } from "../models";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
 import { useMotionPresence } from "../hooks/useMotionPresence";
-import { CaretDown, CaretRight, Check } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CaretDown, CaretRight, Check, Cpu } from "@phosphor-icons/react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CodexModel, ModelSelection } from "../types";
 
 const effortLabels: Record<string, string> = {
@@ -17,19 +17,23 @@ const effortLabels: Record<string, string> = {
   ultra: "Ultra",
 };
 
-export function ModelSelector({ models, value, onChange }: {
+export function ModelSelector({ models, value, onChange, variant = "default", disabled = false }: {
   models: CodexModel[];
   value: ModelSelection;
   onChange: (value: ModelSelection) => void;
+  variant?: "default" | "creation";
+  disabled?: boolean;
 }) {
   const menuModels = useMemo(() => selectableModels(models), [models]);
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
+  const menuId = useId();
   const presence = useMotionPresence(open ? true : null);
   const root = useRef<HTMLDivElement>(null);
   const position = usePopoverPosition(open, root);
-  useEffect(() => { if (presence.value && !presence.exiting) root.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')?.focus({ preventScroll: true }); }, [presence.value, presence.exiting]);
-  const matchingModel = models.find(model => model.model === value.model);
-  const selectedModel = matchingModel ?? models[0];
+  useEffect(() => { if (presence.value && !presence.exiting) root.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus({ preventScroll: true }); }, [presence.value, presence.exiting]);
+  const matchingModel = menuModels.find(model => model.model === value.model);
+  const selectedModel = matchingModel ?? menuModels[0];
   const efforts = useMemo(() => {
     const supported = selectedModel?.supportedReasoningEfforts.map(option => option.reasoningEffort) ?? [];
     return ["auto", ...supported.filter(effort => effort !== "auto")];
@@ -47,7 +51,8 @@ export function ModelSelector({ models, value, onChange }: {
   const displayName = matchingModel?.displayName ?? value.model;
   const effortName = effortLabels[value.reasoningEffort] ?? value.reasoningEffort;
 
-  return <div className="model-selector" ref={root} onKeyDown={event => {
+  return <div className={`model-selector${variant === "creation" ? " model-selector--creation" : ""}`} ref={root} onKeyDown={event => {
+    if (disabled) return;
     if (open && event.key === "Tab") setOpen(false);
     if (!open && event.key === "ArrowDown") { event.preventDefault(); setOpen(true); return; }
     if (open && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
@@ -57,12 +62,13 @@ export function ModelSelector({ models, value, onChange }: {
       const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
       items[next]?.focus();
     }
-    if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
-    <button type="button" className="model-trigger" title={`制作助手模型：${displayName} · ${effortName}`} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
-      <span className="model-trigger-label">{displayName} · {effortName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
+    if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
+    <button type="button" className="model-trigger" disabled={disabled} aria-label={`制作助手模型：${displayName}，思考深度：${effortName}`} title={`制作助手模型：${displayName} · ${effortName}`} aria-controls={presence.value ? menuId : undefined} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
+      {variant === "creation" ? <><Cpu className="model-trigger-icon" aria-hidden="true"/><span className="model-trigger-label"><span className="model-trigger-name">{displayName}</span><span className="model-trigger-effort">{effortName}</span></span></> : <span className="model-trigger-label">{displayName} · {effortName}</span>}<CaretDown className="control-chevron" aria-hidden="true"/>
     </button>
-    {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={position}>
+    {presence.value ? <div id={menuId} ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={position}>
       <div className="model-menu-primary" role="group" aria-label="制作助手模型">
+        {variant === "creation" ? <small className="model-menu-heading">制作助手</small> : null}
         {menuModels.map(model => <button
           type="button"
           role="menuitemradio"
@@ -74,7 +80,7 @@ export function ModelSelector({ models, value, onChange }: {
             onChange({ model: model.model, reasoningEffort: supported ? value.reasoningEffort : model.defaultReasoningEffort });
           }}
         >
-          <span>{model.displayName}</span>{value.model === model.model ? <Check/> : <CaretRight/>}
+          {variant === "creation" ? <span className="model-option-copy"><span>{model.displayName}</span>{model.description ? <small>{model.description}</small> : null}</span> : <span>{model.displayName}</span>}{value.model === model.model ? <Check aria-hidden="true"/> : variant === "creation" ? null : <CaretRight aria-hidden="true"/>}
         </button>)}
       </div>
       <div className="model-menu-secondary" role="group" aria-label="思考深度">

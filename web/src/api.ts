@@ -1,3 +1,4 @@
+import { uploadForm, type UploadOptions } from "./upload";
 import { explanationPlanSchema, type PlanReceipt } from "./explanationPlan";
 import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
 import { assetRoleSchema, workbenchSchema, feedbackAssetSchema } from "./schemas";
@@ -81,7 +82,7 @@ export const api = {
   renderVideo: (id: string, input: { versionId: string; resolution: "landscape" | "landscape-4k" | "portrait" | "portrait-4k" | "square" | "square-4k"; fps: number }) => request(`/api/agent-projects/${id}/render`, renderVideoResultSchema, { method: "POST", body: JSON.stringify(input) }),
   respondToRequest: (id: string, requestId: unknown, result: unknown) => requestVoid(`/api/agent-projects/${id}/requests/respond`, { method: "POST", body: JSON.stringify({ id: requestId, result }) }),
   rollbackVersion: (id: string, versionId: string) => request(`/api/agent-projects/${id}/versions/${versionId}/rollback`, turnAcceptedSchema, { method: "POST", body: "{}" }),
-  uploadAsset: async (id: string, file: File) => { const body = new FormData(); body.append("file", file); return request(`/api/agent-projects/${id}/assets`, uploadSchema, { method: "POST", body }); },
+  uploadAsset: async (id: string, file: File, options?: UploadOptions) => { const body = new FormData(); body.append("file", file); return uploadForm(`/api/agent-projects/${id}/assets`, body, uploadSchema, options); },
   getWorkbench: (id: string, versionId?: string) => request(`/api/agent-projects/${id}/workbench${versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""}`, workbenchSchema),
   setAssetRole: (id: string, path: string, role: import("./types").AssetRole) => request(`/api/agent-projects/${id}/asset-roles`, z.object({ assetRoles: z.array(z.object({ path: z.string(), role: assetRoleSchema })) }), { method: "PATCH", body: JSON.stringify({ path, role }) }),
   getProjectMedia: (id: string) => request(`/api/agent-projects/${id}/media`, agentMediaSchema),
@@ -100,7 +101,7 @@ export const api = {
   previewVoice: (voiceId: string, text?: string) => requestBlob("/api/voices/preview", { method: "POST", body: JSON.stringify({ voiceId, ...(text ? { text } : {}) }) }),
   listImages: () => request("/api/assets/images", imageLibrarySchema),
   listAssetLibrary: () => request("/api/assets/library", assetLibrarySchema),
-  uploadLibraryAsset: async (file: File, folderId?: string) => { const body = new FormData(); body.append("file", file); if (folderId) body.append("folderId", folderId); return request("/api/assets/library", assetLibraryItemSchema, { method: "POST", body }); },
+  uploadLibraryAsset: async (file: File, folderId?: string, options?: UploadOptions) => { const body = new FormData(); body.append("file", file); if (folderId) body.append("folderId", folderId); return uploadForm("/api/assets/library", body, assetLibraryItemSchema, options); },
   importLibraryAsset: (id: string, projectId: string) => request(`/api/assets/library/${encodeURIComponent(id)}/projects/${projectId}`, uploadSchema, { method: "POST", body: "{}" }),
   renameLibraryAsset: (id: string, name: string) => requestVoid(`/api/assets/library/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteLibraryAsset: (id: string) => requestVoid(`/api/assets/library/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -109,7 +110,7 @@ export const api = {
   moveLibraryAsset: (id: string, folderId?: string) => requestVoid(`/api/assets/library/${id}`, { method: "PATCH", body: JSON.stringify({ folderId }) }),
   listAssetFolders: () => request("/api/assets/folders", z.array(assetFolderSchema)),
   createAssetFolder: (name: string) => request("/api/assets/folders", assetFolderSchema, { method: "POST", body: JSON.stringify({ name }) }),
-  uploadImage: async (file: File) => { const body = new FormData(); body.append("file", file); return request("/api/assets/images", imageUploadSchema, { method: "POST", body }); },
+  uploadImage: async (file: File, options?: UploadOptions) => { const body = new FormData(); body.append("file", file); return uploadForm("/api/assets/images", body, imageUploadSchema, options); },
   startImageThread: () => request("/api/codex/threads", threadStartedSchema, { method: "POST", body: "{}" }),
   generateImage: (threadId: string, input: { prompt: string; referenceImages: string[]; model: string; reasoningEffort: string }) => request(`/api/codex/threads/${threadId}/images`, imageTurnSchema, { method: "POST", body: JSON.stringify(input) }),
 };

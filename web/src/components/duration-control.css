@@ -1,0 +1,16 @@
+.duration-control { display: inline-flex; min-width: 0; }
+.duration-trigger { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font: 500 13px/1.5 var(--font-ui); white-space: nowrap; }
+.duration-trigger > svg { width: 16px; height: 16px; color: var(--muted); }
+.duration-trigger > .control-chevron { width: 12px; height: 12px; }
+.duration-trigger:hover { background: var(--surface); border-color: var(--line-strong); }
+.duration-trigger[aria-expanded="true"] { color: var(--accent-text); background: var(--selection); border-color: var(--selection-line); }
+.duration-panel { position: fixed; inset: auto; margin: 0; padding: 16px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: var(--menu-background); color: var(--text); box-shadow: var(--shadow-popover); font: 400 13px/1.6 var(--font-ui); overflow-y: auto; }
+.duration-panel label { display: grid; gap: 8px; font-weight: 500; }
+.duration-panel label > div { display: flex; align-items: center; gap: 10px; }
+.duration-panel input { min-width: 0; width: 100%; height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font: inherit; }
+.duration-presets { display: flex; gap: 8px; margin-top: 12px; }
+.duration-panel button { min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-control); background: transparent; color: var(--text); font: 500 13px/1.5 var(--font-ui); }
+.duration-panel button:hover { background: var(--surface); }
+.duration-panel p { margin: 12px 0; color: var(--muted); font-size: 12px; }
+.duration-panel .duration-apply { display: block; margin-left: auto; background: var(--primary); border-color: var(--primary); color: var(--canvas); }
+.duration-control :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -302,6 +302,12 @@ impl Accounts {
         Ok(())
     }
     pub fn reserve_model(&self, user: &str) -> Result<ModelCharge, String> {
+        self.reserve_model_request(user, false)
+    }
+    pub fn reserve_image_generation(&self, user: &str) -> Result<ModelCharge, String> {
+        self.reserve_model_request(user, true)
+    }
+    fn reserve_model_request(&self, user: &str, image: bool) -> Result<ModelCharge, String> {
         let mut db = self.0.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
         let q = quota(&tx, user)?;
@@ -309,7 +315,14 @@ impl Accounts {
             return Err("Token 额度已用完或正在使用，请联系管理员或稍后重试".into());
         }
         let id = Uuid::new_v4().to_string();
-        tx.execute("INSERT INTO model_charges(id,user_id,reserved,status,created_at) VALUES(?1,?2,?3,'running',?4)",params![id,user,q.remaining_tokens.min(32768),now()]).map_err(|e|e.to_string())?;
+        // Native Images calls use separate usage units. Track their media
+        // independently instead of reserving or pricing them as a text model.
+        let reserved = if image {
+            0
+        } else {
+            q.remaining_tokens.min(32768)
+        };
+        tx.execute("INSERT INTO model_charges(id,user_id,reserved,media,status,created_at) VALUES(?1,?2,?3,?4,'running',?5)",params![id,user,reserved,i64::from(image),now()]).map_err(|e|e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(ModelCharge {
             accounts: self.clone(),

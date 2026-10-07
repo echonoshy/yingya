@@ -35,3 +35,13 @@ glibc >= 2.35 的主机使用原生依赖。标准 release build 自动准备浏
 运行 Rust fmt/clippy/tests、前端 typecheck/build、生产任务测试、Remotion 构建和浏览器
 音视频导出测试。发布不可变 release，再核对公网资源、活跃 API/worker 与受控导出。
 旧 release 保留到滚动任务交接与安全清理完成；不修改正在使用的快照。
+
+## 生产技能与媒体准备
+
+主制作 skill 统一方案确认、内部审阅与直接交付；显式分阶段审稿和旧草稿检查点仍兼容。
+原 faceless-explainer 已并入叙事参考。原生讲解组件通过组件工具 catalog/view/install
+获取；旧 presentation 字段按表达意图解释，不再假定 Anime.js 或旧 HTML 组件可直接使用。
+
+字幕由宿主预置的离线 faster-whisper small 提供真实词时间戳，并与稿件比较；结果必须校对，
+不将识别成功等同于对齐精度通过。淡入淡出、响度标准化和音乐闪避通过音频工具生成新 WAV，
+再进入统一 media 帧表。模型和 Python 环境按版本只读挂载，项目 turn 不安装依赖。

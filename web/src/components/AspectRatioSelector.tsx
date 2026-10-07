@@ -23,6 +23,7 @@ export function AspectRatioSelector({ value, onChange }: {
   const menuId = useId();
   const position = usePopoverPosition(open, trigger, 240);
   const selected = options.find(option => option.value === value)!;
+  const SelectedIcon = selected.icon;
 
   useEffect(() => {
     if (!open) return;
@@ -59,7 +60,7 @@ export function AspectRatioSelector({ value, onChange }: {
     <button ref={trigger} className="aspect-trigger" type="button" aria-label="首页视频画幅"
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
       onClick={() => setOpen(current => !current)}>
-      <span>{selected.label}</span><CaretDown className="control-chevron" aria-hidden="true" />
+      <SelectedIcon className="aspect-trigger-icon" aria-hidden="true"/><span>{selected.label}</span><CaretDown className="control-chevron" aria-hidden="true" />
     </button>
     {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} id={menuId} className="aspect-menu" role="menu" aria-label="选择视频画幅" style={position}>
       {options.map(({ value: option, label, hint, icon: Icon }) => <button key={option} type="button"

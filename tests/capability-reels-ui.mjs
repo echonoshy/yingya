@@ -1,0 +1,92 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {chromium} from 'playwright';
+import {browserPath} from '../runtime/browser.mjs';
+const base=process.env.YINGYA_UI_QA_URL || 'http://127.0.0.1:8798';
+const output=process.env.YINGYA_EXAMPLES_PROOF || '/tmp/yingya-texture-reels/ui';
+await mkdir(output,{recursive:true});
+const browser=await chromium.launch({executablePath:browserPath()});
+const errors=[];
+try {
+ const page=await browser.newPage({viewport:{width:1440,height:1100}});
+ page.on('pageerror',e=>errors.push(e.message));
+ const requested=[];page.on('request',r=>{if(r.url().includes('capability-reels/')&&r.url().includes('.mp4'))requested.push(r.url());});
+ await page.goto(base);await page.evaluate(()=>document.fonts.ready);
+ const demo=page.locator('#inspiration-demo');
+ assert.equal(await demo.locator('video').getAttribute('src'),null,'Offscreen examples do not load');
+ await page.locator('#home-idea').fill('保留我的文稿');
+ await page.getByRole('link',{name:'能做什么',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#inspiration-demo video')?.readyState>=2);
+ assert.deepEqual(await page.locator('.inspiration-full-title').allTextContents(), ['文字动画与视觉特效','自动配音和字幕','动态图表','自动剪辑']);
+ const sources=new Set();
+ for(let i=0;i<4;i++) {
+  const pick=page.locator('.inspiration-pick').nth(i);
+  await pick.focus();await page.keyboard.press('Enter');
+  assert.equal(await pick.getAttribute('aria-pressed'),'true');
+  await demo.scrollIntoViewIfNeeded();
+  await page.waitForFunction(()=>{const v=document.querySelector('#inspiration-demo video');return v?.readyState>=2&&!v.paused&&v.currentTime>.05;});
+  const video=demo.locator('video');sources.add(await video.getAttribute('src'));
+  assert.equal(await video.evaluate(v=>v.muted),true,'Every new example starts muted');
+  assert.equal(await video.evaluate(v=>v.videoWidth),1600);
+  assert.ok(await demo.locator('.inspiration-detail').innerText());
+  await demo.getByRole('button',{name:'暂停视频',exact:true}).click();
+  const current=await video.evaluate(v=>v.currentTime);
+  await page.waitForTimeout(200);
+  assert.ok(Math.abs(await video.evaluate(v=>v.currentTime)-current)<.05,'Manual pause is respected');
+  await demo.getByRole('slider').fill('3.5');
+  await page.waitForFunction(()=>{const v=document.querySelector('#inspiration-demo video');return !v.seeking&&v.readyState>=2&&Math.abs(v.currentTime-3.5)<.1;});
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  if(i===1) {
+   await demo.getByRole('button',{name:'开启声音',exact:true}).click();
+   assert.equal(await video.evaluate(v=>v.muted),false);
+  } else assert.equal(await demo.getByRole('button',{name:'开启声音',exact:true}).count(),0);
+  await page.locator('.home-inspiration').screenshot({path:`${output}/example-${i+1}.png`});
+  assert.equal(await page.locator('#home-idea').inputValue(),'保留我的文稿','Preview never edits the draft');
+ }
+ assert.equal(sources.size,4,'Four different rendered videos');
+ assert.equal(await demo.locator('video').count(),1,'Only the selected example remains mounted');
+ await demo.getByRole('button',{name:'继续播放视频',exact:true}).click();
+ await page.waitForFunction(()=>!document.querySelector('#inspiration-demo video').paused);
+ await page.locator('.marketing-page').evaluate(el=>el.scrollTo({top:0,behavior:'instant'}));
+ await page.waitForFunction(()=>document.querySelector('#inspiration-demo video').paused);
+ await page.locator('.inspiration-pick').nth(2).click();
+ await demo.scrollIntoViewIfNeeded();
+ await page.waitForFunction(()=>!document.querySelector('#inspiration-demo video').paused);
+ await demo.getByRole('slider').fill('3.5');
+ // Reduced motion is live, including movies already loaded.
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.waitForFunction(()=>document.querySelector('#inspiration-demo video').paused);
+ for(const width of [1280,1440,1536,1920,390,320]) {
+  await page.setViewportSize({width,height:1100});
+  await page.locator('.home-inspiration').scrollIntoViewIfNeeded();
+  assert.equal(await page.locator('.marketing-page').evaluate(el=>el.scrollWidth<=el.clientWidth),true,`No page overflow at ${width}`);
+  assert.equal(await page.locator('.inspiration-grid').evaluate(el=>el.scrollWidth<=el.clientWidth),true,`Choices fit at ${width}`);
+  assert.equal(await demo.evaluate(el=>el.scrollWidth<=el.clientWidth),true,`Player and explanations fit at ${width}`);
+  assert.equal(await demo.locator('.motion-reel-controls').evaluate(el=>getComputedStyle(el).opacity),'1','Playback controls are always discoverable');
+  await page.locator('.home-inspiration').screenshot({path:`${output}/layout-${width}.png`});
+ }
+ const reduced=await browser.newPage({reducedMotion:'reduce',viewport:{width:390,height:844}});
+ reduced.on('pageerror',e=>errors.push(e.message));
+ const movies=[];reduced.on('request',r=>{if(r.resourceType()==='media')movies.push(r.url());});
+ await reduced.goto(base);
+ await reduced.locator('.inspiration-pick').nth(3).click();
+ await reduced.locator('#inspiration-demo').scrollIntoViewIfNeeded();
+ await reduced.waitForTimeout(200);
+ assert.deepEqual(movies,[],'Reduced motion does not request movies');
+ await reduced.locator('#inspiration-demo').getByRole('button',{name:'继续播放视频',exact:true}).click();
+ await reduced.waitForFunction(()=>document.querySelector('#inspiration-demo video')?.readyState>=2);
+ assert.ok(movies.length>0,'Reduced motion still permits intentional playback');
+ await reduced.close();
+ const failure=await browser.newPage({reducedMotion:'reduce'});
+ await failure.route(/\/[^/]*effects[^/]*\.mp4(?:\?.*)?$/,r=>r.request().resourceType()==='media'?r.abort():r.continue());
+ await failure.goto(base);const failedDemo=failure.locator('#inspiration-demo');
+ await failedDemo.scrollIntoViewIfNeeded();
+ await failedDemo.getByRole('button',{name:'继续播放视频',exact:true}).click();
+ await failedDemo.getByText('视频暂时没有加载出来',{exact:true}).waitFor();
+ await failure.unroute(/\/[^/]*effects[^/]*\.mp4(?:\?.*)?$/);
+ await failedDemo.getByRole('button',{name:'重新加载',exact:true}).click();
+ await failure.waitForFunction(()=>document.querySelector('#inspiration-demo video')?.readyState>=2);
+ await failure.close();
+ assert.deepEqual(errors,[]);
+ console.log(`PASS ${base}: four unique decoded films, keyboard selection, pause/seek/sound, draft preservation, lazy loading/offscreen pause, reduced motion/manual play, failure retry, six viewport widths. Screenshots: ${output}`);
+} finally {await browser.close();}
