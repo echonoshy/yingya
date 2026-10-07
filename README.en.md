@@ -1,61 +1,76 @@
-<p align="center">
-  <a href="README.md">简体中文</a> · <strong>English</strong>
-</p>
+# YingYa · 映芽
 
-<p align="center">
-  <a href="https://yingya.art/app#/">
-    <img src="docs/assets/readme-hero-en.webp" alt="YingYa — Your ideas, in motion. A blue line unfolds into a ribbon of film." width="100%" />
-  </a>
-</p>
+[简体中文](README.md) | **English**
 
-<p align="center">
-  <strong>Talk an idea into a video.</strong><br />
-  Bring your material. See the frames. Shape the film together.
-</p>
+**Create and revise videos through conversation.**
 
-<p align="center">
-  <a href="https://yingya.art/app#/">Start creating ↗</a> &nbsp; · &nbsp;
-  <a href="https://yingya.art/#style-references">Find inspiration</a> &nbsp; · &nbsp;
-  <a href="docs/README.md">Documentation</a> &nbsp; · &nbsp;
-  <a href="https://github.com/echonoshy/yingya/issues">Share an idea</a>
-</p>
+YingYa is an AI video workspace. Start with text, a web page, a reference video, or your own media. Review the outline and keyframes before producing animation, narration, and captions. Refine the video through conversation, then download an MP4 or share a link.
 
-## 01 / Give your idea a shape.
+[Start creating](https://yingya.art/app#/) · [Website](https://yingya.art/) · [Documentation](docs/README.md)
 
-YingYa is an AI video workspace. Explain a concept, make sense of data, or introduce a product: start with a few sentences, then add a web page, a reference video, or your own media.
+[![YingYa's 15-second promotional film](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
 
-> “Make a short film for students discovering pendulums. Put a long and a short pendulum side by side so the difference in their periods is easy to see.”
+*15-second promotional film. Click to watch with sound.*
 
-![Illustrated creative process: a sketch becomes keyframes, then a finished video](docs/assets/readme-story.webp)
+## What you can make
 
-**Bring a starting point.** Describe the audience, the message, and your references.
+- **Explainers and lessons.** Turn articles, scripts, and questions into videos using diagrams, formulas, steps, and comparisons.
+- **Data and reports.** Animate your data to highlight trends, differences, and key changes in business reviews and research summaries.
+- **Product introductions and walkthroughs.** Combine web pages, product images, and screen recordings to explain use cases, features, and steps.
+- **Animated typography and visual shorts.** Use letterforms, geometry, particles, and transitions for motion posters, opening sequences, brand films, and short stories.
+- **Existing media.** Select excerpts from uploaded videos, combine images and recordings, and add narration, captions, and supporting visuals.
 
-**See the plan first.** Review the outline and keyframes rendered from the actual production source.
+## Videos from the homepage
 
-**Make the video.** Once you approve the plan, YingYa arranges animation, media, narration, and captions to fit your brief.
+Click a cover to watch its video, or choose a style from the [website gallery](https://yingya.art/#style-references) as a reference for your own content.
 
-## 02 / Now, set it in motion.
+<table>
+  <tr>
+    <td width="50%">
+      <a href="web/src/assets/showcase/demo-8-1080.mp4"><img src="web/src/assets/showcase/demo-8.webp" alt="From poetry to bits: text and a timeline organize an explanation" width="400" /></a><br />
+      <strong>From poetry to bits · 24s</strong><br />
+      Text, lines, and a chronological narrative.
+    </td>
+    <td width="50%">
+      <a href="web/src/assets/showcase/demo-3-1080.mp4"><img src="web/src/assets/showcase/demo-3.webp" alt="Interface motion: depth and movement in interface elements" width="400" /></a><br />
+      <strong>Interface motion · 30s</strong><br />
+      Spatial depth, changing elements, and transitions.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="web/src/assets/showcase/demo-1-1080.mp4"><img src="web/src/assets/showcase/demo-1.webp" alt="Kinetic lyrics: large type and comments timed to music" width="400" /></a><br />
+      <strong>Kinetic lyrics · 45s</strong><br />
+      Type size and layout timed to a beat.
+    </td>
+    <td width="50%">
+      <a href="web/src/assets/showcase/demo-9-1080.mp4"><img src="web/src/assets/showcase/demo-9.webp" alt="Cloud Express: a train crossing an illustrated landscape" width="400" /></a><br />
+      <strong>Cloud Express · 18s</strong><br />
+      Illustrated scenes, color, and camera movement.
+    </td>
+  </tr>
+</table>
 
-[![YingYa's 15-second promotional film: points, lines, shapes, volume, light, and sound](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
+## Features
 
-<p align="center"><sub>15 seconds of form, light, and motion. Click the GIF to watch the original with sound.</sub></p>
+- **Media and references.** Use web pages, scripts, reference images and videos, or upload your own media. Reuse assets across projects through your account's media library.
+- **Plan before production.** Review the outline and keyframes rendered from the actual production source. Adjust copy, sections, and visual direction before making the full video.
+- **Narration and captions.** Generate voiceover from a script or transcribe a recording, then align captions, highlighted words, and visuals with the actual speech.
+- **Targeted revisions.** Request changes through conversation, screenshots, timestamps, or time ranges. Keep earlier versions while refining the same project.
+- **Export and share.** Download an MP4 or adjust resolution and frame rate for another export. Share an independent copy of a selected version, with no sign-in required to watch, optional expiry, and revocation.
 
-- **Explain a concept.** Turn abstract ideas into clear graphics, words, and rhythm.
-- **Make data visible.** Use animated charts, comparisons, and annotations to show what matters.
-- **Introduce a product.** Bring images, video, and sound together into a complete story.
+## A typical workflow
 
-## 03 / Good work gets another pass.
+Provide content and references → approve the outline and keyframes → watch the draft → request changes → download or share.
 
-> “Make the title in scene two bigger. Hold the comparison for two more seconds. Keep everything else.”
+For example:
 
-Keep refining through conversation, or use screenshots, timestamps, and time ranges to point to a specific moment. Your project, media, and earlier versions stay available. Download an MP4 or share an independent link to the version you choose.
+> Turn this product page and three screenshots into a 30-second introduction covering the use case and two key features. Use landscape format, English narration, and captions. Show me the outline and keyframes first.
 
-**From the first plan to the next revision, stay in the same creative workspace.**
+## Project and documentation
 
----
+The frontend uses React and the backend uses Rust. The AI Agent writes and revises video projects; Remotion handles preview and rendering.
 
-React powers the workspace, Rust runs the backend, the AI Agent interprets the brief and writes and revises the video project, and Remotion handles preview and rendering.
+[Product scope](docs/PRODUCT_POSITIONING.md) · [Production workflow](docs/VIDEO_PRODUCTION_WORKFLOW.md) · [Video sharing](docs/VIDEO_SHARING.md) · [Development and deployment docs](docs/README.md) · [Issues and suggestions](https://github.com/echonoshy/yingya/issues)
 
-[Product overview](docs/PRODUCT_POSITIONING.md) · [Production workflow](docs/VIDEO_PRODUCTION_WORKFLOW.md) · [Documentation](docs/README.md) · **[Make your first film ↗](https://yingya.art/app#/)**
-
-<sub>Most project documentation is currently in Chinese.</sub>
+*Most project documentation is currently in Chinese.*
