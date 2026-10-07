@@ -1,6 +1,6 @@
 import { StudioCodeTag } from "./StudioCodeTag";
 import { UploadProgressList } from "./UploadProgressList";
-import { useUploadQueue, type UploadQueue } from "../hooks/useUploadQueue";
+import { type UploadQueue } from "../hooks/useUploadQueue";
 import { SelectControl } from "./SelectControl";
 import { KineticType } from './KineticType';
 import "./asset-creation.css";
@@ -12,13 +12,14 @@ import AssetDocumentPreview, { assetDocumentKind } from "./AssetDocumentPreview"
 import {
   ArrowsOut, Minus, PencilSimple, Trash, CaretDown, Check, Checks, CircleNotch, DownloadSimple, File as FileIcon, FileAudio, FileText,
   FolderOpen, FolderSimple, Folders, Image as ImageIcon, Images,
-  MagnifyingGlass, MusicNotes, Paperclip, Plus, Sparkle, SpeakerHigh, UploadSimple,
+  MagnifyingGlass, MusicNotes, Plus, Sparkle, SpeakerHigh, UploadSimple,
   VideoCamera, Waveform, X,
 } from "@phosphor-icons/react";
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ReactNode, type FormEvent, type DragEvent } from "react";
 import { ActionDialog } from "./ActionDialog";
 import { api } from "../api";
 import type { AssetFolder, AssetLibraryItem, ModelSelection } from "../types";
+import { ImageGeneration } from "./ImageGeneration";
 import { ModelSelector } from "./ModelSelector";
 import { VoiceStudio } from "./VoiceStudio";
 
@@ -120,12 +121,6 @@ export function AssetStudio({ uploads, initialTool, accountPanel, models, select
   const [folderError, setFolderError] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [references, setReferences] = useState<File[]>([]);
-  const referenceUploads = useUploadQueue<Awaited<ReturnType<typeof api.uploadImage>>>();
-  const [busy, setBusy] = useState(false);
-  const generating = useRef(false);
-  const [imageError, setImageError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const uploading = uploads.active;
@@ -142,7 +137,6 @@ export function AssetStudio({ uploads, initialTool, accountPanel, models, select
   }, [uploads.items]);
   const [error, setError] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
-  const referenceRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const [management, setManagement] = useState<{ kind: "rename-asset" | "delete-asset" | "rename-folder" | "delete-folder"; id: string; name: string } | null>(null);
   const [managementName, setManagementName] = useState("");
@@ -319,26 +313,6 @@ export function AssetStudio({ uploads, initialTool, accountPanel, models, select
     };
   }
 
-  async function generate(event: FormEvent) {
-    event.preventDefault(); if (!prompt.trim() || generating.current) return;
-    const submitted = { prompt: prompt.trim(), ...selection };
-    generating.current = true; setBusy(true); setImageError("");
-    try {
-      const referenceImages = (await referenceUploads.run(references.map(file => ({ id: `${file.name}:${file.size}:${file.lastModified}`, name: file.name, size: file.size, run: (options: import("../upload").UploadOptions) => api.uploadImage(file, options) })))).map(image => image.url);
-      const { threadId } = await api.startImageThread();
-      const result = await api.generateImage(threadId, { ...submitted, referenceImages });
-      if (!result.images.length) throw new Error("这次没有生成图片，请补充画面描述后重试。");
-      const added: AssetLibraryItem[] = result.images.map(image => ({ ...image, category: "image", kind: "generated", sourceName: undefined, folderId: undefined, createdAt: Date.now(), prompt: image.revisedPrompt || submitted.prompt }));
-      for (const asset of added) receivedUploads.current.set(asset.id, asset);
-      setAssets(current => [...added, ...current.filter(asset => !added.some(image => image.id === asset.id))]);
-      setPrompt(""); setReferences([]); referenceUploads.clearCompleted(); setCreateKind(current => current === "image" ? null : current);
-      setTab("image"); setSourceFilter("generated"); setActiveFolder("all"); setQuery("");
-      setBatchStatus(`已生成 ${added.length} 张图片，已保存到素材库`); await load();
-    } catch (reason) {
-      setImageError(reason instanceof Error ? reason.message : "图片生成失败，请重试");
-    } finally { generating.current = false; setBusy(false); }
-  }
-
   function chooseTab(next: AssetTab) {
     setTab(next);
     setCreateMenuOpen(false);
@@ -381,13 +355,12 @@ export function AssetStudio({ uploads, initialTool, accountPanel, models, select
           }
         }}><button ref={createTriggerRef} className="asset-create-button" aria-haspopup="menu" aria-controls={createMenuOpen ? createMenuId : undefined} aria-expanded={createMenuOpen} onClick={() => setCreateMenuOpen(current => !current)}><Sparkle weight="fill"/>创建素材<CaretDown/></button>{createMenuOpen ? <div id={createMenuId} className="asset-create-menu" role="menu" aria-label="创建素材"><button role="menuitem" onClick={() => { setCreateKind("image"); setCreateMenuOpen(false); }}><ImageIcon/>生成图片</button><button role="menuitem" onClick={() => { setCreateKind("voice"); setCreateMenuOpen(false); }}><SpeakerHigh/>创建音色</button></div> : null}</div> : null}</header>
       <UploadProgressList items={uploads.items} onRetry={uploads.retry} onClear={uploads.clearCompleted}/>
+      <ImageGeneration open={createKind === "image"} onOpen={() => setCreateKind("image")} onClose={() => setCreateKind(current => current === "image" ? null : current)} returnFocus={createTriggerRef} models={models} selection={selection} onSelection={onSelection} onCompleted={load}/>
       <div className="editorial-asset-filters"><nav className="asset-media-tabs" aria-label="素材类型">{typeTabs.map(item => { const Icon = item.icon; const count = item.id === "all" ? assets.length : item.id === "voice" ? undefined : assets.filter(asset => asset.category === item.id).length; return <button key={item.id} aria-pressed={tab === item.id} className={tab === item.id ? "active" : ""} onClick={() => chooseTab(item.id)}><Icon/>{item.label}{count !== undefined ? <small>{count}</small> : null}</button>; })}</nav><label className="asset-search"><MagnifyingGlass/><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索素材" aria-label="搜索素材"/>{query ? <button type="button" aria-label="清除素材搜索" onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X/></button> : <kbd>⌘ K</kbd>}</label></div>
       {tab === "voice" ? <div className="asset-voice-content"><VoiceStudio value={voiceId} onChange={onVoice}/></div> : <>
         <div className={`asset-library-controls ${selectionMode ? "asset-library-controls--selecting" : ""}`}><nav aria-label="素材来源">{([ ["all", "全部来源"], ["uploaded", "上传"], ["generated", "AI 生成"] ] as const).filter(([id]) => !uploadOnly || id === "uploaded").map(([id, label]) => <button key={id} aria-pressed={sourceFilter === id} className={sourceFilter === id ? "active" : ""} onClick={() => setSourceFilter(id)}>{id === "uploaded" ? <UploadSimple/> : id === "generated" ? <Sparkle/> : <Folders/>}{label}</button>)}</nav>{selectionMode ? <div className="asset-bulk-actions" role="toolbar" aria-label="批量整理素材"><strong>{batchSelectedIds.length} 项已选</strong><button type="button" disabled={movingBatch} aria-pressed={allFilteredSelected} onClick={() => setBatchSelectedIds(allFilteredSelected ? [] : filtered.map(asset => asset.id))}>{allFilteredSelected ? "取消全选" : "全选当前"}</button><SelectControl disabled={movingBatch} aria-label="批量移动到文件夹" value={batchTargetFolderId} onChange={event => setBatchTargetFolderId(event.target.value)}><option value="">未整理</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</SelectControl><button className="asset-bulk-move" type="button" disabled={!batchSelectedIds.length || movingBatch} onClick={() => void moveBatch()}>{movingBatch ? <CircleNotch className="spin"/> : <FolderOpen/>}{movingBatch ? "正在移动" : "移动"}</button><button disabled={movingBatch} className="asset-bulk-cancel" type="button" onClick={closeSelectionMode}>取消</button></div> : <div className="asset-library-summary"><div className="asset-view-control" role="group" aria-label="素材显示方式">{assetViews.map(item => <button key={item.id} type="button" aria-pressed={view === item.id} onClick={() => changeView(item.id)}>{item.label}</button>)}</div><CatalogSort label="素材排序" value={sort} onChange={setSort} options={[{ value: "recent", label: "最近添加" }, { value: "name", label: "名称排序" }, { value: "type", label: "按类型排序" }]}/>{(keyword || sourceFilter !== "all" || activeFolder !== "all") ? <span>{filtered.length} 项素材</span> : null}<button type="button" disabled={movingBatch} onClick={() => { setSelectionMode(true); setBatchStatus(""); }}><Checks/>批量整理</button></div>}</div>
         <div ref={browserRef} className="asset-browser asset-browser--mixed">
           <div className="asset-catalog">
-            {busy ? <p className="draft-save-status" role="status">正在生成图片，完成后会加入素材库</p> : null}
-            {imageError && createKind !== "image" ? <div className="asset-load-error" role="alert"><p>{imageError}</p><button type="button" onClick={() => setCreateKind("image")}>返回生成图片</button></div> : null}
             {loadError ? <div className="asset-load-error" role="alert"><div><strong>素材暂时未能加载</strong><p>{loadError}</p><span>{assets.length ? "下方保留上次加载的素材，可以重试更新" : "请重试加载，已有素材不会被删除"}</span></div><button type="button" onClick={() => void load()}>重新加载</button></div> : null}
             {error ? <p className="asset-page-error" role="alert">{error}</p> : null}
             {movingBatch || batchStatus ? <p className="asset-batch-status" role="status">{movingBatch ? <CircleNotch className="spin"/> : <Check/>}{movingBatch ? `正在移动 ${movingCount} 项素材…` : batchStatus}</p> : null}
@@ -418,7 +391,7 @@ export function AssetStudio({ uploads, initialTool, accountPanel, models, select
     </main>
     {expandedAsset ? <ExpandedAssetPreview key={expandedAsset.id} asset={expandedAsset} onClose={() => setExpandedAsset(null)}/> : null}
     {management ? <ActionDialog title={management.kind.startsWith("rename") ? "修改名称" : "确认删除"} busy={managementBusy} onClose={() => setManagement(null)}><form onSubmit={applyManagement}><p>{management.name}</p>{management.kind.startsWith("rename") ? <label>新名称<input autoFocus value={managementName} maxLength={management.kind.endsWith("folder") ? 40 : 120} onChange={event => setManagementName(event.target.value)}/></label> : <p>{management.kind === "delete-folder" ? "文件夹将被删除，其中的素材会移到“未整理”，文件不会删除" : "将从素材库删除此文件；已导入项目的独立副本会保留，此操作不能撤销"}</p>}{managementError ? <p className="form-error" role="alert">{managementError}</p> : null}<footer><button type="button" disabled={managementBusy} onClick={() => setManagement(null)}>取消</button><button className={management.kind.startsWith("delete") ? "danger-action" : "primary-button"} disabled={managementBusy || (management.kind.startsWith("rename") && !managementName.trim())}>{managementBusy ? "正在处理…" : management.kind.startsWith("rename") ? "保存名称" : "确认删除"}</button></footer></form></ActionDialog> : null}
-    {createKind ? <ActionDialog className="asset-drawer" title={createKind === "image" ? "生成图片" : "创建音色"} closeLabel="关闭创建面板" returnFocus={createTriggerRef} onClose={() => setCreateKind(null)}>{createKind === "voice" ? <VoiceStudio value={voiceId} onChange={onVoice} compact/> : <div className="asset-image-workspace"><form className="asset-create-form" onSubmit={generate}><label><span>画面描述</span><textarea autoFocus disabled={busy} value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="主体、场景、构图、光线和画幅要求"/></label>{references.length ? <div className="reference-files">{references.map((file, index) => <span key={`${file.name}-${index}`}><ImageIcon/>{file.name}<button type="button" disabled={busy} aria-label={`移除 ${file.name}`} onClick={() => setReferences(files => files.filter((_, itemIndex) => itemIndex !== index))}><X/></button></span>)}</div> : null}<button type="button" disabled={busy} className="asset-reference-button" onClick={() => referenceRef.current?.click()}><Paperclip/>添加参考图</button><input hidden ref={referenceRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" disabled={busy} multiple onChange={event => { const added = Array.from(event.target.files ?? []); setReferences(current => [...current, ...added.filter(file => !current.some(existing => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified))]); event.target.value = ""; }}/><UploadProgressList items={referenceUploads.items}/><label><span>生成模型</span><ModelSelector models={models} value={selection} onChange={onSelection} disabled={busy}/></label><button className="asset-primary" disabled={!prompt.trim() || busy}>{busy ? <CircleNotch className="spin"/> : <Sparkle weight="fill"/>}{busy ? "正在生成" : "生成图片"}</button>{imageError ? <p className="asset-error" role="alert">{imageError}</p> : null}</form><aside className="asset-generation-preview"><h3>{busy ? "正在生成图片" : imageError ? "图片未能生成" : "描述你需要的画面"}</h3><p>{busy ? "完成后会保存到素材库，可预览和下载" : imageError ? "描述和参考图已保留，请重试生成" : "填写主体、场景和风格，也可以添加参考图"}</p></aside></div>}</ActionDialog> : null}
+    {createKind === "voice" ? <ActionDialog className="asset-drawer" title="创建音色" closeLabel="关闭创建面板" returnFocus={createTriggerRef} onClose={() => setCreateKind(null)}><VoiceStudio value={voiceId} onChange={onVoice} compact/></ActionDialog> : null}
   </div>;
 }
 

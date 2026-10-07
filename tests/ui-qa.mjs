@@ -47,6 +47,7 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
   let projects = [seed];
   let current = structuredClone(seed);
   let nextTurnId = 0;
+  const imageJobs = [];
   let libraryImages = [{ id: "image-1", url: "/brand/yingya-ghost.png", projectPath: "assets/generated/image-1.png", mimeType: "image/png", prompt: "深色背景中的发光新芽，电影级侧光", sourceName: null, kind: "generated", createdAt: now }];
   let assetFolders = [{ id: "folder-brand", name: "品牌素材", createdAt: now }];
   let libraryAssets = [
@@ -77,6 +78,15 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       libraryImages = [{ id: "image-2", url: "/brand/yingya-ghost.png", projectPath: "assets/generated/image-2.png", mimeType: "image/png", prompt: input.prompt, sourceName: null, kind: "generated", createdAt: now + 1 }, ...libraryImages];
       libraryAssets = [{ ...libraryImages[0], category: "image", folderId: null }, ...libraryAssets];
       return json(route, { threadId: "image-thread-1", turnId: "image-turn-1", status: "completed", text: "", images: [{ id: "image-2", url: libraryImages[0].url, projectPath: libraryImages[0].projectPath, mimeType: "image/png", revisedPrompt: input.prompt }] });
+    }
+    if (pathname === "/api/assets/image-jobs" && method === "GET") return json(route, imageJobs);
+    if (pathname === "/api/assets/image-jobs" && method === "POST") {
+      const input = request.postDataJSON();
+      const image = { id: `generated-${imageJobs.length}`, url: "/avatars/cat-v1.webp", projectPath: "assets/generated/fixture.webp", mimeType: "image/webp", revisedPrompt: input.prompt };
+      libraryAssets.unshift({ ...image, category: "image", kind: "generated", createdAt: Date.now(), prompt: input.prompt });
+      const job = { ...input, id: input.clientRequestId, status: "completed", createdAt: Date.now(), updatedAt: Date.now(), images: [image], error: null };
+      imageJobs.unshift(job);
+      return json(route, job);
     }
     if (pathname === "/api/assets/images" && method === "GET") return json(route, { images: libraryImages });
     if (pathname === "/api/assets/images" && method === "POST") return json(route, { url: "/assets/uploads/reference.png", projectPath: "assets/uploads/reference.png" });
@@ -138,6 +148,7 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     if (pathname === "/api/heygen/audio") return json(route, { data: [{ id: "music-test", name: "轻快钢琴", description: "温暖的钢琴配乐", audioUrl: "/assets/uploads/music.mp3", duration: 30, type: "music" }], hasMore: false });
     if (pathname.endsWith("/heygen/audio") && method === "POST") { const asset = { id: "music-test", name: "轻快钢琴", url: "/assets/uploads/music.mp3", projectPath: "assets/audio/music-test.mp3", kind: "music", source: "heygen", mediaType: "audio/mpeg", createdAt: now }; media.assets.push(asset); return json(route, asset); }
     if (pathname.endsWith("/assets") && method === "POST") return json(route, { path: "assets/inbox/reference.pdf", name: "参考文件.pdf" });
+    if (pathname.endsWith("/contents") && method === "GET") return json(route, { files: [], truncated: false });
     if (pathname.endsWith("/media") && method === "GET") return json(route, media);
     if (pathname.endsWith("/asset-roles") && method === "PATCH") return json(route, { assetRoles: [request.postDataJSON()] });
     if (pathname.endsWith("/workbench") && method === "GET") {
@@ -241,10 +252,12 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("menuitem", { name: "生成图片" }).click();
   const prompt = page.getByPlaceholder("主体、场景、构图、光线和画幅要求");
   await prompt.fill("极简桌面上的透明智能设备，冷色轮廓光，16:9");
-  const requestPromise = page.waitForRequest(request => request.url().endsWith("/codex/threads/image-thread-1/images") && request.method() === "POST");
+  const requestPromise = page.waitForRequest(request => request.url().endsWith("/assets/image-jobs") && request.method() === "POST");
   await page.getByRole("button", { name: "生成图片" }).click();
   const payload = (await requestPromise).postDataJSON();
   if (payload.prompt !== "极简桌面上的透明智能设备，冷色轮廓光，16:9") throw new Error(`Unexpected image prompt: ${JSON.stringify(payload)}`);
+  await page.getByRole("dialog", { name: "生成记录", exact: true }).waitFor();
+  await page.keyboard.press("Escape");
   await page.locator(".asset-mixed-grid b").getByText(payload.prompt, { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-images.png", fullPage: true });
   await page.getByRole("button", { name: /^音色/ }).click();

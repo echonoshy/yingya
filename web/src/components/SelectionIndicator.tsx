@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { animateElement } from "./motion";
 
 /** One continuous selection marker; interruption starts from the visible frame. */
-export function SelectionIndicator({ value, line = false }: { value: string; line?: boolean }) {
+export function SelectionIndicator({ value, line = false, inset = 12 }: { value: string; line?: boolean; inset?: number }) {
   const root = useRef<HTMLSpanElement>(null);
   const animation = useRef<Animation | undefined>(undefined);
   const destination = useRef("");
@@ -15,10 +15,10 @@ export function SelectionIndicator({ value, line = false }: { value: string; lin
       const box = target.getBoundingClientRect();
       if (!box.width) return;
       const container = parent.getBoundingClientRect();
-      const inset = line ? 12 : 0;
-      const x = box.left - container.left - parent.clientLeft + parent.scrollLeft + inset;
+      const lineInset = line ? inset : 0;
+      const x = box.left - container.left - parent.clientLeft + parent.scrollLeft + lineInset;
       const y = box.top - container.top - parent.clientTop + parent.scrollTop + (line ? box.height - 2 : 0);
-      const width = Math.max(1, box.width - inset * 2);
+      const width = Math.max(1, box.width - lineInset * 2);
       const height = line ? 2 : box.height;
       const next = `${x}:${y}:${width}:${height}`;
       if (destination.current === next) return;
@@ -41,7 +41,7 @@ export function SelectionIndicator({ value, line = false }: { value: string; lin
     observer.observe(parent);
     parent.querySelectorAll("button").forEach(button => observer.observe(button));
     return () => observer.disconnect();
-  }, [value, line]);
+  }, [value, line, inset]);
   useLayoutEffect(() => () => animation.current?.cancel(), []);
   return <span ref={root} aria-hidden="true" className={`selection-indicator${line ? " selection-indicator--line" : ""}`}/>;
 }

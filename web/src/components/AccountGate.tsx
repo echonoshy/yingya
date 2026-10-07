@@ -4,6 +4,7 @@ import { AccountMenu } from './AccountMenu';
 import { animateElement } from "./motion";
 import { AppNavigation } from "./AppNavigation";
 import { VersionHistory } from './VersionHistory';
+import { ContactAdminDialog } from './ContactAdminDialog';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CircleNotch } from '@phosphor-icons/react';
 import { z } from 'zod';
@@ -31,6 +32,7 @@ export function AccountGate() {
  const avatarState = useAccountAvatar(user?.id);
  const [avatarOpen,setAvatarOpen]=useState(false);
  const [versionOpen,setVersionOpen]=useState(false);
+ const [contactOpen,setContactOpen]=useState(false);
  const accountTrigger=useRef<HTMLElement|null>(null);
  function avatarTap(event: React.MouseEvent<HTMLElement>) {
    accountTrigger.current=event.currentTarget;
@@ -43,7 +45,7 @@ export function AccountGate() {
    const value=userSchema.parse((await response.json()).user);
    if(!cancelled){setCurrentUser(value.id);setUser(value);}
  }).catch(e=>{if(!cancelled)setError(e.message);}).finally(()=>{if(!cancelled)setLoading(false);});
- const expired=()=>{cancelled=true;setAvatarOpen(false);setVersionOpen(false);setUser(null);setScreen('work');setError('登录已过期，请重新登录后继续');setLoading(false);};
+ const expired=()=>{cancelled=true;setAvatarOpen(false);setVersionOpen(false);setContactOpen(false);setUser(null);setScreen('work');setError('登录已过期，请重新登录后继续');setLoading(false);};
  window.addEventListener(SESSION_EXPIRED,expired);
  const changed=(event:StorageEvent)=>{if(event.key==='yingya-session-change')window.location.reload();};window.addEventListener('storage',changed);
  return()=>{cancelled=true;window.removeEventListener('storage',changed);window.removeEventListener(SESSION_EXPIRED,expired);};},[]);
@@ -52,9 +54,10 @@ export function AccountGate() {
  if(!user)return <LoginScreen initialError={error} onLogin={value=>{setCurrentUser(value.id);setUser(value);setError('');sessionChanged();window.history.replaceState(null,'',`/app${window.location.search}${window.location.hash}`);}}/>;
  const accountPanel = <AccountMenu email={user.email} isAdmin={user.isAdmin} avatarUrl={avatarState.avatar?.url} error={error}
    returnFocus={accountTrigger} onAvatarTap={avatarTap} onAvatar={()=>setAvatarOpen(true)} onUsage={()=>setScreen('usage')}
-   onBilling={()=>setScreen('billing')} onVersion={()=>setVersionOpen(true)} onLogout={logout}/>;
+   onBilling={()=>setScreen('billing')} onVersion={()=>setVersionOpen(true)} onContact={()=>setContactOpen(true)} onLogout={logout}/>;
  return <div className="account-shell">
    {versionOpen?<VersionHistory onClose={()=>setVersionOpen(false)}/>:null}
+   {contactOpen?<ContactAdminDialog onClose={()=>setContactOpen(false)} returnFocus={accountTrigger}/>:null}
    {avatarOpen?<AvatarPicker current={avatarState.avatar} loadError={avatarState.error} onRetry={avatarState.retry} onSaved={avatarState.saved} onClose={()=>setAvatarOpen(false)} returnFocus={accountTrigger}/>:null}
    <div hidden={screen!=='work'}><App accountPanel={accountPanel}/></div>
    {screen!=='work'?<div className="home-layout studio-shell studio-shell--library editorial-shell account-pages"><AppNavigation active="account" onProjects={()=>{window.location.hash='/projects';setScreen('work');}} onCreate={()=>{window.location.hash='/';setScreen('work');}} onAssets={()=>{window.location.hash='/assets';setScreen('work');}} accountPanel={accountPanel}/>{screen==='billing'?<main className="billing-page"><button className="usage-back" onClick={()=>setScreen('work')}><ArrowLeft/>返回工作台</button><BillingPanel/></main>:<UsagePage onBack={()=>setScreen('work')}/>}</div>:null}

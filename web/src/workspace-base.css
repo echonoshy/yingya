@@ -225,11 +225,14 @@
 .waiting-input-actions button svg { width: 14px; }
 .waiting-choice { padding: 0 14px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-800); color: var(--muted); font-size: var(--text-caption); }
 .waiting-choice:hover { border-color: var(--purple-400); color: var(--text); }
-.workflow-recovery { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line)); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--danger) 7%, var(--prey-950)); }
+.workflow-recovery { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line)); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--danger) 7%, var(--prey-950)); }
 .workflow-recovery > svg { width: 20px; color: var(--danger); }
+.workflow-recovery > div { min-width: 0; }
+.workflow-recovery details { margin-top: 8px; font-size: var(--text-caption); overflow-wrap: anywhere; }
+.workflow-recovery summary { cursor: pointer; color: var(--muted); }
 .workflow-recovery b { font-size: var(--text-control); }
 .workflow-recovery p { margin: 4px 0 0; color: var(--muted); font-size: var(--text-caption); line-height: 1.55; }
-.workflow-recovery button { min-height: 38px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-900); color: var(--text); }
+.workflow-recovery button { grid-column: 2; justify-self: start; min-height: 40px; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--prey-600); border-radius: var(--radius-control); background: var(--prey-900); color: var(--text); }
 .workflow-recovery button:hover { border-color: var(--purple-500); }
 .workflow-recovery button svg { width: 13px; color: var(--purple-300); }
 .workflow-recovery--incomplete { border-color: color-mix(in srgb, var(--warning) 42%, var(--line)); background: color-mix(in srgb, var(--warning) 6%, var(--prey-950)); }
@@ -2178,30 +2181,6 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 .knowledge-workspace .range-feedback-hint { font-size: var(--text-caption); color: var(--accent-text); }
 .knowledge-workspace .preview-main { min-width: 0; }
 .knowledge-workspace .artifact-canvas { min-width: 0; }
-@media (min-width: 1024px) {
- .workspace.knowledge-workspace { grid-template-columns: var(--thread-width) minmax(480px, 1fr); }
- .knowledge-workspace .workspace-tabs { display: none; }
- .workspace.knowledge-workspace .thread, .workspace.knowledge-workspace .artifact-canvas { display: flex; }
-}
-@media (max-width: 1023px) {
- .workspace.knowledge-workspace { display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: auto auto minmax(0,1fr); }
- .knowledge-workspace .project-header { grid-column: 1; grid-row: 1; }
- .knowledge-workspace .workspace-tabs { display: flex; grid-column: 1; grid-row: 2; padding: 6px 12px; }
- .knowledge-workspace .workspace-tabs button { flex: 1; min-height: 40px; }
- .knowledge-workspace .workspace-splitter { display: none; }
- .workspace.knowledge-workspace .thread, .workspace.knowledge-workspace .artifact-canvas { grid-column: 1; grid-row: 3; min-height: 0; }
- .workspace.knowledge-workspace.workspace-mobile--thread .artifact-canvas, .workspace.knowledge-workspace.workspace-mobile--canvas .thread { display: none; }
- .workspace.knowledge-workspace.workspace-mobile--thread .thread, .workspace.knowledge-workspace.workspace-mobile--canvas .artifact-canvas { display: flex; }
- .knowledge-plan { padding: 16px; }
- .knowledge-workspace .project-header-brand, .knowledge-workspace .spec-chip { display: none; }
- .knowledge-workspace .project-header-actions { padding-right: 44px; }
- .knowledge-workspace .project-back { font-size: 0; min-width: 32px; }
- .knowledge-workspace .project-back svg { width: 18px; }
- .knowledge-workspace .export-button { max-width: 100px; font-size: var(--text-control); padding: 6px; }
- .knowledge-workspace .artifact-canvas > header { display: flex; flex-wrap: wrap; }
- .knowledge-workspace .canvas-tabs { display: none; }
- .plan-brief { padding: 12px; }
-}
 .feedback-results { padding: 16px; margin-top: 16px; border-top: 1px solid var(--line); }
 .feedback-results h3 { font-size: var(--text-section); }
 .feedback-results article { padding: 12px 0; border-bottom: 1px solid var(--line); }
@@ -2210,19 +2189,6 @@ pre.asset-document-body { font-family: var(--font-mono); white-space: pre-wrap; 
 .feedback-results small { color: var(--muted); }
 .feedback-results button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--accent-text); background: var(--canvas); }
 
-.workspace.knowledge-workspace .thread { flex-direction: column; }
-.workspace.knowledge-workspace .artifact-canvas { flex-direction: column; }
-@media (min-width: 1024px) { .workspace.knowledge-workspace .workspace-splitter { display:block; } }
-.knowledge-workspace .canvas-content { background: var(--canvas); }
-.knowledge-workspace .plan-brief { background: var(--background); }
-@media (max-width: 520px) {
- .knowledge-workspace .export-button > span { display: none; }
- .knowledge-workspace .export-button { width: 36px; height: 36px; padding: 0; display:grid; place-items:center; }
- .knowledge-workspace .project-heading h1 { font-size: var(--text-control); }
-}
-
-.knowledge-workspace .mobile-production-details{display:none}
-@media(max-width:1023px){.knowledge-workspace .mobile-production-details{display:inline-flex}.knowledge-workspace .workspace-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}}
 /* Keep the input anchored while conversation length changes. */
 .workspace.knowledge-workspace .timeline{flex:1 1 0;min-height:0}
 .workspace.knowledge-workspace .thread-header, .workspace.knowledge-workspace .thread-footer{flex-shrink:0}

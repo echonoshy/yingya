@@ -66,6 +66,41 @@ fn registration_requires_an_invite_and_login_requires_the_password() {
 }
 
 #[test]
+fn eight_character_passwords_register_and_reset_without_composition_rules() {
+    let db = Accounts::open(Path::new(":memory:"), vec![]).unwrap();
+    let email = "password-length@example.test";
+    let invitation = invite(&db, Some(email), 100);
+    let code = invitation["code"].as_str();
+    assert_eq!(
+        db.authenticate(email, "1234567", code).unwrap_err(),
+        "密码需要 8 至 128 个字符"
+    );
+    let (user, session) = db.authenticate(email, "12345678", code).unwrap();
+    assert_eq!(
+        db.authenticate(email, "12345678", None).unwrap().0.id,
+        user.id
+    );
+
+    let reset = db.password_reset(email).unwrap();
+    let reset_code = reset["code"].as_str().unwrap();
+    assert_eq!(
+        db.reset_password(email, "abcdefg", reset_code).unwrap_err(),
+        "密码需要 8 至 128 个字符"
+    );
+    assert!(db.session(&session).is_some());
+    db.reset_password(email, "abcdefgh", reset_code).unwrap();
+    assert!(db.session(&session).is_none());
+    assert_eq!(
+        db.authenticate(email, "abcdefgh", None).unwrap().0.id,
+        user.id
+    );
+    assert!(db.authenticate(email, "12345678", None).is_err());
+    assert!(super::access::password_hash(&"a".repeat(129)).is_err());
+    assert!(super::access::password_hash("一二三四五六七").is_err());
+    assert!(super::access::password_hash("一二三四五六七八").is_ok());
+}
+
+#[test]
 fn password_reset_is_bound_single_use_and_revokes_old_sessions() {
     let db = Accounts::open(Path::new(":memory:"), vec![]).unwrap();
     let (user, session) = register(&db, "a@example.com", 100);

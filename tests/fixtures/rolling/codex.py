@@ -93,6 +93,16 @@ def production_fixture(thread, turn, prompt):
 
 def finish(thread, turn, prompt):
     meta = threads[thread]
+    if 'IMAGE_JOB_' in prompt:
+        time.sleep(30 if 'IMAGE_JOB_SLOW' in prompt else 2)
+        if 'IMAGE_JOB_FAIL' not in prompt:
+            import base64
+            target = Path(meta['cwd']) / (turn + '.png')
+            target.write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5V0AAAAASUVORK5CYII='))
+            send({'method': 'item/completed', 'params': {'threadId': thread, 'turnId': turn,
+                  'item': {'id': turn, 'type': 'imageGeneration', 'status': 'completed', 'savedPath': str(target), 'revisedPrompt': prompt}}})
+        send({'method': 'turn/completed', 'params': {'threadId': thread, 'turn': {'id': turn, 'status': 'completed'}}})
+        return
     if not meta.get('ephemeral'):
         log(meta['cwd'], {'event': 'start', 'turn': turn, 'release': release, 'prompt': prompt})
         if 'MODEL_OVERLOAD' in prompt:

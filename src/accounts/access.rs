@@ -62,8 +62,8 @@ pub(super) fn email(value: &str) -> Result<String, String> {
 }
 
 pub(super) fn password_hash(password: &str) -> Result<String, String> {
-    if !(10..=128).contains(&password.chars().count()) || password.len() > 512 {
-        return Err("密码需要 10 至 128 个字符".into());
+    if !(8..=128).contains(&password.chars().count()) || password.len() > 512 {
+        return Err("密码需要 8 至 128 个字符".into());
     }
     let salt = SaltString::encode_b64(Uuid::new_v4().as_bytes()).map_err(|e| e.to_string())?;
     Argon2::default()

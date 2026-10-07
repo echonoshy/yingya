@@ -60,7 +60,7 @@ export function ActionDialog({ title, children, busy, onClose, className = "", c
     else closeCallback.current();
   }
   function keepFocus(event: KeyboardEvent<HTMLDialogElement>) {
-    if (event.key !== "Tab" || event.defaultPrevented) return;
+    if (event.key !== "Tab" || event.defaultPrevented || (event.target as HTMLElement).closest("dialog") !== event.currentTarget) return;
     const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, a[href], input, textarea, select, summary, audio[controls], video[controls], [tabindex]'))
       .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && element.checkVisibility() && !element.closest('[inert]'));
     const first = controls[0], last = controls.at(-1);
@@ -71,7 +71,7 @@ export function ActionDialog({ title, children, busy, onClose, className = "", c
     const rect = root.current?.getBoundingClientRect();
     return rect ? x < rect.left || x > rect.right || y < rect.top || y > rect.bottom : false;
   };
-  return <dialog ref={root} className={`action-dialog ${className}`} style={resizable ? { "--dialog-width": `${width}px` } as CSSProperties : undefined} aria-label={title} onKeyDown={keepFocus} onCancel={event => { event.preventDefault(); requestClose(); }}
+  return <dialog ref={root} className={`action-dialog ${className}`} style={resizable ? { "--dialog-width": `${width}px` } as CSSProperties : undefined} aria-label={title} onKeyDown={keepFocus} onCancel={event => { event.preventDefault(); event.stopPropagation(); requestClose(); }}
     onPointerDown={event => { backdropPointer.current = dismissOnBackdrop && event.button === 0 && event.target === event.currentTarget && outside(event.clientX, event.clientY); }}
     onPointerUp={event => { const dismiss = backdropPointer.current && event.target === event.currentTarget && outside(event.clientX, event.clientY); backdropPointer.current = false; if (dismiss) requestClose(); }}
     onPointerCancel={() => { backdropPointer.current = false; }}>

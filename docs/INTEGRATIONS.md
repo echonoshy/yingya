@@ -80,13 +80,15 @@ refresh HeyGen's short-lived signed URL, downloads the audio into the project's
 The build Agent treats unassigned music as a global background track and places
 scene-assigned sound effects at relevant actions or transitions.
 
-Install the project-owned Codex integration into the isolated runtime:
+Yingya automatically installs the bundled skill into each user's runtime from
+the current release. No manual skill-install command is needed for website tasks.
+To use the skill manually with the repository's host Codex CLI:
 
 ```bash
 npm run heygen:skill:install
 ```
 
-After restarting Yingya, Codex can invoke `$heygen-audio` to search music or
+Run `npm run codex` and invoke `$heygen-audio` to search music or
 sound effects, import a selected result, inspect project audio, and assign an
 effect to a scene. The Skill calls the local Yingya API and never reads or
 exposes the HeyGen credential.
@@ -111,7 +113,7 @@ it read-only. The sandbox passes the configured wrapper to Remotion and Playwrig
 Agent turns do not install browsers or shared dependencies. Previews use the native
 Remotion Player inside an opaque, read-only iframe; no public Studio port is opened.
 
-See [Remotion runtime contract](REMOTION_MIGRATION.md) for source files, frame
+See [Remotion runtime contract](REMOTION_RUNTIME.md) for source files, frame
 scheduling, media declarations and the actual scope of validation.
 
 ## React component sources
@@ -143,8 +145,8 @@ Baoyu contributes selected information layouts, diagram structure and slide
 style references; Frontend Slides contributes a motion reference. Original
 files, hashes, exact commits and MIT notices are retained in
 [`design/PROVENANCE.json`](../skills/yingya-video-agent/references/design/PROVENANCE.json).
-Yingya's adaptation guides translate these references into editable HTML/SVG
-scenes and the existing video clock. Upstream skill workflows, scripts, fonts
+Yingya's adaptation guides translate these references into editable React/SVG
+compositions driven by Remotion frames. Upstream skill workflows, scripts, fonts
 and image-generation backends are not installed by this integration.
 
 The Agent selects structure and treatment from the content, records the choice
@@ -169,8 +171,9 @@ exposes an OpenAI-compatible Speech API. See
 request examples, voice cloning, and streaming output.
 
 The service listens on `127.0.0.1:8791` by default; local clients use
-`http://127.0.0.1:8791`. Install the project-local Codex integration with
-`npm run voxcpm2:skill:install`, then invoke `$voxcpm2-tts` from Codex.
+`http://127.0.0.1:8791`. Website tasks receive the bundled `$voxcpm2-tts` skill
+automatically. For manual use through `npm run codex`, install the host copy
+with `npm run voxcpm2:skill:install`.
 
 The web composer includes a project voice library. Users can preview the
 default voice, create and save a voice from a natural-language description, or

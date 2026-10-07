@@ -2,25 +2,37 @@
 
 [返回产品介绍](../README.md) · [English overview](../README.en.md)
 
+## 阅读与维护约定
+
+先读仓库根目录 [AGENTS.md](../AGENTS.md)，再按任务进入下表对应文档，无需每次通读全部材料。AGENTS.md 管开发约束与验证要求；下表文档各自维护详细规则。
+
+**产品 UI 已于 2026-10-07 按用户要求定格。** [界面设计基准](UI_DESIGN_STYLE.md)是产品视觉与交互的唯一规范入口；日常修复和新功能延续当前体系，只有用户明确提出新的设计方向才调整。客户视频使用各自制作约定，不受产品 UI 配色限制。
+
+- 当前用户要求优先；实现细节核对现行代码、配置与相关测试，实际部署状态核对发布记录和进程。旧聊天方案、历史版本说明、文件名与归档截图不能覆盖现行规范。
+- 每项规则只在所属文档详细维护，其他地方链接到它。变更时替换原条款并更新引用，不继续追加互相覆盖的日期章节；历史变更由 Git 与 `versions.json` 记录。
+- 外部设计参考保留固定版本与用途，不能自动升级为新的视觉要求。字体许可、素材来源和仍影响旧数据的兼容说明继续保留。
+- 文档修改需检查相对链接、锚点、路径和命令是否有效。纯文档修改不增加产品版本、不部署，也不据此宣称完成界面或后端验收。
+
+## 文档职责
+
 | 文档 | 内容 |
 | --- | --- |
 | [安装与本地开发](DEVELOPMENT.md) | 环境准备、启动服务、运行配置、API 连通检查与测试 |
-| [服务集成](INTEGRATIONS.md) | Codex 图像生成、HeyGen 配乐音效、Remotion 工具与 VoxCPM2 语音 |
+| [服务集成](INTEGRATIONS.md) | Codex 图像、HeyGen 音频、VoxCPM2 语音、H3 镜头、字幕与组件工具 |
 | [模型过载重试](MODEL_RETRY.md) | 重试条件、宿主中继、恢复边界与验证 |
 | [视频分享](VIDEO_SHARING.md) | 不可变分享副本、访问权限与版本 |
-| [Remotion 运行时](REMOTION_MIGRATION.md) | 单引擎契约、浏览器准备、检查边界与发布验证 |
+| [Remotion 运行时](REMOTION_RUNTIME.md) | 单引擎契约、浏览器准备、检查边界与发布验证 |
 | [产品定位](PRODUCT_POSITIONING.md) | 目标用户、制作场景、能力边界与产品表达 |
 | [用户沙箱与用量统计](USER_SANDBOX.md) | 内测登录、账号隔离、预览权限与用量口径 |
 | [不停机更新与任务恢复](ROLLING_UPDATES.md) | 单机滚动发布、独立 Worker、回滚与任务恢复边界 |
 | [开发版本与更新说明](VERSIONING.md) | 三段式版本号、开发记录、最近 5 个补丁版本说明与发布校验 |
-| [视频制作流程](VIDEO_PRODUCTION_WORKFLOW.md) | 方案确认、旁白与分镜对齐、草稿检查与导出 |
+| [视频制作流程](VIDEO_PRODUCTION_WORKFLOW.md) | 方案确认、旁白与分镜对齐、内部审阅与直接交付 |
 | [项目结构](PROJECT_STRUCTURE.md) | 源码、用户数据、工具缓存与清理规则 |
-| [字体维护](TYPOGRAPHY.md) | 字体分工、许可、字形覆盖与子集重建 |
-| [界面设计规范](UI_DESIGN_STYLE.md) | 产品布局、设计令牌、交互与无障碍要求 |
+| [字体维护](TYPOGRAPHY.md) | 现有字体资源、许可、字形覆盖与子集重建；不提供新风格选型 |
+| [界面设计基准](UI_DESIGN_STYLE.md) | 已定格的品牌与布局、字号字重、间距密度、飞书 / Lark 参考边界、控件与验证范围 |
 
 ## 相关参考
 
 - [VoxCPM2 运维说明](../deploy/voxcpm2/README.md)：语音服务生命周期、音色与请求示例。
-
 - 当前首页媒体来源：`web/src/assets/showcase/encoding.json`；用途短片源工程：`design-assets/capability-reels/`。
 - 旧 UI 素材仅保存在本机 `local-ui-archive/`，不参与 Git 跟踪、构建或发布；过期文档与失效测试直接删除。

@@ -2,7 +2,7 @@ import { UpdateBadge } from '../components/AppUpdate';
 import './marketing.css';
 import './homeStage.css';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowRight, ArrowsClockwise, Globe, Scroll, Palette, FilmStrip, SignIn } from '@phosphor-icons/react';
+import { ArrowRight, Globe, Scroll, Palette, FilmStrip } from '@phosphor-icons/react';
 import { BrandLogo } from './BrandLogo';
 import { saveHomeDraft, type HomeSource } from './homeDraft';
 import { ActionDialog } from '../components/ActionDialog';
@@ -21,12 +21,11 @@ const titles: Record<Info, string> = { about: '关于映芽', help: '创作帮�
 
 function HomeComposer({ prompt, onPrompt, inspirationError, delivery, source, onSource }: { prompt: string; onPrompt: (value: string) => void; inspirationError: string; delivery: number; source: HomeSource; onSource: (source: HomeSource) => void }) {
   const sourcesRef = useRef<HTMLDivElement>(null);
-  const [example, setExample] = useState(0);
   const [focused, setFocused] = useState(false);
   const [typed, setTyped] = useState('');
   const [error, setError] = useState('');
   const selected = sources.find(item => item.id === source)!;
-  const suggestion = selected.prompts[example % selected.prompts.length];
+  const suggestion = selected.prompts[0];
   useEffect(() => {
     const group = sourcesRef.current;
     if (!group) return;
@@ -48,7 +47,7 @@ function HomeComposer({ prompt, onPrompt, inspirationError, delivery, source, on
     let timer = 0;
     const run = () => {
       window.clearTimeout(timer);
-      if (preference.matches || example > 0) { setTyped(suggestion); return; }
+      if (preference.matches) { setTyped(suggestion); return; }
       setTyped('');
       let position = 0;
       const tick = () => {
@@ -59,7 +58,7 @@ function HomeComposer({ prompt, onPrompt, inspirationError, delivery, source, on
     };
     run(); preference.addEventListener('change', run);
     return () => { window.clearTimeout(timer); preference.removeEventListener('change', run); };
-  }, [suggestion, focused, prompt, example]);
+  }, [suggestion, focused, prompt]);
   function start(event: FormEvent) {
     event.preventDefault();
     try { saveHomeDraft(prompt.trim(), source); window.location.assign('/app#/'); }
@@ -67,14 +66,13 @@ function HomeComposer({ prompt, onPrompt, inspirationError, delivery, source, on
   }
   return <form className="home-composer" onSubmit={start} aria-label="准备视频创作">
     <PaperDelivery cue={delivery}/>
-    <div ref={sourcesRef} className="home-sources" role="group" aria-label="选择创作起点">{sources.map(item => <button key={item.id} type="button" aria-pressed={source === item.id} onClick={() => { onSource(item.id); setExample(0); }}><item.icon aria-hidden="true"/>{item.label}</button>)}<span className="home-source-underline" aria-hidden="true" /></div>
+    <div ref={sourcesRef} className="home-sources" role="group" aria-label="选择创作起点">{sources.map(item => <button key={item.id} type="button" aria-pressed={source === item.id} onClick={() => onSource(item.id)}><item.icon aria-hidden="true"/>{item.label}</button>)}<span className="home-source-underline" aria-hidden="true" /></div>
     <label className="home-input-label" htmlFor="home-idea">{selected.title}</label>
-    <p className="home-source-help">{selected.help}</p>
+    <p id="home-source-help" className="home-source-help">{selected.help}</p>
     <div className="home-input-row"><div className="home-input-wrap">
-      <textarea id="home-idea" rows={2} value={prompt} maxLength={6000} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={event => { onPrompt(event.target.value); setError(''); }} placeholder={focused ? selected.hint : ''} aria-describedby="home-input-note" />
-      {!prompt && !focused ? <div key={`${source}-${example}`} className={`home-typewriter${example > 0 ? ' home-suggestion-refresh' : ''}`} aria-hidden="true"><span>{typed}</span><span className="home-caret" /></div> : null}
+      <textarea id="home-idea" rows={2} value={prompt} maxLength={6000} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={event => { onPrompt(event.target.value); setError(''); }} placeholder={focused ? selected.hint : ''} aria-describedby="home-source-help" />
+      {!prompt && !focused ? <div key={source} className="home-typewriter" aria-hidden="true"><span>{typed}</span><span className="home-caret" /></div> : null}
     </div><button className="home-start" type="submit">准备创作<ArrowRight aria-hidden="true" /></button></div>
-    <div className="home-composer-foot"><span id="home-input-note"><SignIn aria-hidden="true" />下一步补充内容，先看画面再确认方案</span><button className="home-refresh" type="button" onClick={() => setExample(current => current + 1)}><span key={example} className={example > 0 ? 'home-refresh-icon home-refresh-icon--turn' : 'home-refresh-icon'} aria-hidden="true"><ArrowsClockwise /></span>换个灵感</button></div>
     {error ? <p className="home-error" role="alert">{error} <a href="/app#/">进入创作</a></p> : null}
     {inspirationError ? <p className="home-error" role="alert">{inspirationError}</p> : null}
   </form>;

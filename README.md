@@ -1,57 +1,49 @@
-<p align="center"><strong>映芽 · Yingya</strong> 把资料、想法和已有素材制作成能独立讲解、可以直接分享的视频。</p>
-<p align="center">先看方案与实际关键画面，再通过截图、时间点或时间范围提出修改。</p>
+<h1 align="center">映芽 · YingYa</h1>
+<p align="center"><strong>让想法，有画面。</strong></p>
+<p align="center">把资料、想法和已有素材，做成能讲清内容、可以直接分享的视频。</p>
 
 <p align="center">
-  <strong>简体中文</strong> · <a href="README.en.md">English</a>
+  <a href="https://yingya.art/app#/">开始创作</a> ·
+  <a href="https://yingya.art/#style-references">看看作品</a> ·
+  <a href="docs/README.md">项目文档</a> ·
+  <a href="README.en.md">English</a>
 </p>
 
-想直接制作视频，前往 [yingya.art](https://yingya.art/)。
-想先看看效果，浏览[官网风格参考](https://yingya.art/#style-references)与用途示例。
-想在自己的服务器运行，按下方说明安装。
+[![映芽宣传片：点、线、面、体、光与声，汇成一段动态图形影片](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
 
----
+<p align="center">15 秒宣传片 · 点击 GIF，在官网观看有声版本。</p>
 
-## 快速开始
+## 这是什么
 
-### 使用映芽
+映芽是一个通过对话制作视频的 AI 创作工作台，面向知识创作者、教育培训者，以及需要讲解产品、业务和数据的人。
 
-进入[工作台](https://yingya.art/app)，登录后提供文案、网页、截图或已有素材。映芽优先打磨概念、数据与流程讲解，已有素材用于辅助说明。
+从一段文字、一个想法、网页链接、参考视频或已有素材开始，映芽先整理讲述结构，展示大纲和实际关键画面。确认方向后，再完成动画、声音与成片。你可以边看边提修改意见，继续打磨同一个项目。
 
-先确认大纲与实际关键画面，再观看初稿；无需时间线、图层或参数编辑。比如：
+## 可以做什么
 
-> 把第二幕标题放大，画面多停留 2 秒，其他部分保持不变。
+- **把内容讲清楚**：用文字动画、图形、流程和动态图表解释概念与数据，也可以结合上传的图片、视频和音频组织内容。
+- **制作前先看画面**：方案包含从实际制作源生成的关键画面，便于提前确认讲法与风格。
+- **按内容安排声画**：根据要求制作配音、字幕和动画，让节奏服务于内容。
+- **针对具体位置修改**：通过截图、时间点或时间范围提出意见，保留不需要修改的部分与历史版本。
+- **分享与继续创作**：下载 MP4，或分享所选版本的独立视频链接；项目保留，之后仍可继续修改。
 
-满意后分享独立视频链接或下载 MP4。项目与草稿版本会保留，下次可以继续修改。
+## 从想法到成片
 
-### 安装与运行
+1. **描述目标**：告诉映芽讲给谁听、重点是什么，附上素材或风格参考。
+2. **确认方案**：查看大纲与关键画面，补充意见后开始制作。
+3. **观看与修改**：查看视频，用自然语言指出需要调整的内容。
+4. **分享作品**：下载或分享满意的版本。
 
-需要 Linux、Rust 1.88+、Node.js 22+、tmux、FFmpeg，以及启用非特权用户命名空间的 Bubblewrap。
+例如，可以这样开始：
 
-```shell
-git clone https://github.com/echonoshy/yingya.git
-cd yingya
-npm ci
-cp .env.example .env
-```
+> 给第一次接触单摆的同学做一支约 60 秒的视频。并排比较长摆和短摆，用中文旁白解释为什么摆长会影响周期，最后用一句话总结。
 
-按[安装指南](docs/DEVELOPMENT.md)配置环境、宿主模型登录和初始账号，再按[服务集成说明](docs/INTEGRATIONS.md)准备 Chromium 浏览器。配音、配乐和图像生成依赖相应服务配置。更新已有安装时保留原来的 `.env`。
+看到视频后，继续告诉它：
 
-```shell
-npm run web:build
-npm run backend:service:start
-```
+> 把第二幕的标题放大，比较画面多停留 2 秒，其他部分保持不变。
 
-打开 `http://127.0.0.1:8797/app`。后端运行在 tmux 会话 `yingya-backend`，默认端口为 `8797`。
+## 项目构成
 
-需要频繁更新时，使用[滚动发布流程](docs/ROLLING_UPDATES.md)。API 与用户 Worker 独立运行，当前工作完成后再交接版本；首次从旧单体服务迁移需等待任务结束。
+浏览器工作台使用 React，后端使用 Rust，AI Agent 负责理解内容、编写与修改视频工程，Remotion 负责预览和渲染。每个视频项目保留自己的素材、制作源与版本，支持持续修改和交付。
 
-## 文档
-
-- [安装与本地开发](docs/DEVELOPMENT.md)
-- [服务集成](docs/INTEGRATIONS.md)
-- [视频制作流程](docs/VIDEO_PRODUCTION_WORKFLOW.md)
-- [用户沙箱与用量统计](docs/USER_SANDBOX.md)
-- [不停机更新与任务恢复](docs/ROLLING_UPDATES.md)
-- [全部文档](docs/README.md)
-
-问题与建议欢迎提交到 [GitHub Issues](https://github.com/echonoshy/yingya/issues)。
+更多信息见[产品定位](docs/PRODUCT_POSITIONING.md)、[视频制作流程](docs/VIDEO_PRODUCTION_WORKFLOW.md)与[项目文档](docs/README.md)。问题和建议欢迎提交到 [GitHub Issues](https://github.com/echonoshy/yingya/issues)。

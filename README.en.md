@@ -1,57 +1,49 @@
-<p align="center"><strong>Yingya · 映芽</strong> turns ideas, source material, and existing media into narrated videos ready to share.</p>
-<p align="center">Review an outline and real keyframes first. Refine the video through screenshots and timestamped feedback.</p>
+<h1 align="center">YingYa · 映芽</h1>
+<p align="center"><strong>Turn ideas into videos.</strong></p>
+<p align="center">Turn ideas, source material, and existing media into videos that explain and are ready to share.</p>
 
 <p align="center">
-  <a href="README.md">简体中文</a> · <strong>English</strong>
+  <a href="https://yingya.art/app#/">Start creating</a> ·
+  <a href="https://yingya.art/#style-references">Explore examples</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="README.md">简体中文</a>
 </p>
 
-To make a video, visit [yingya.art](https://yingya.art/).
-Explore the current [style references](https://yingya.art/#style-references) and capability examples on the homepage.
-To run Yingya on your own server, follow the setup below.
+[![YingYa promotional film: points, lines, shapes, volume, light, and sound in motion](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
 
----
+<p align="center">15-second promotional film · Click the GIF to watch with sound on the website.</p>
 
-## Quickstart
+## What is YingYa?
 
-### Using Yingya
+YingYa is an AI video workspace built around conversation, for educators, knowledge creators, and people explaining products, business processes, or data.
 
-Open the [workspace](https://yingya.art/app), sign in, and bring your text, a web page, screenshots, or existing media. Yingya focuses on explaining concepts, data, and processes, with existing media supporting the explanation.
+Start with an idea, text, a web link, a reference video, or your own media. YingYa organizes the story and shows you an outline with actual keyframes. Once you approve the direction, it produces the animation, audio, and video. Review the result and keep refining the same project through conversation.
 
-Approve an outline and actual keyframes, then review the draft without using a timeline or layer editor. For example:
+## What you can make
 
-> Make the title in the second scene bigger and hold the shot for two more seconds. Keep everything else unchanged.
+- **Clear explanations**: use animated text, graphics, processes, and charts to explain concepts and data, with your uploaded images, video, and audio.
+- **A plan you can see**: review keyframes rendered from the actual production source before committing to the full video.
+- **Audio and motion shaped around the content**: add narration, captions, and animation according to your brief.
+- **Changes tied to specific moments**: give feedback through screenshots, timestamps, or time ranges, preserving unaffected content and earlier versions.
+- **Videos you can share and revisit**: download an MP4 or share an independent copy of a selected version, then return to the project for further edits.
 
-Export to MP4 when you are happy with the result. Projects and draft versions are saved so you can return and make further changes.
+## From an idea to a video
 
-### Installing and running
+1. **Describe the goal**: explain the audience and key message, and add media or style references.
+2. **Review the plan**: check the outline and keyframes, suggest changes, and approve production.
+3. **Watch and refine**: review the video and describe what you want to change.
+4. **Share the result**: download or share the version you are happy with.
 
-You need Linux, Rust 1.88+, Node.js 22+, tmux, FFmpeg, and Bubblewrap with unprivileged user namespaces enabled.
+For example, start with:
 
-```shell
-git clone https://github.com/echonoshy/yingya.git
-cd yingya
-npm ci
-cp .env.example .env
-```
+> Make a roughly 60-second video for students learning about pendulums. Compare a long and a short pendulum side by side, explain how length affects the period with Chinese narration, and finish with a one-sentence takeaway.
 
-Follow the [installation guide](docs/DEVELOPMENT.md) to configure your environment, host model credentials, and initial account. Set up the Chromium browser using the [integration guide](docs/INTEGRATIONS.md). Speech, music, and image generation require their respective service configurations. Keep your existing `.env` when updating an installation.
+Then refine the result:
 
-```shell
-npm run web:build
-npm run backend:service:start
-```
+> Make the title in the second scene bigger and hold the comparison for two more seconds. Keep everything else unchanged.
 
-Open `http://127.0.0.1:8797/app`. The backend runs in the `yingya-backend` tmux session on port `8797` by default.
+## Inside the project
 
-For frequent updates, use the [rolling deployment workflow](docs/ROLLING_UPDATES.md). The API and per-user workers run independently; workers finish their current work before switching versions. The first migration from the older standalone service requires waiting for active tasks to finish.
+The browser workspace uses React, the backend uses Rust, and the AI Agent interprets the brief and writes and revises the video project. Remotion handles preview and rendering. Each video project keeps its own media, production source, and versions for continued editing and delivery.
 
-## Docs
-
-- [Installation and development](docs/DEVELOPMENT.md)
-- [Service integrations](docs/INTEGRATIONS.md)
-- [Video production workflow](docs/VIDEO_PRODUCTION_WORKFLOW.md) (Chinese)
-- [User sandboxes and usage](docs/USER_SANDBOX.md) (Chinese)
-- [Rolling updates and task recovery](docs/ROLLING_UPDATES.md) (Chinese)
-- [All documentation](docs/README.md) (Chinese)
-
-Questions and suggestions are welcome in [GitHub Issues](https://github.com/echonoshy/yingya/issues).
+See the [product scope](docs/PRODUCT_POSITIONING.md), [production workflow](docs/VIDEO_PRODUCTION_WORKFLOW.md), and [documentation](docs/README.md) for details. Most product documentation is in Chinese. Questions and suggestions are welcome in [GitHub Issues](https://github.com/echonoshy/yingya/issues).

@@ -5,17 +5,22 @@ Remotion to validate, preview, and render them. The repository separates
 application source, mutable user data, reproducible outputs, and machine-local
 runtime dependencies.
 
+Development rules live in [AGENTS.md](../AGENTS.md); detailed document ownership
+is listed in [the documentation index](README.md). Product UI follows the frozen
+[design baseline](UI_DESIGN_STYLE.md), not archived source or historical previews.
+
 ## Ownership boundaries
 
 | Path | Owner | Lifecycle | Git policy |
 | --- | --- | --- | --- |
 | `src/` | Rust application | Product source | Track |
 | `web/` | Browser application | Product source | Track |
+| `runtime/` | Agent tools, captions and Remotion integration | Product source | Track |
 | `skills/` | Project Codex integrations | Product source | Track |
 | `scripts/` | Developer tooling | Product source | Track |
 | `deploy/` | Local service operations | Product source | Track |
-| `examples/` | Composition examples used by runtime tooling/tests | Product source | Track |
 | `design-assets/` | Current film sources and typography tools | Rebuildable product assets | Track source; ignore build output |
+| `docs/assets/` | Media embedded in repository documentation | Published documentation assets | Track referenced final assets |
 | `local-ui-archive/` | Retired UI assets and prototypes | Machine-local historical reference | Ignore |
 | `tests/fixtures/` | Automated test inputs | Test source | Track |
 | `data/` | Yingya and its users | Mutable runtime data | Ignore |
@@ -35,9 +40,14 @@ state with different cleanup rules:
 | `remotion-downloads/` | Pinned native renderer compatibility archives | Reusable when preparing releases |
 | `models/VoxCPM2/` | VoxCPM2 model weights and tokenizer source | Keep; these are runtime inputs, not download leftovers |
 | `voxcpm2-vllm/.venv/` | Python, PyTorch, CUDA libraries, vLLM dependencies | Keep; required by the speech service |
-| `voxcpm2-vllm/src/` | Locally built vLLM and vLLM-Omni code plus native extensions | Keep; added to `PYTHONPATH` by the service launcher |
+| `cuda-compat/` | Host-specific CUDA compatibility libraries | Keep while referenced by the speech environment |
 | `huggingface/` | Regenerated Transformers dynamic-module cache | Safe to remove while the service is stopped; recreated on startup |
-| `voxcpm2/` | Saved voice samples and possible legacy PID/log files | Keep saved voices; current service output lives in tmux `yingya-voxcpm2` |
+| `voxcpm2/` | Saved voice samples and possible legacy PID/log files | Keep saved voices; inspect tmux `yingya-voxcpm2` and any open log files before cleanup |
+| `python/`, `captions/` and their runtime links | Versioned shared Python and offline speech-recognition environments | Keep versions referenced by releases or processes |
+| `releases/` | Immutable release snapshots | Clean only through `npm run release:prune` |
+| `release-build/` | Shared Cargo release compilation cache | Rebuildable; remove only when no build is running |
+| `hyperframes-home/` | Retired engine dependencies retained for old instances | Keep until no process or retained snapshot references them |
+| `worktrees/` | Historical independent scratch repositories | Preserve uncommitted source; only remove unreferenced generated outputs |
 
 ## Remotion project boundaries
 
@@ -118,7 +128,8 @@ in `design-assets/capability-reels/` and `design-assets/typography/`.
 
 ## Cleanup policy
 
-Safe to regenerate:
+Reproducible outputs and caches (check active processes, builds, symlinks and
+release references before removing):
 
 - `target/`
 - `node_modules/`
@@ -127,6 +138,22 @@ Safe to regenerate:
 - `.runtime/models/VoxCPM2/.cache/`
 - `.runtime/codex-home/cache/`, `tmp/`, and copied `generated_images/`
 - test-fixture Remotion renders and inspection snapshots
+
+Reproducible does not mean unused. A running development service may still use
+an older executable, even after the main build path was replaced; inspect the
+process executable and file identity, not only the pathname or modification time.
+
+Remove empty retired source directories with `rmdir`; do not keep placeholder
+folders for removed features. Test fixtures now live under `tests/fixtures/`.
+One-off checks should write to temporary directories, not recreate a root-level
+`output/` directory.
+
+`runtime/` contains maintained source; `.runtime/` contains local state. Do not
+delete either directory wholesale. Before removing staging copies or caches,
+check running processes, symlinks and release references. Keep source changes
+in old scratch repositories even when deleting their ignored build outputs.
+Cargo incremental caches can be removed when no build is running; retain the
+executables and dependencies used by current services.
 
 Review before removing:
 
@@ -144,7 +171,40 @@ Review before removing:
 media belong in `web/public/knowledge-examples/`. Browser test inputs belong in
 `tests/fixtures/media/`; they are not shipped as product examples. `runtime/remotion/` provides the native composition, preview and renderer.
 
+### README promotional GIF
+
+Both root READMEs embed `docs/assets/yingya-demo.gif`, derived from the current
+homepage film at `web/src/assets/showcase/intro-1-1440.mp4`. It preserves the full
+15-second sequence at 800 × 450, 15 fps, with a looping 192-color palette and no
+audio. The README links to the original film on the website for sound.
+This GIF is a tracked documentation asset, not a retired UI mockup or a browser
+build input. Keep intermediate palettes and previews in temporary storage.
+
+To regenerate from the repository root:
+
+```bash
+ffmpeg -hide_banner -y -i web/src/assets/showcase/intro-1-1440.mp4 \
+  -filter_complex '[0:v]fps=15,scale=800:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=192:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3:diff_mode=rectangle' \
+  -an -loop 0 docs/assets/yingya-demo.gif
+```
+
+When the film changes, inspect the generated animation, check its dimensions,
+duration and file size, and keep both README image paths in sync. Homepage
+source metadata remains in `web/src/assets/showcase/encoding.json`.
+
 ## Preventing unused product code
+
+The maintained entry points are `package.json` for npm tasks, `Cargo.toml` for
+Rust, `web/vite.config.ts` for browser builds, and `runtime/python/` /
+`runtime/captions/` for shared environments. `runtime/` helpers are also invoked
+by Rust sandbox bindings; absence from npm scripts does not make them unused.
+
+`scripts/prepare-home-media.py`, `scripts/render-capability-reels.mjs` and
+`design-assets/typography/build_subsets.py` rebuild current media or font assets.
+`design-assets/capability-reels/build/` is disposable renderer output, separate
+from the tracked source and final browser media. The two `install-*-skill.sh`
+scripts serve manual host Codex sessions; website workers install bundled skills
+automatically from release resources.
 
 `npm run test:source` checks TypeScript imports, re-exports and literal dynamic
 imports from `web/src/main.tsx`. Test-only imports do not make a product module

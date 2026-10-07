@@ -7,28 +7,50 @@
 - Linux with Bubblewrap (`bwrap`) and unprivileged user namespaces enabled for
   the per-user Agent sandbox.
 - Rust 1.88 or newer with Cargo; Node.js 22 or newer with npm.
-- `tmux` for the development services, and FFmpeg for media processing.
+- `tmux` for the development services, FFmpeg for media processing, and `uv`
+  to provision the shared Python and offline caption environments.
 - Host-side model credentials and the user runtime configuration described in
   [user sandboxes and usage](USER_SANDBOX.md).
 - A Chromium browser for video previews and rendering; see
   [Remotion tooling](INTEGRATIONS.md#remotion-runtime-and-browser). Speech generation
   additionally requires the [VoxCPM2 service](INTEGRATIONS.md#voxcpm2-speech-service).
 
-On a new checkout, copy `.env.example` to `.env` and configure the values needed
-for your environment. Keep an existing `.env` when updating. Optional HeyGen
+## Get the source
+
+For a new installation:
+
+```bash
+git clone https://github.com/echonoshy/yingya.git
+cd yingya
+cp .env.example .env
+```
+
+Configure `.env` for your environment. Keep an existing `.env` when updating;
+do not overwrite it with the example. Optional HeyGen
 music credentials and speech-service setup are covered in
 [service integrations](INTEGRATIONS.md).
 
 All shell commands below run from the repository root.
+
+For a hosted installation and later releases, follow
+[rolling deployment and task recovery](ROLLING_UPDATES.md).
 
 ## Start locally
 
 The application backend is implemented in Rust. The browser application uses
 React and Vite; Node.js also provides the pinned Codex and Remotion binaries.
 
+These commands are for a fresh installation with port 8797 available. On a host
+with an active rolling release, follow [development services](#development-services)
+to select an isolated backend before starting anything.
+
 ```bash
 # Run from the repository root.
 npm ci
+npm run python:setup
+npm run captions:setup
+npm run browser:ensure
+python3 scripts/setup-remotion.py
 npm run web:build
 npm run backend:service:start
 ```
@@ -80,8 +102,10 @@ from `.yingya/manifest.json`. Render jobs are persisted before execution in
 `.yingya/render-jobs.json`, so progress, failures, interrupted work, retry
 attempts, and unique completed outputs survive browser and service restarts.
 
-The project-owned `yingya-video-agent` skill enforces a production-plan
-checkpoint before composition work and a draft checkpoint before final render.
+The project-owned `yingya-video-agent` skill prepares real keyframes from a
+limited composition before asking for plan approval. That approval authorizes
+full production, internal review, and delivery. A separate draft approval is
+used only for explicitly requested staged review or compatible older tasks.
 Planning includes a text scene outline in `scenes.json`; production measures
 narration before aligning scene timing and captions. Local revisions reuse
 unaffected media. The Remotion check covers build freshness, browser startup and managed media ranges. Layout, contrast and visual meaning still require explicit review of real frames and the exported MP4.
@@ -276,17 +300,8 @@ HTTP gateway; that is not a replacement for search-based source discovery.
 
 ## 素材次数策略
 
-素材生成对全部启用账号不限次数，包括旧账号、新账号与通过邀请注册的账号。
-配音、素材接口和模型内图片生成均不再使用 `media_limit` 拦截；Token 额度、
-账号停用、接口权限和服务商自身限制仍然有效。无需修改用户数据库额度。
-
-`/api/quota` 和管理用户详情返回 `mediaUnlimited: true`。数据库与旧 API 的
-`mediaLimit` / `remainingMedia` 字段为兼容历史客户端保留，不能再作为权限判断。
-管理后台不再提供素材次数编辑，用户页和 CSV 显示“不限次数”。`usedMedia` 与
-`reservedMedia` 保留现有统计口径，不清空历史记录；语音失败请求的统计口径仍待
-单独改为成功结算，不能将历史计数视为成功生成文件数。
-
-回滚到取消限制之前的版本会恢复历史素材限制，执行回滚前需评估这一行为变化。
+素材生成对全部启用账号不限次数，Token 额度与账号权限仍有效。
+字段兼容、统计和回滚边界统一见[内测额度规则](USER_SANDBOX.md#内测额度规则)。
 
 ## 视频修改意见
 

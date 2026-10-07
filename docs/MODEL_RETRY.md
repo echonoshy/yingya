@@ -9,10 +9,10 @@
 
 ## 宿主中继
 
-- 透传 Codex 0.154.0 的 `session-id`、`thread-id`、`x-client-request-id` 等协议头，
+- 透传 Codex 的 `session-id`、`thread-id`、`x-client-request-id` 等协议头，
   同时保留旧版别名。实际认证和账号头仍只由宿主注入。
-- HTTP/SSE 中继读取超时默认 330 秒，晚于 Codex 默认的 300 秒 SSE 空闲超时；
-  连接超时仍为 15 秒。这里的读取超时是两次数据到达之间的等待，不是任务总时长。
+- HTTP/SSE 中继读取超时默认 330 秒，连接超时为 15 秒。
+  这里的读取超时是两次数据到达之间的等待，不是任务总时长。
 - 不按共享上游账号或模型限制并发，不增加跨用户排队或共享冷却。
   一个用户收到过载/限流错误时，不阻止其他用户发送请求。上游 `Retry-After`
   原样透传给对应客户端，错误恢复仅作用于对应任务。
@@ -44,7 +44,7 @@ SSE 心跳或 created 事件，不能当作首个模型 token 的延迟。`repea
 比较 Codex 直连与映芽时，先固定同一上游账号、模型、推理强度、服务等级和输入，
 使用隔离测试会话，交替采样；再单独比较并发 1/2/4。分别统计过载率、超时率、
 请求耗时及完整完成率。一次成功请求只能证明连通，不能证明过载率降低。
-账号套餐和入口不同的对比不能归因给 App Server。此次不切换生产账号或启用上游 WebSocket；
+账号套餐和入口不同的对比不能归因给 App Server。当前上游使用 HTTP/SSE；
 WebSocket 需要独立测试协议、代理、取消及计费，不能仅通过设置开关上线。
 
 ## 恢复边界
@@ -61,21 +61,12 @@ WebSocket 需要独立测试协议、代理、取消及计费，不能仅通过�
 - `project/modelRetry` 持久化等待、运行、完成、停止及失败状态。活动记录按 `retryId`
   合并，并用 `failedTurnId` 关联各次过载；一个失败的 Codex turn 不会提前结束重试提示。
 
-## Codex 参考
+## 实现与版本
 
-项目当前固定版本为 `@openai/codex@0.160.1`；下述源码分析与真实项目记录基于升级前的 `0.154.0`。官方配置文档列出 HTTP 请求默认重试 4 次、
-SSE 中断默认重试 5 次：[Configuration Reference](https://developers.openai.com/codex/config-reference/)。
-
-当时核对的 `0.154.0` 实现：
-
-- [retry.rs](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/codex-client/src/retry.rs)：
-  按错误类型和次数上限重试，指数退避并加入 ±10% 随机延迟。
-- [responses.rs](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/codex-api/src/sse/responses.rs)：
-  `server_is_overloaded` 单独映射为 `ApiError::ServerOverloaded`。
-
-本次真实项目记录中该类别返回 `willRetry: false` 并结束 turn。因此本功能是映芽增加的
-应用层恢复，不是单纯调大 Codex 的 `stream_max_retries`，也不声称 Codex 本身会执行
-上述 5–60 秒策略。
+Codex 版本以 `package.json` 和锁文件为准，使用 `npm run codex:version` 查看本机版本。
+升级后需重新验证协议和错误事件，不把旧版 SDK 的默认重试次数当作当前产品保证。
+上述 5–60 秒策略由映芽在确认失败的 turn 之后执行；不是修改 Codex 的
+`stream_max_retries`，也不取代仍在进行的 SDK 原生重试。
 
 ## 验证
 

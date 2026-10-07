@@ -1,0 +1,7 @@
+.contact-admin-dialog > header button { min-width: 44px; height: 44px; }
+.contact-admin-dialog .contact-admin-email { margin: 20px 0 12px; font-size: var(--text-section); font-weight: var(--weight-emphasis); user-select: text; }
+.contact-admin-dialog .contact-admin-status { min-height: 3.5em; margin: 0; color: var(--muted); }
+.contact-admin-dialog .contact-admin-status[data-error] { color: var(--danger); }
+.contact-admin-dialog > footer button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; }
+.contact-admin-dialog svg { width: 18px; height: 18px; flex-shrink: 0; }
+@media (max-width: 480px) { .contact-admin-dialog > footer button { width: 100%; } }

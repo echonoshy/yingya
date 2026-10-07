@@ -4,13 +4,19 @@ This project runs `openbmb/VoxCPM2` through vLLM-Omni and exposes the
 OpenAI-compatible Speech API on port `8791`. By default, the server listens on
 `127.0.0.1`, while local clients connect through `http://127.0.0.1:8791`.
 
-The machine-specific CUDA 12.8 environment and model weights are installed
-under `.runtime/`, so they stay isolated from the Rust and Node dependencies:
+The Python environment and model weights are installed under `.runtime/`,
+separate from the Rust and Node dependencies:
 
-- `.runtime/voxcpm2-vllm/.venv`: Python 3.12, PyTorch 2.11 CUDA 12.8,
-  vLLM and vLLM-Omni
-- `.runtime/voxcpm2-vllm/src`: CUDA 12.8-compatible vLLM and vLLM-Omni code
-- `.runtime/models/VoxCPM2`: model weights
+- `.runtime/voxcpm2-vllm/.venv`: the installed Python, PyTorch, vLLM and
+  vLLM-Omni packages; the launcher imports these installed packages.
+- `.runtime/models/VoxCPM2`: model weights and tokenizer files.
+- `.runtime/cuda-compat/`: host-specific CUDA compatibility libraries, when needed.
+
+The current host uses Python 3.12, PyTorch 2.11.0+cu130 and vLLM/vLLM-Omni
+0.26.0. The earlier CUDA 12.8 source checkout is no longer a runtime input.
+The launch scripts require a provisioned environment and model; they do not
+install them. Inspect the actual virtual environment and GPU driver before
+recreating this machine-specific stack.
 
 ## Service lifecycle
 
@@ -26,8 +32,17 @@ default), preserves the invoking environment, and reuses an existing session.
 Legacy PID files are never used to stop a process; an active legacy PID blocks
 a duplicate start until that process is identified and stopped.
 
-The launcher uses physical GPU 1 because it was idle during installation.
-Override any setting without editing the scripts:
+The script defaults are physical GPU 1 and a GPU memory fraction of 0.80.
+The current host's `.runtime/activate.sh` instead sets GPU 0, a fraction of
+0.35 and the CUDA compatibility library path. Preserve those overrides when
+restarting that installation. On a fresh shell for this host:
+
+```bash
+source .runtime/activate.sh
+./deploy/voxcpm2/start.sh
+```
+
+For another configured host, override settings without editing the scripts:
 
 ```bash
 VOXCPM2_GPU=2 \
@@ -37,8 +52,8 @@ VOXCPM2_GPU_MEMORY_UTILIZATION=0.75 \
 ```
 
 Override `VOXCPM2_HOST` when the service should bind to a different interface.
-The default `127.0.0.1` binding makes it reachable from other machines, so put
-authentication or a trusted reverse proxy in front of it on untrusted networks.
+The default `127.0.0.1` binding is reachable only on the local host. If exposed
+on a network interface, provide authentication or a trusted reverse proxy.
 
 ## Generate speech
 
@@ -83,9 +98,8 @@ node skills/voxcpm2-tts/scripts/voxcpm2_tts.mjs synthesize \
 ```
 
 Voice cloning adds `ref_audio`; it may be an HTTP URL, a path visible to the
-server, or a base64 data URI. For highest-fidelity continuation, also pass the
-exact reference transcript as `prompt_text` and select the corresponding clone
-mode supported by the vLLM-Omni Speech API.
+server, or a base64 data URI. Also pass the exact reference transcript as
+`ref_text`, matching the installed adapter and the project client.
 
 Uploaded and generated voice profiles are persisted under
 `.runtime/voxcpm2/speakers/` by the launcher. The Yingya server proxies voice

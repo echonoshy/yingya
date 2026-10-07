@@ -1,5 +1,9 @@
 #[path = "editorial_api.rs"]
 mod editorial_api;
+#[path = "image_jobs.rs"]
+mod image_jobs;
+#[path = "project_content.rs"]
+mod project_content;
 #[path = "tenancy.rs"]
 mod tenancy;
 use crate::accounts::{Accounts, User};
@@ -69,6 +73,7 @@ struct AppState {
     codex: Arc<CodexClient>,
     heygen: HeyGenClient,
     assets: AssetStore,
+    image_jobs: image_jobs::ImageJobs,
     root: Arc<PathBuf>,
     agent_projects: AgentProjectStore,
     agent_events: broadcast::Sender<AgentEvent>,
@@ -150,7 +155,7 @@ struct AssetStore {
     folders_lock: Arc<Mutex<()>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ImageAsset {
     id: String,
@@ -378,6 +383,9 @@ async fn user_router(
     let heygen = HeyGenClient::new()?;
     let voices = VoiceClient::for_user(&user.id, paths.app_data.join("voices"))?;
     let assets = AssetStore::new(paths.assets.clone()).await?;
+    let image_jobs = image_jobs::ImageJobs::new(paths.app_data.join("image-jobs"))
+        .await
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
     let agent_projects = AgentProjectStore::new(paths.projects.clone()).await?;
     agent_projects
         .recover_interrupted()
@@ -397,6 +405,7 @@ async fn user_router(
         codex,
         heygen,
         assets,
+        image_jobs,
         root: Arc::new(root.clone()),
         agent_projects,
         agent_events,
@@ -434,6 +443,10 @@ async fn user_router(
         .route(
             "/api/codex/threads/{thread_id}/images",
             post(generate_image),
+        )
+        .route(
+            "/api/assets/image-jobs",
+            get(image_jobs::list).post(image_jobs::create),
         )
         .route("/api/assets/images", get(list_images).post(upload_image))
         .route(
@@ -510,6 +523,10 @@ async fn user_router(
         .route(
             "/api/agent-projects/{project_id}/plan",
             get(get_explanation_plan),
+        )
+        .route(
+            "/api/agent-projects/{project_id}/contents",
+            get(project_content::list),
         )
         .route(
             "/api/agent-projects/{project_id}/feedback-results",
@@ -4619,7 +4636,11 @@ async fn generate_image(
     Path(thread_id): Path<String>,
     Json(request): Json<TurnRequest>,
 ) -> Result<Json<TurnResponse>, ApiError> {
-    execute_turn(state, thread_id, request, true).await
+    let (_, task) =
+        image_jobs::start(state, Uuid::new_v4().to_string(), Some(thread_id), request).await?;
+    task.expect("new image job has a task")
+        .await
+        .map_err(|_| ApiError::External("图片生成已中断，请在素材页查看生成记录。".into()))?
 }
 
 async fn execute_turn(

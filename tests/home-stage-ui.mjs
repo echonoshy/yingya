@@ -56,16 +56,10 @@ try {
   assert.equal(await page.locator('.idea-keys,.hero-code,.motion-reel-heading,.film-loading-note').count(), 0, 'Merged hero removes decorative keys and duplicate film copy');
   assert.equal(await page.locator('.home-hero .home-motion-reel').count(), 1, 'Film shares the creation hero');
   await page.locator('#home-idea').fill('');
-  const refresh = page.getByRole('button', { name: '换个灵感', exact: true });
-  await refresh.click();
-  await page.waitForFunction(() => document.querySelector('.home-typewriter > span')?.textContent === '从一次相遇开始，交代人物、转折与结尾');
-  assert.equal(await page.locator('.home-refresh-icon').evaluate(el => getComputedStyle(el).animationName), 'home-refresh-turn');
-  for (let n = 0; n < 4; n++) await refresh.click();
-  await page.waitForFunction(() => document.querySelector('.home-typewriter > span')?.textContent === '用三个场景讲清这个故事，补充对白和旁白');
+  await page.getByRole('button', { name: '剧本', exact: true }).focus();
+  await page.waitForFunction(() => document.querySelector('.home-typewriter > span')?.textContent === '故事大纲：\n人物、场景与结尾：');
   await page.locator('#home-idea').fill('请介绍这份资料');
   assert.equal(await page.locator('.home-hero').getAttribute('data-has-idea'), 'true');
-  await page.getByRole('button', { name: '换个灵感', exact: true }).click();
-  assert.equal(await page.locator('#home-idea').inputValue(), '请介绍这份资料', 'Suggestions never overwrite input');
   await page.getByRole('button', { name: '参考视频', exact: true }).click();
   assert.equal(await page.locator('#home-idea').inputValue(), '请介绍这份资料');
   const idea = page.getByRole('button', { name: /^04 自动剪辑/ });
@@ -149,9 +143,7 @@ try {
   assert.equal(await reduced.locator('.home-brand-mark .yingya-wordmark').innerText(), 'YingYa');
   await reduced.getByRole('button', { name: '复刻网站', exact: true }).click();
   assert.equal(await reduced.locator('.home-source-underline').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
-  await reduced.getByRole('button', { name: '换个灵感', exact: true }).click();
-  assert.equal(await reduced.locator('.home-refresh-icon').evaluate(el => getComputedStyle(el).animationName), 'none');
-  assert.equal(await reduced.locator('.home-suggestion-refresh').evaluate(el => getComputedStyle(el).animationName), 'none');
+  assert.equal(await reduced.locator('.home-caret').evaluate(el => getComputedStyle(el).animationName), 'none');
   assert.deepEqual(movies, []);
   assert.equal(await reduced.locator('.character-glyph').count(), 0);
   await reduced.close();
@@ -159,10 +151,8 @@ try {
   await touch.goto(base);
   await touch.getByRole('button', { name: '复刻网站', exact: true }).tap();
   assert.equal(await touch.getByRole('button', { name: '复刻网站', exact: true }).getAttribute('aria-pressed'), 'true');
-  await touch.getByRole('button', { name: '换个灵感', exact: true }).tap();
-  await touch.waitForFunction(() => document.querySelector('.home-typewriter > span')?.textContent === '复刻这个网站的排版与配色，展示我的产品');
   await touch.locator('#home-idea').fill('在手机上写一个故事');
   assert.equal(await touch.locator('#home-idea').inputValue(), '在手机上写一个故事');
   await touch.close();
-  console.log(`PASS ${base}: viewport scroll containment/no bottom blank space, English wordmark/reference navigation, sources/keyboard/resize, inspiration refresh, code accents, touch, draft safety, footer modals/Escape/focus, six widths and reduced motion, unauthenticated draft handoff (auth mocked), no console errors`);
+  console.log(`PASS ${base}: viewport scroll containment/no bottom blank space, English wordmark/reference navigation, sources/keyboard/resize, code accents, touch, draft safety, footer modals/Escape/focus, six widths and reduced motion, unauthenticated draft handoff (auth mocked), no console errors`);
 } finally { await browser.close(); }

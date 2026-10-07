@@ -28,8 +28,9 @@ HTTPS 网关继续代理到此端口。
 在仓库根目录执行：
 
 ```bash
-npm run release:build -- 20260911-01
-npm run release:activate -- 20260911-01
+yingya_release_id="$(date +%Y%m%d-%H%M%S)-update"
+npm run release:build -- "$yingya_release_id"
+npm run release:activate -- "$yingya_release_id"
 npm run release:status
 ```
 
@@ -63,6 +64,16 @@ npm run release:status
 重复版本号会被拒绝，不会覆盖旧 Worker 使用中的代码。构建失败可保留目录检查，
 下一次使用新的版本号。
 
+### 前端变更与资源复用
+
+默认仍使用上述完整 `release:build`；目前没有独立的前端发布命令。前端与后端按同一个 release 打包，前端变更也需激活新的 API 目标，不能通过修改工作区的 `web-dist/` 上线。
+
+如确需复用当前 Rust 二进制，须先核对待发布变更只有前端相关内容，且后端 `src/`、`Cargo.toml`、`Cargo.lock` 与影响编译的配置和环境均与原构建一致。任何后端修改或无法证明一致的输入都使用完整构建。不要仅根据二进制文件时间或文件名推定可以复用。
+
+复用时仍需创建唯一、独立的不可变快照，包含更新后的前端源码、构建出的 `web-dist`、一致的产品版本文件和指向新路径的 `release.json`；不能覆盖原快照。共享运行依赖必须核对清单和锁文件，保留其引用；没有这些检查条件就回到完整构建。前端检查、公网资源核验、激活与 Worker 交接要求均不减少。
+
+### 激活与回滚
+
 `release:activate` 的顺序：
 
 1. 获取部署锁，启动新 API 到独立端口。
@@ -81,7 +92,8 @@ npm run release:status
 回滚复用同一命令，指定已有旧版本：
 
 ```bash
-npm run release:activate -- 20260911-01
+# 从 release:status 核对上一版的实际 ID；不要照抄历史示例编号。
+npm run release:activate -- PREVIOUS_RELEASE_ID
 ```
 
 回滚期间，正在运行的新版本任务也先完成，再交接回旧版本。不得在发布或回滚中

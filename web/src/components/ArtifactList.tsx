@@ -1,64 +1,46 @@
-import { CaretDown, Eye, File, FileAudio, FileCode, FileText, Images, MagnifyingGlass, Plus, VideoCamera, X } from "@phosphor-icons/react";
+import { ArrowClockwise, File, FileAudio, FileText, Images, MagnifyingGlass, Plus, VideoCamera, X } from "@phosphor-icons/react";
+import { useState } from "react";
+import { api } from "../api";
+import { contentCategories, contentCategory, type ContentCategory } from "../projectContents";
 import type { Artifact } from "../types";
-import { filePreviewKind } from "../projectFiles";
 
-const categories = [
-  { id: "video", label: "视频", icon: VideoCamera },
-  { id: "plan", label: "方案与分镜", icon: FileText },
-  { id: "image", label: "画面与封面", icon: Images },
-  { id: "audio", label: "旁白与配乐", icon: FileAudio },
-  { id: "report", label: "检查报告", icon: FileText },
-  { id: "other", label: "源文件与其他", icon: FileCode },
-] as const;
-
-export function artifactCategory(artifact: Artifact): string {
-  const kind = artifact.kind.toLowerCase();
-  // Semantic roles take precedence: reports can be Markdown, sources can be HTML.
-  if (kind.includes("report") || /(^|\/)reports\//i.test(artifact.path)) return "report";
-  if (/^(plan|scenes|storyboard|script)$/.test(kind)) return "plan";
-  if (kind.includes("source")) return "other";
-  const media = filePreviewKind(artifact.path);
-  if (media === "video" || media === "image" || media === "audio") return media;
-  if (kind.includes("video")) return "video";
-  if (kind.includes("image")) return "image";
-  if (kind.includes("audio")) return "audio";
-  return "other";
+const icons = { all: File, video: VideoCamera, image: Images, audio: FileAudio, document: FileText, other: File };
+function ContentThumbnail({ projectId, artifact }: { projectId: string; artifact: Artifact }) {
+  const [failed, setFailed] = useState(false);
+  const kind = contentCategory(artifact), Icon = icons[kind];
+  return <span className={`project-content-thumbnail project-content-thumbnail--${kind}`}>
+    {kind === "image" && !failed ? <img src={api.fileUrl(projectId, artifact.path)} alt="" loading="lazy" onError={() => setFailed(true)}/> : <Icon aria-hidden="true"/>}
+  </span>;
 }
-
-export function ArtifactList({ artifacts, query, onQuery, expanded, onExpanded, onPreview, onContext }: {
-  artifacts: Artifact[];
-  query: string;
-  onQuery: (value: string) => void;
-  expanded: string[];
-  onExpanded: (value: string[]) => void;
-  onPreview: (artifact: Artifact) => void;
-  onContext: (value: string) => void;
+function sizeLabel(value: unknown) {
+  if (typeof value !== "number") return "";
+  return value >= 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+export function ArtifactList({ projectId, artifacts, query, onQuery, category, onCategory, onPreview, onContext, loading, error, truncated, onRefresh, onAdd }: {
+  projectId: string; artifacts: Artifact[]; query: string; onQuery: (value: string) => void;
+  category: ContentCategory; onCategory: (value: ContentCategory) => void;
+  onPreview: (artifact: Artifact) => void; onContext: (value: string) => void;
+  loading: boolean; error: string; truncated: boolean; onRefresh: () => void; onAdd: () => void;
 }) {
   const search = query.trim().toLocaleLowerCase();
-  const matching = artifacts.filter(artifact => !search || `${artifact.label}\n${artifact.path}`.toLocaleLowerCase().includes(search)).reverse();
-  const groups = categories.map(category => ({ ...category, items: matching.filter(artifact => artifactCategory(artifact) === category.id) })).filter(group => group.items.length);
-
-  return <section className="artifact-list" aria-label="项目产物">
-    <div className="section-heading"><h3>项目文件</h3><span>{artifacts.length} 项</span></div>
-    {artifacts.length ? <>
-      <div className="artifact-search"><MagnifyingGlass aria-hidden="true"/><input aria-label="搜索产物名称或路径" placeholder="搜索名称或路径" value={query} onChange={event => onQuery(event.target.value)}/>{query ? <button aria-label="清除产物搜索" title="清除搜索" onClick={() => onQuery("")}><X/></button> : null}</div>
-      <p className="artifact-list-hint" role="status">{search ? `找到 ${matching.length} 项产物` : "按用途归类 · 组内后加入的在前"}</p>
-      {groups.map(({ id, label, icon: Icon, items }) => {
-        const open = Boolean(search) || expanded.includes(id);
-        return <section className="artifact-group" key={id} aria-label={label}>
-          <h4><button className="artifact-group-toggle" aria-expanded={open} aria-controls={`artifact-group-${id}`} onClick={() => {
-            if (search) return;
-            onExpanded(open ? expanded.filter(value => value !== id) : [...expanded, id]);
-          }} aria-disabled={Boolean(search)}><Icon aria-hidden="true"/><span>{label}</span><span className="artifact-group-count">{items.length}</span><CaretDown className="artifact-group-chevron" aria-hidden="true"/></button></h4>
-          <div id={`artifact-group-${id}`} hidden={!open}>
-            {items.map(artifact => <div className="artifact-row" key={artifact.id}>
-              <button className="artifact-open" onClick={() => onPreview(artifact)} title={`${artifact.label}\n${artifact.path}`}><span><Icon aria-hidden="true"/></span><div><b>{artifact.label}</b><small>{artifact.path}</small></div><Eye aria-hidden="true"/></button>
-              <button className="artifact-context" aria-label={`加入反馈 ${artifact.label}`} title="加入反馈" onClick={() => onContext(artifact.label)}><Plus/></button>
-            </div>)}
-          </div>
-        </section>;
-      })}
-      {!matching.length ? <div className="artifact-empty"><MagnifyingGlass/><b>没有找到匹配的产物</b><p>试试文件名、版本号或路径中的关键词</p></div> : null}
-    </> : <div className="artifact-empty"><File/><b>还没有生成的文件</b><p>生成完成后，视频与检查报告会显示在这里</p></div>}
+  const matching = artifacts.filter(artifact => (category === "all" || contentCategory(artifact) === category) && (!search || `${artifact.label}\n${artifact.path}`.toLocaleLowerCase().includes(search)));
+  return <section className="project-contents" aria-label="项目内容">
+    <header className="project-contents-heading"><div><h2>项目内容</h2><p>制作中生成的文件和已加入项目的素材，都在这里。</p></div><div><button aria-label="刷新项目内容" disabled={loading} onClick={onRefresh}><ArrowClockwise className={loading ? "spin" : ""}/></button><button onClick={onAdd}><Plus/>添加素材</button></div></header>
+    <div className="project-contents-tools">
+      <nav aria-label="内容分类">{contentCategories.map(item => <button key={item.id} aria-pressed={category === item.id} onClick={() => onCategory(item.id)}>{item.label}<span>{item.id === "all" ? artifacts.length : artifacts.filter(artifact => contentCategory(artifact) === item.id).length}</span></button>)}</nav>
+      <label className="project-contents-search"><MagnifyingGlass aria-hidden="true"/><input aria-label="搜索项目内容" placeholder="搜索文件名称" value={query} onChange={event => onQuery(event.target.value)}/>{query ? <button aria-label="清除搜索" onClick={() => onQuery("")}><X/></button> : null}</label>
+    </div>
+    {error ? <div className="project-content-notice" role="alert"><span>{error}</span><button onClick={onRefresh}>重新读取</button></div> : null}
+    {truncated ? <p className="project-content-notice" role="status">文件较多，当前展示部分内容及已登记的作品。</p> : null}
+    {loading && !artifacts.length ? <p role="status" className="project-content-empty">正在读取项目内容…</p> : matching.length ? <>
+      <p className="project-content-count" role="status">{search ? `找到 ${matching.length} 项` : `${matching.length} 项内容`}</p>
+      <div className="project-content-grid">{matching.map(artifact => <article key={artifact.path}>
+        <button className="project-content-open" onClick={() => onPreview(artifact)} aria-label={`预览 ${artifact.label}`} title={artifact.path}>
+          <ContentThumbnail key={artifact.path} projectId={projectId} artifact={artifact}/>
+          <b>{artifact.label}</b><small>{contentCategories.find(item => item.id === contentCategory(artifact))?.label}{sizeLabel(artifact.metadata.size) ? ` · ${sizeLabel(artifact.metadata.size)}` : ""}</small>
+        </button>
+        <button className="project-content-context" aria-label={`引用 ${artifact.label}`} title="加入对话" onClick={() => onContext(`文件「${artifact.label}」（${artifact.path}）`)}><Plus/></button>
+      </article>)}</div>
+    </> : !error ? <div className="project-content-empty"><File aria-hidden="true"/><h3>{search || category !== "all" ? "没有匹配的内容" : "还没有项目内容"}</h3><p>{search || category !== "all" ? "试试其他分类，或清除搜索条件。" : "生成的图片、视频、音频和文档会自动显示在这里。"}</p><button onClick={() => { if (search || category !== "all") { onQuery(""); onCategory("all"); } else onAdd(); }}>{search || category !== "all" ? "查看全部内容" : "添加素材"}</button></div> : null}
   </section>;
 }

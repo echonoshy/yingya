@@ -16,7 +16,7 @@ page.setDefaultTimeout(10000);
 let failImage = true, failVoices = true, failAdmin = false, previewPayload;
 try {
   await installApiMock(page);
-  await page.route('**/images', route => route.request().method() === 'POST' && failImage
+  await page.route('**/image-jobs', route => route.request().method() === 'POST' && failImage
     ? route.fulfill({ status: 503, json: { message: '图片服务暂时不可用' } }) : route.fallback());
   await page.route('**/voices', route => failVoices
     ? route.fulfill({ status: 503, json: { message: '音色服务暂时不可用' } }) : route.fallback());
@@ -70,6 +70,8 @@ try {
   failImage = false;
   await image.getByRole('button', { name: '生成图片', exact: true }).click();
   await image.waitFor({ state: 'hidden' });
+  await page.getByRole('dialog', { name: '生成记录', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /^全部/ }).first().click();
 
   await open('创建音色');

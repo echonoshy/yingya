@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, CircleNotch, Eye, EyeSlash, Prohibit } from '@ph
 import { z } from 'zod';
 import { sessionFetch } from '../session';
 import { formatUsage as number } from '../usage';
+import { ContactAdminDialog } from './ContactAdminDialog';
 
 export async function accountCall(path: string, init?: RequestInit) {
   const response = await sessionFetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers }, cache: 'no-store' });
@@ -28,6 +29,8 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
   const confirmationInput = useRef<HTMLInputElement>(null);
   const [inviteCode, setInviteCode] = useState(invitation.get('invite') ?? '');
   const [busy, setBusy] = useState(false), [error, setError] = useState(initialError);
+  const [contactOpen, setContactOpen] = useState(false);
+  const contactTrigger = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (invitation.has('invite') || invitation.has('reset')) window.history.replaceState(null, '', window.location.pathname + window.location.search); }, [invitation]);
   useEffect(() => {
     const changed = () => {
@@ -56,16 +59,17 @@ export function LoginScreen({ initialError, onLogin }: { initialError: string; o
         <form onSubmit={event => void submit(event)} aria-busy={busy}>
           <div className="auth-field"><label htmlFor="login-email">邮箱地址</label><input id="login-email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} disabled={busy} /></div>
           {mode === 'register' ? <div className="auth-field"><label htmlFor="login-invite">邀请码</label><input id="login-invite" autoComplete="off" placeholder="输入你的邀请码" value={inviteCode} onChange={event => setInviteCode(event.target.value)} required maxLength={128} disabled={busy} /></div> : null}
-          <div className="auth-field"><label htmlFor="login-password">{mode !== 'login' ? '设置密码' : '密码'}</label><div className="auth-password"><input id="login-password" type={passwordVisible ? 'text' : 'password'} autoComplete={mode !== 'login' ? 'new-password' : 'current-password'} minLength={mode !== 'login' ? 10 : undefined} maxLength={128} value={password} onChange={event => { setPassword(event.target.value); setConfirmationError(false); }} required disabled={busy} aria-describedby={mode === 'login' ? undefined : 'password-hint'} /><button type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)} disabled={busy}>{passwordVisible ? <EyeSlash/> : <Eye/>}</button></div>{mode !== 'login' ? <small id="password-hint">至少 10 个字符</small> : null}</div>
+          <div className="auth-field"><label htmlFor="login-password">{mode !== 'login' ? '设置密码' : '密码'}</label><div className="auth-password"><input id="login-password" type={passwordVisible ? 'text' : 'password'} autoComplete={mode !== 'login' ? 'new-password' : 'current-password'} minLength={mode !== 'login' ? 8 : undefined} maxLength={128} value={password} onChange={event => { setPassword(event.target.value); setConfirmationError(false); }} required disabled={busy} aria-describedby={mode === 'login' ? undefined : 'password-hint'} /><button type="button" aria-label={passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)} disabled={busy}>{passwordVisible ? <EyeSlash/> : <Eye/>}</button></div>{mode !== 'login' ? <small id="password-hint">至少 8 个字符</small> : null}</div>
           {mode !== 'login' ? <div className="auth-field"><label htmlFor="login-confirmation">确认密码</label><input ref={confirmationInput} aria-invalid={confirmationError || undefined} aria-describedby={confirmationError ? "confirmation-error" : undefined} id="login-confirmation" type="password" autoComplete="new-password" value={confirmation} onChange={event => { setConfirmation(event.target.value); setConfirmationError(false); }} required maxLength={128} disabled={busy} />{confirmationError ? <p id="confirmation-error" className="auth-error" role="alert">两次输入的密码不一致，请重新确认</p> : null}</div> : null}
           {error ? <p className="auth-error" role="alert">{error}</p> : null}
           <button className="auth-submit" disabled={busy}><span>{busy ? (mode === 'login' ? '正在登录…' : mode === 'register' ? '正在注册…' : '正在重置密码…') : mode === 'reset' ? '重置密码并登录' : mode === 'register' ? '注册并开始创作' : '登录并开始创作'}</span>{busy ? <CircleNotch className="spin" aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}</button>
         </form>
         <p className="auth-switch">{mode === 'login' ? '有邀请码？' : '已有账号？'}<button disabled={busy} onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setConfirmationError(false); setPasswordVisible(false); }}>{mode === 'login' ? '注册账号' : '返回登录'}</button></p>
-        <div className="auth-help"><p>{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员' : '忘记密码或首次激活账号，请联系管理员'}</p><a href="mailto:echonoshy@gmail.com">联系管理员<ArrowRight aria-hidden="true" /></a></div>
+        <div className="auth-help"><p>{mode === 'register' ? '还没有邀请码？请联系邀请你的管理员' : '忘记密码或首次激活账号，请联系管理员'}</p><button ref={contactTrigger} type="button" aria-haspopup="dialog" onClick={() => setContactOpen(true)}>联系管理员<ArrowRight aria-hidden="true" /></button></div>
         <code className="auth-code-label auth-code-label--close" aria-hidden="true"><span>&lt;/</span>YingYa<span>&gt;</span></code>
       </section>
     </main>
+    {contactOpen ? <ContactAdminDialog onClose={() => setContactOpen(false)} returnFocus={contactTrigger} /> : null}
   </div>;
 }
 

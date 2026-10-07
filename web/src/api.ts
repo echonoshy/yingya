@@ -1,7 +1,7 @@
 import { uploadForm, type UploadOptions } from "./upload";
 import { explanationPlanSchema, type PlanReceipt } from "./explanationPlan";
 import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
-import { assetRoleSchema, workbenchSchema, feedbackAssetSchema } from "./schemas";
+import { imageJobSchema, assetRoleSchema, workbenchSchema, feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
 import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
@@ -58,6 +58,9 @@ const imageUploadSchema = z.object({ url: z.string(), projectPath: z.string() })
 const threadStartedSchema = z.object({ threadId: z.string() });
 
 export const api = {
+  getProjectContents: (id: string, signal: AbortSignal) => request(`/api/agent-projects/${id}/contents`, z.object({ files: z.array(z.object({ path: z.string(), name: z.string(), size: z.number(), modifiedAt: z.number() })), truncated: z.boolean() }), { signal }),
+  openCompositionPreview: (id: string, signal: AbortSignal) => request(`/api/agent-projects/${id}/studio`, z.object({ previewUrl: z.string(), sourceRevision: z.string().optional() }), { method: "POST", signal }),
+  heartbeatCompositionPreview: (id: string, signal: AbortSignal) => request(`/api/agent-projects/${id}/studio/heartbeat`, z.object({ previewUrl: z.string(), sourceRevision: z.string().optional() }), { method: "POST", signal }),
   uploadFeedbackAsset: async (id: string, uploadId: string, file: Blob) => { const body = new FormData(); body.append("uploadId", uploadId); body.append("file", file, "frame.png"); return request(`/api/agent-projects/${id}/feedback-assets`, feedbackAssetSchema, { method: "POST", body }); },
   listProjects: () => request("/api/agent-projects", z.array(projectRecordSchema)),
   getProject: (id: string) => request(`/api/agent-projects/${id}`, projectDetailSchema),
@@ -99,6 +102,8 @@ export const api = {
     return request("/api/voices", uploadedVoiceSchema, { method: "POST", body });
   },
   previewVoice: (voiceId: string, text?: string) => requestBlob("/api/voices/preview", { method: "POST", body: JSON.stringify({ voiceId, ...(text ? { text } : {}) }) }),
+  listImageJobs: (signal?: AbortSignal) => request("/api/assets/image-jobs", z.array(imageJobSchema), { signal }),
+  createImageJob: (input: { clientRequestId: string; prompt: string; referenceImages: string[]; model: string; reasoningEffort: string }) => requestWithNetworkRetry("/api/assets/image-jobs", imageJobSchema, { method: "POST", body: JSON.stringify(input) }),
   listImages: () => request("/api/assets/images", imageLibrarySchema),
   listAssetLibrary: () => request("/api/assets/library", assetLibrarySchema),
   uploadLibraryAsset: async (file: File, folderId?: string, options?: UploadOptions) => { const body = new FormData(); body.append("file", file); if (folderId) body.append("folderId", folderId); return uploadForm("/api/assets/library", body, assetLibraryItemSchema, options); },

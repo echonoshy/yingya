@@ -11,10 +11,10 @@ const sections = [
   { id: 'usage', Icon: ChartBar }, { id: 'settings', Icon: GearSix }, { id: 'help', Icon: Lifebuoy },
 ] as const;
 
-export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onAvatarTap, onAvatar, onUsage, onBilling, onVersion, onLogout }: {
+export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onAvatarTap, onAvatar, onUsage, onBilling, onVersion, onContact, onLogout }: {
   email: string; isAdmin: boolean; avatarUrl?: string; error: string;
   returnFocus: RefObject<HTMLElement | null>; onAvatarTap: (event: MouseEvent<HTMLElement>) => void;
-  onAvatar: () => void; onUsage: () => void; onBilling: () => void; onVersion: () => void; onLogout: () => Promise<void>;
+  onAvatar: () => void; onUsage: () => void; onBilling: () => void; onVersion: () => void; onContact: () => void; onLogout: () => Promise<void>;
 }) {
   const { available } = useAppUpdate();
   const root = useRef<HTMLDetailsElement>(null);
@@ -108,7 +108,7 @@ export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onA
       {isAdmin ? <button type="button" onClick={() => action(() => window.location.assign('/admin'))}><ShieldCheck aria-hidden="true"/><span>账号管理</span></button> : null}
     </> : <>
       <button type="button" aria-label="版本记录" onClick={() => action(onVersion)}><ClockCounterClockwise aria-hidden="true"/><span>版本记录</span><small className="account-menu-meta">v{productVersion}</small></button>
-      <a href="mailto:echonoshy@gmail.com" onClick={() => close(true)}><EnvelopeSimple aria-hidden="true"/><span>联系管理员</span></a>
+      <button type="button" aria-haspopup="dialog" onClick={() => action(onContact)}><EnvelopeSimple aria-hidden="true"/><span>联系管理员</span></button>
     </>}
   </div> : null;
 

@@ -115,6 +115,13 @@ export const imageTurnSchema = z.object({
   images: z.array(z.object({ id: z.string(), url: z.string(), projectPath: z.string(), mimeType: z.string(), revisedPrompt: optionalString })),
 });
 
+export const imageJobSchema = z.object({
+  id: z.string(), prompt: z.string(), referenceImages: z.array(z.string()),
+  model: z.string(), reasoningEffort: z.string(), status: z.enum(["running", "completed", "failed"]),
+  createdAt: z.number(), updatedAt: z.number(), images: imageTurnSchema.shape.images, error: optionalString,
+});
+export type ImageJob = z.infer<typeof imageJobSchema>;
+
 export type CodexModel = z.infer<typeof codexModelSchema>;
 export type ProjectRecord = z.infer<typeof projectRecordSchema>;
 export type AgentMessage = z.infer<typeof agentMessageSchema>;
