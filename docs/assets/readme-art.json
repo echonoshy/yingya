@@ -1,0 +1,40 @@
+{
+  "purpose": "Current bilingual README artwork; illustrations, not product screenshots or generated-video evidence.",
+  "generator": "OpenAI built-in image_gen via imagegen skill",
+  "createdAt": "2026-10-07",
+  "layoutReference": {
+    "url": "https://github.com/nexu-io/open-design",
+    "usedFor": "Image-led introduction and alternating visual/product narrative. No third-party images or copy reused."
+  },
+  "delivery": "Lossless WebP encoding of generated PNGs; preserve artwork, dimensions and text. These images are documentation assets, not new product UI rules.",
+  "assets": [
+    {
+      "file": "readme-hero-zh.webp",
+      "mode": "generate",
+      "prompt": "Use case: ads-marketing.\nCreate an original art-directed hero image for the GitHub README of YingYa, an AI video creation workspace. This is an editorial campaign cover, not a website mockup. Wide landscape canvas, approximately 2:1 aspect ratio, 2048 x 1024 if possible.\nVisual idea: a thought becomes a moving image. On an almost-white #f5f5f3 background, a fine hand-drawn electric-blue line enters from the middle and becomes a beautifully constructed, continuous folded ribbon of cinematic frames on the right. The ribbon has realistic matte-paper depth and crisp studio shadows; its frames contain a progression of a simple dot, a precise flowing line, a geometric plane and a sculptural curved blue form, suggesting animation unfolding over time. Only one continuous ribbon, with elegant perspective and plenty of breathing room. An extremely subtle print texture is okay; keep the canvas clean.\nTypography and hierarchy: top-left a black very heavy tightly tracked grotesk wordmark spelled exactly \"YingYa\" with one small vermilion-orange #fa4c0c circular dot immediately after it. This existing identity is essential; do not invent a symbol or mascot.\nLeft half: a very large two-line Chinese headline, exactly \"让想法，\" then \"有画面。\". Chinese must be impeccable. Use a bold, lively contemporary Chinese display face, highly readable, expressive but not calligraphic. Under it one modest English line, exactly \"IDEAS INTO MOTION\". Keep the headline separate from the artwork. Lower-left a quiet small line \"AI VIDEO WORKSPACE\". No other text.\nPalette: off-white, near-black #111310 and saturated blue #1875e5. Orange is restricted to the one wordmark dot. Artwork is sophisticated and tactile with purposeful shapes, no decorative props. Strong negative space, asymmetric balance, excellent typography, memorable art direction. Essential text and forms remain legible when displayed 800px wide.\nAvoid generic AI gradients, glowing glass, robots, ghosts, sprouts, emoji, stickers, dashboard cards, rounded UI containers, fake screenshots, illegible fine print, logos of other companies, watermarks or busy layouts. Deliver the finished cover itself, edge to edge, no surrounding browser or device.",
+      "width": 1774,
+      "height": 887,
+      "bytes": 1192306,
+      "sha256": "37b2c971bd8979decad77a0c872834383d6651c0fd3b816e57d637b17eaa0f58"
+    },
+    {
+      "file": "readme-hero-en.webp",
+      "mode": "edit",
+      "referenceAsset": "readme-hero-zh.webp",
+      "prompt": "Use case: text-localization.\nImage 1 is the finished Chinese YingYa README hero and is the edit target. Produce the English-localized version of this same cover.\nChange ONLY the headline lettering and its small supporting English line in the left text block.\nReplace the large two-line Chinese headline with the exact English text, split across two lines:\n\"Your ideas,\"\n\"in motion.\"\nUse a very heavy, tightly tracked black sans-serif/grotesk with the same visual confidence and occupy the same left text area. Keep ample separation from the blue line and film ribbon.\nReplace \"IDEAS INTO MOTION\" immediately under the headline with \"FROM A THOUGHT TO A FILM\" in the same modest sans-serif style.\nKeep \"YingYa\" and its orange dot at top left, and \"AI VIDEO WORKSPACE\" at bottom left, completely unchanged.\nPreserve the original dimensions, crop, background, paper texture, blue connecting line, cinematic paper film ribbon, exact frame contents, perspective, lighting, shadows, palette, and all non-text artwork. Do not redesign, invent new objects, alter the wordmark, or translate the artwork. Do not add any other text.",
+      "width": 1774,
+      "height": 887,
+      "bytes": 1082962,
+      "sha256": "a37c3b4546c2bcda2d7fdf8af811faa371d763ceb40b5ec1cff9810e2324a6dd"
+    },
+    {
+      "file": "readme-story.webp",
+      "mode": "generate",
+      "prompt": "Use case: stylized-concept.\nCreate one original editorial illustration for the README of YingYa, an AI video workspace. It should explain visually how a loose idea becomes a storyboard and then a finished video. Wide landscape composition 2.4:1, approximately 1920 x 800.\nThis illustration belongs to a restrained visual family: almost-white #f5f5f3 backdrop, near-black #111310 ink, and electric blue #1875e5. Three naturally separated artistic vignettes in one continuous composition with generous whitespace, no panel borders and no interface.\nAt left: a single flat white paper sheet with several deliberate dark handwritten abstract strokes and one blue freeform loop, like the first sketch of an idea. No legible words.\nAt center: three carefully aligned small physical storyboard prints, each showing the same blue circle developing into an arc and a sculptural ribbon. Exact clean geometry, soft studio shadows, slight perspective, editorial print craftsmanship.\nAt right: one larger landscape video frame hovering just above the surface, containing a beautiful blue folded-paper sculptural ribbon against black, with a small discreet white triangular play mark. It should feel like the final authored composition, not a screenshot of an imaginary app.\nA single fine blue line winds between the three stages, visually connecting them. Delicate material depth, precise edges, restrained shadows, strong composition. Mostly white open space, not a crowded tabletop. High-end art publication illustration, expressive yet useful.\nNo text anywhere, no letters, no numbers, no UI controls except the one play triangle, no logos, no icons floating around, no extra objects, no robots, no mascot, no rainbow palette, no stock isometric infographic, no glow or glass gradients. Finished illustration only, no browser chrome, no poster border. It must work in both Chinese and English READMEs with accessible explanatory copy outside the image.",
+      "width": 1942,
+      "height": 809,
+      "bytes": 1065168,
+      "sha256": "2a9da2132dd92bd8d37e4ddf676dc0723c9bbd2b71c2760d2a6d02e8b580f694"
+    }
+  ]
+}

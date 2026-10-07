@@ -1,49 +1,59 @@
-<h1 align="center">映芽 · YingYa</h1>
-<p align="center"><strong>让想法，有画面。</strong></p>
-<p align="center">把资料、想法和已有素材，做成能讲清内容、可以直接分享的视频。</p>
-
 <p align="center">
-  <a href="https://yingya.art/app#/">开始创作</a> ·
-  <a href="https://yingya.art/#style-references">看看作品</a> ·
-  <a href="docs/README.md">项目文档</a> ·
-  <a href="README.en.md">English</a>
+  <strong>简体中文</strong> · <a href="README.en.md">English</a>
 </p>
 
-[![映芽宣传片：点、线、面、体、光与声，汇成一段动态图形影片](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
+<p align="center">
+  <a href="https://yingya.art/app#/">
+    <img src="docs/assets/readme-hero-zh.webp" alt="映芽 YingYa — 让想法，有画面。一根蓝色线条展开成胶片。" width="100%" />
+  </a>
+</p>
 
-<p align="center">15 秒宣传片 · 点击 GIF，在官网观看有声版本。</p>
+<p align="center">
+  <strong>通过对话，把一个想法做成一支视频。</strong><br />
+  从资料与参考出发，先看画面，再一起打磨成片。
+</p>
 
-## 这是什么
+<p align="center">
+  <a href="https://yingya.art/app#/">开始创作 ↗</a> &nbsp; · &nbsp;
+  <a href="https://yingya.art/#style-references">寻找灵感</a> &nbsp; · &nbsp;
+  <a href="docs/README.md">项目文档</a> &nbsp; · &nbsp;
+  <a href="https://github.com/echonoshy/yingya/issues">聊聊建议</a>
+</p>
 
-映芽是一个通过对话制作视频的 AI 创作工作台，面向知识创作者、教育培训者，以及需要讲解产品、业务和数据的人。
+## 01 / 想法，先有个样子。
 
-从一段文字、一个想法、网页链接、参考视频或已有素材开始，映芽先整理讲述结构，展示大纲和实际关键画面。确认方向后，再完成动画、声音与成片。你可以边看边提修改意见，继续打磨同一个项目。
+映芽是一个 AI 视频创作工作台。无论是要讲清一个概念、解释一组数据，还是介绍一个产品，都可以从一段话开始，附上网页、参考视频或自己的素材。
 
-## 可以做什么
+> “给第一次接触单摆的同学做一支短片。把长摆和短摆放在一起，让人一眼看懂周期的区别。”
 
-- **把内容讲清楚**：用文字动画、图形、流程和动态图表解释概念与数据，也可以结合上传的图片、视频和音频组织内容。
-- **制作前先看画面**：方案包含从实际制作源生成的关键画面，便于提前确认讲法与风格。
-- **按内容安排声画**：根据要求制作配音、字幕和动画，让节奏服务于内容。
-- **针对具体位置修改**：通过截图、时间点或时间范围提出意见，保留不需要修改的部分与历史版本。
-- **分享与继续创作**：下载 MP4，或分享所选版本的独立视频链接；项目保留，之后仍可继续修改。
+![创作过程示意：草图经过关键画面，成为一支视频](docs/assets/readme-story.webp)
 
-## 从想法到成片
+**给个起点。** 描述观众、内容与参考。
 
-1. **描述目标**：告诉映芽讲给谁听、重点是什么，附上素材或风格参考。
-2. **确认方案**：查看大纲与关键画面，补充意见后开始制作。
-3. **观看与修改**：查看视频，用自然语言指出需要调整的内容。
-4. **分享作品**：下载或分享满意的版本。
+**先看方案。** 在制作前，确认大纲和从实际制作源生成的关键画面。
 
-例如，可以这样开始：
+**再做成片。** 确认后，映芽按要求安排动画、素材、配音和字幕。
 
-> 给第一次接触单摆的同学做一支约 60 秒的视频。并排比较长摆和短摆，用中文旁白解释为什么摆长会影响周期，最后用一句话总结。
+## 02 / 然后，让画面动起来。
 
-看到视频后，继续告诉它：
+[![映芽 15 秒宣传片：点、线、面、体、光与声](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
 
-> 把第二幕的标题放大，比较画面多停留 2 秒，其他部分保持不变。
+<p align="center"><sub>15 秒，点、线、面、体、光与声。点击 GIF，观看有声原片。</sub></p>
 
-## 项目构成
+- **讲清一个概念。** 用图形、文字和节奏，把抽象内容讲具体。
+- **看懂一组数据。** 用动态图表、比较与标注，突出真正重要的信息。
+- **介绍一个产品。** 结合图片、视频和声音，让已有素材成为完整讲述。
 
-浏览器工作台使用 React，后端使用 Rust，AI Agent 负责理解内容、编写与修改视频工程，Remotion 负责预览和渲染。每个视频项目保留自己的素材、制作源与版本，支持持续修改和交付。
+## 03 / 好作品，是接着改出来的。
 
-更多信息见[产品定位](docs/PRODUCT_POSITIONING.md)、[视频制作流程](docs/VIDEO_PRODUCTION_WORKFLOW.md)与[项目文档](docs/README.md)。问题和建议欢迎提交到 [GitHub Issues](https://github.com/echonoshy/yingya/issues)。
+> “第二幕的标题再大一点，比较画面多停留两秒。其他部分保留。”
+
+用自然语言继续修改，也可以通过截图、时间点或时间范围指出具体位置。项目、素材与历史版本会保留；满意后下载 MP4，或分享所选版本的独立链接。
+
+**从第一份方案，到每一次新的修改，都在同一个创作工作台里。**
+
+---
+
+React 构建工作台，Rust 支撑后端，AI Agent 理解内容并编写、修改视频工程，Remotion 负责预览与渲染。
+
+[了解产品](docs/PRODUCT_POSITIONING.md) · [制作流程](docs/VIDEO_PRODUCTION_WORKFLOW.md) · [全部文档](docs/README.md) · **[开始你的第一支片 ↗](https://yingya.art/app#/)**

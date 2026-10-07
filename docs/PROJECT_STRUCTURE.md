@@ -171,7 +171,23 @@ Review before removing:
 media belong in `web/public/knowledge-examples/`. Browser test inputs belong in
 `tests/fixtures/media/`; they are not shipped as product examples. `runtime/remotion/` provides the native composition, preview and renderer.
 
-### README promotional GIF
+### README artwork and promotional GIF
+
+The root READMEs use localized covers at `docs/assets/readme-hero-zh.webp` and
+`docs/assets/readme-hero-en.webp`, plus the shared `docs/assets/readme-story.webp`
+illustration. These are original generated campaign images, not product
+screenshots or evidence of a completed user video. The visual metaphor is a
+blue line becoming a film ribbon, following the existing wordmark and palette.
+It does not establish a new product UI theme.
+
+`docs/assets/readme-art.json` records the generation prompts, localization
+relationship, asset hashes and reference boundary. Use the image-generation
+workflow for changes to the artwork; both covers must retain their matching
+composition and correct language. The delivered WebP files preserve the generated
+pixels losslessly. Keep the final referenced assets in Git, and temporary
+previews outside the repository. Neither README contains installation commands;
+operational instructions belong in [development](DEVELOPMENT.md) and
+[rolling releases](ROLLING_UPDATES.md).
 
 Both root READMEs embed `docs/assets/yingya-demo.gif`, derived from the current
 homepage film at `web/src/assets/showcase/intro-1-1440.mp4`. It preserves the full

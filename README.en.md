@@ -1,49 +1,61 @@
-<h1 align="center">YingYa · 映芽</h1>
-<p align="center"><strong>Turn ideas into videos.</strong></p>
-<p align="center">Turn ideas, source material, and existing media into videos that explain and are ready to share.</p>
-
 <p align="center">
-  <a href="https://yingya.art/app#/">Start creating</a> ·
-  <a href="https://yingya.art/#style-references">Explore examples</a> ·
-  <a href="docs/README.md">Documentation</a> ·
-  <a href="README.md">简体中文</a>
+  <a href="README.md">简体中文</a> · <strong>English</strong>
 </p>
 
-[![YingYa promotional film: points, lines, shapes, volume, light, and sound in motion](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
+<p align="center">
+  <a href="https://yingya.art/app#/">
+    <img src="docs/assets/readme-hero-en.webp" alt="YingYa — Your ideas, in motion. A blue line unfolds into a ribbon of film." width="100%" />
+  </a>
+</p>
 
-<p align="center">15-second promotional film · Click the GIF to watch with sound on the website.</p>
+<p align="center">
+  <strong>Talk an idea into a video.</strong><br />
+  Bring your material. See the frames. Shape the film together.
+</p>
 
-## What is YingYa?
+<p align="center">
+  <a href="https://yingya.art/app#/">Start creating ↗</a> &nbsp; · &nbsp;
+  <a href="https://yingya.art/#style-references">Find inspiration</a> &nbsp; · &nbsp;
+  <a href="docs/README.md">Documentation</a> &nbsp; · &nbsp;
+  <a href="https://github.com/echonoshy/yingya/issues">Share an idea</a>
+</p>
 
-YingYa is an AI video workspace built around conversation, for educators, knowledge creators, and people explaining products, business processes, or data.
+## 01 / Give your idea a shape.
 
-Start with an idea, text, a web link, a reference video, or your own media. YingYa organizes the story and shows you an outline with actual keyframes. Once you approve the direction, it produces the animation, audio, and video. Review the result and keep refining the same project through conversation.
+YingYa is an AI video workspace. Explain a concept, make sense of data, or introduce a product: start with a few sentences, then add a web page, a reference video, or your own media.
 
-## What you can make
+> “Make a short film for students discovering pendulums. Put a long and a short pendulum side by side so the difference in their periods is easy to see.”
 
-- **Clear explanations**: use animated text, graphics, processes, and charts to explain concepts and data, with your uploaded images, video, and audio.
-- **A plan you can see**: review keyframes rendered from the actual production source before committing to the full video.
-- **Audio and motion shaped around the content**: add narration, captions, and animation according to your brief.
-- **Changes tied to specific moments**: give feedback through screenshots, timestamps, or time ranges, preserving unaffected content and earlier versions.
-- **Videos you can share and revisit**: download an MP4 or share an independent copy of a selected version, then return to the project for further edits.
+![Illustrated creative process: a sketch becomes keyframes, then a finished video](docs/assets/readme-story.webp)
 
-## From an idea to a video
+**Bring a starting point.** Describe the audience, the message, and your references.
 
-1. **Describe the goal**: explain the audience and key message, and add media or style references.
-2. **Review the plan**: check the outline and keyframes, suggest changes, and approve production.
-3. **Watch and refine**: review the video and describe what you want to change.
-4. **Share the result**: download or share the version you are happy with.
+**See the plan first.** Review the outline and keyframes rendered from the actual production source.
 
-For example, start with:
+**Make the video.** Once you approve the plan, YingYa arranges animation, media, narration, and captions to fit your brief.
 
-> Make a roughly 60-second video for students learning about pendulums. Compare a long and a short pendulum side by side, explain how length affects the period with Chinese narration, and finish with a one-sentence takeaway.
+## 02 / Now, set it in motion.
 
-Then refine the result:
+[![YingYa's 15-second promotional film: points, lines, shapes, volume, light, and sound](docs/assets/yingya-demo.gif)](https://yingya.art/#yingya-film)
 
-> Make the title in the second scene bigger and hold the comparison for two more seconds. Keep everything else unchanged.
+<p align="center"><sub>15 seconds of form, light, and motion. Click the GIF to watch the original with sound.</sub></p>
 
-## Inside the project
+- **Explain a concept.** Turn abstract ideas into clear graphics, words, and rhythm.
+- **Make data visible.** Use animated charts, comparisons, and annotations to show what matters.
+- **Introduce a product.** Bring images, video, and sound together into a complete story.
 
-The browser workspace uses React, the backend uses Rust, and the AI Agent interprets the brief and writes and revises the video project. Remotion handles preview and rendering. Each video project keeps its own media, production source, and versions for continued editing and delivery.
+## 03 / Good work gets another pass.
 
-See the [product scope](docs/PRODUCT_POSITIONING.md), [production workflow](docs/VIDEO_PRODUCTION_WORKFLOW.md), and [documentation](docs/README.md) for details. Most product documentation is in Chinese. Questions and suggestions are welcome in [GitHub Issues](https://github.com/echonoshy/yingya/issues).
+> “Make the title in scene two bigger. Hold the comparison for two more seconds. Keep everything else.”
+
+Keep refining through conversation, or use screenshots, timestamps, and time ranges to point to a specific moment. Your project, media, and earlier versions stay available. Download an MP4 or share an independent link to the version you choose.
+
+**From the first plan to the next revision, stay in the same creative workspace.**
+
+---
+
+React powers the workspace, Rust runs the backend, the AI Agent interprets the brief and writes and revises the video project, and Remotion handles preview and rendering.
+
+[Product overview](docs/PRODUCT_POSITIONING.md) · [Production workflow](docs/VIDEO_PRODUCTION_WORKFLOW.md) · [Documentation](docs/README.md) · **[Make your first film ↗](https://yingya.art/app#/)**
+
+<sub>Most project documentation is currently in Chinese.</sub>
