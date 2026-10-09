@@ -1,24 +1,14 @@
-import { VoiceAudioInput } from "./VoiceAudioInput";
 import { ActionDialog } from "./ActionDialog";
-import { CaretDown, Check, CircleNotch, MagicWand, Play, SpeakerHigh, UploadSimple, Waveform } from "@phosphor-icons/react";
+import { CaretDown, Check, CircleNotch, Play, SpeakerHigh, Waveform } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { UploadedVoice } from "../types";
-
-const voiceIdeas = [
-  ["温暖叙述", "温暖可信的青年女声，语速舒缓，吐字清晰，适合品牌故事和生活方式内容"],
-  ["清晰讲解", "沉稳清晰的青年男声，语速适中，逻辑感强，适合知识讲解和产品演示"],
-  ["活力推广", "明亮有活力的年轻女声，节奏轻快但不夸张，适合短视频推广"],
-] as const;
-
-type CreateMode = "list" | "design" | "clone";
 
 export function VoiceSelector({ value, onChange, disabled = false, hideTrigger = false, open: controlledOpen, onOpenChange }: { value: string; onChange: (voiceId: string) => void | Promise<void>; disabled?: boolean; hideTrigger?: boolean; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
-  const [mode, setMode] = useState<CreateMode>("list");
   const [voices, setVoices] = useState<string[]>(["default"]);
   const [uploaded, setUploaded] = useState<UploadedVoice[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,13 +16,6 @@ export function VoiceSelector({ value, onChange, disabled = false, hideTrigger =
   const [error, setError] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [previewing, setPreviewing] = useState("");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState<string>(voiceIdeas[0][1]);
-  const [refText, setRefText] = useState("");
-  const [audio, setAudio] = useState<File | null>(null);
-  const [audioBusy, setAudioBusy] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
-
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
@@ -52,11 +35,11 @@ export function VoiceSelector({ value, onChange, disabled = false, hideTrigger =
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
   const metadata = useMemo(() => new Map(uploaded.map(item => [item.name.toLocaleLowerCase(), item])), [uploaded]);
-  const currentName = value === "default" ? "默认音色" : uploaded.find(item => item.name.toLocaleLowerCase() === value.toLocaleLowerCase())?.name ?? value;
+  const currentName = value === "default" ? "默认音色" : uploaded.find(item => item.name.toLocaleLowerCase() === value.toLocaleLowerCase())?.display_name ?? uploaded.find(item => item.name.toLocaleLowerCase() === value.toLocaleLowerCase())?.name ?? "项目已保存音色";
 
   async function choose(voiceId: string) {
     setWorking(voiceId); setError("");
-    try { await onChange(voiceId); setMode("list"); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); }
+    try { await onChange(voiceId); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "音色设置失败"); }
     finally { setWorking(""); }
   }
@@ -65,42 +48,22 @@ export function VoiceSelector({ value, onChange, disabled = false, hideTrigger =
     setPreviewing(voiceId); setError("");
     try {
       const blob = await api.previewVoice(voiceId);
-      setAudioUrl(current => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
+      setAudioUrl(URL.createObjectURL(blob));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "试听生成失败"); }
     finally { setPreviewing(""); }
   }
 
-  async function createDesign() {
-    if (!name.trim() || !description.trim()) return;
-    setWorking("design"); setError("");
-    try {
-      const created = await api.designVoice({ name: name.trim(), description: description.trim() });
-      await load(); await choose(created.name); setName("");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "音色生成失败"); }
-    finally { setWorking(""); }
-  }
-
-  async function createClone() {
-    if (!name.trim() || !refText.trim() || !audio || audioBusy || !authorized) return;
-    setWorking("clone"); setError("");
-    try {
-      const created = await api.cloneVoice({ name: name.trim(), description: description.trim(), refText: refText.trim(), audio, authorized });
-      await load(); await choose(created.name); setName(""); setRefText(""); setAudio(null); setAuthorized(false);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "克隆音色创建失败"); }
-    finally { setWorking(""); }
-  }
-
   return <div className="voice-selector" ref={root} onKeyDown={event => { if (event.key === "Escape" && open && !working) { event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".voice-trigger")?.focus(); } }}>
-    {hideTrigger ? null : <button type="button" className="voice-trigger" disabled={disabled} onClick={() => { setOpen(!open); setMode("list"); }} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
+    {hideTrigger ? null : <button type="button" className="voice-trigger" disabled={disabled} onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open} title={disabled ? "当前任务完成后可更换音色" : `旁白音色：${currentName}`}>
       <Waveform/><span>{currentName}</span><CaretDown className="control-chevron" aria-hidden="true"/>
     </button>}
     {open ? <ActionDialog title="旁白音色" busy={Boolean(working)} onClose={() => setOpen(false)}><section className="voice-menu">
 
-      {mode === "list" ? <>
+      <>
         <div className="voice-list" aria-busy={loading}>
           {voices.map((voice, index) => {
             const detail = metadata.get(voice.toLocaleLowerCase());
-            const label = voice === "default" ? "默认音色" : detail?.name ?? voice;
+            const label = voice === "default" ? "默认音色" : detail?.display_name ?? detail?.name ?? voice;
             return <div className={`voice-row ${value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? "active" : ""}`} key={voice}>
               <button type="button" className="voice-choice" disabled={Boolean(working)} onClick={() => void choose(voice)}>
                 <span aria-hidden="true">{loading && index === 0 ? <CircleNotch className="spin"/> : <SpeakerHigh/>}</span><div><b>{label}</b>{voice !== "default" ? <small>{detail?.speaker_description || "已保存的项目音色"}</small> : null}</div>{value.toLocaleLowerCase() === voice.toLocaleLowerCase() ? <Check/> : null}
@@ -112,24 +75,9 @@ export function VoiceSelector({ value, onChange, disabled = false, hideTrigger =
         {/* Keep loading feedback out of the centered dialog's height calculation. */}
         <span className="sr-only" role="status">{loading ? "正在读取音色…" : ""}</span>
         {audioUrl ? <audio className="voice-audio" src={audioUrl} controls autoPlay/> : null}
-        <div className="voice-create-actions"><button type="button" onClick={() => setMode("design")}><MagicWand/>描述生成</button><button type="button" onClick={() => setMode("clone")}><UploadSimple/>克隆音色</button></div>
-      </> : <div className="voice-editor">
-        <div className="voice-mode-tabs"><button type="button" className={mode === "design" ? "active" : ""} onClick={() => setMode("design")}>描述生成</button><button type="button" className={mode === "clone" ? "active" : ""} onClick={() => setMode("clone")}>克隆音色</button></div>
-        <label><span>音色名称</span><input value={name} maxLength={32} onChange={event => setName(event.target.value)} placeholder="例如：温暖女声"/></label>
-        {mode === "design" ? <>
-          <label><span>声音描述</span><textarea value={description} maxLength={200} onChange={event => setDescription(event.target.value)} placeholder="描述年龄、音色、语速、情绪与适用场景"/></label>
-          <div className="voice-ideas">{voiceIdeas.map(([label, idea]) => <button type="button" key={label} onClick={() => setDescription(idea)}>{label}</button>)}</div>
-          <p>映芽会先生成一段固定声音样本，再保存为可复用音色；后续旁白不会重新设计声音</p>
-          <button type="button" className="voice-create-primary" disabled={!name.trim() || description.trim().length < 4 || Boolean(working)} onClick={() => void createDesign()}>{working === "design" ? <CircleNotch className="spin"/> : <MagicWand/>}{working === "design" ? "正在生成并固化音色…" : "生成并使用这个音色"}</button>
-        </> : <>
-          <VoiceAudioInput value={audio} onChange={setAudio} disabled={Boolean(working)} onBusyChange={setAudioBusy}/>
-          <label><span>参考音频原文</span><textarea value={refText} maxLength={500} onChange={event => setRefText(event.target.value)} placeholder="逐字填写音频中说出的内容，可显著提高相似度"/></label>
-          <label><span>音色说明（可选）</span><input value={description} maxLength={200} onChange={event => setDescription(event.target.value)} placeholder="例如：沉稳、清晰、适合知识讲解"/></label>
-          <label className="voice-consent"><input type="checkbox" checked={authorized} onChange={event => setAuthorized(event.target.checked)}/><span>我确认已获得声音所有者授权，并同意将此声音用于合成</span></label>
-          <button type="button" className="voice-create-primary" disabled={!name.trim() || !refText.trim() || !audio || audioBusy || !authorized || Boolean(working)} onClick={() => void createClone()}>{working === "clone" ? <CircleNotch className="spin"/> : <UploadSimple/>}{working === "clone" ? "正在保存音色…" : "创建并使用克隆音色"}</button>
-        </>}
-        <button type="button" className="voice-back" onClick={() => setMode("list")}>返回音色列表</button>
-      </div>}
+        <div className="voice-create-actions"><a href="#/assets/generate/voice">管理与创建音色</a></div>
+        {!loading && value !== "default" && !voices.includes(value) ? <p>此项目保留原音色，也可从列表选择其他声音。</p> : null}
+      </>
       {error ? <p className="voice-error" role="alert">{error}</p> : null}
     </section></ActionDialog> : null}
   </div>;

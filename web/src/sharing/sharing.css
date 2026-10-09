@@ -3,7 +3,7 @@
 .share-dialog > header h2 { font-size: var(--text-section); }
 .share-dialog-body { padding: 20px 24px; }
 .share-dialog p, .share-dialog small { line-height: var(--leading-ui); color: var(--muted); font-size: var(--text-caption); }
-.share-dialog button, .share-dialog a, .public-share button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); color: var(--text); font-size: var(--text-control); text-decoration: none; }
+.share-dialog button, .share-dialog a, .public-share button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--button-height); padding: 8px 12px; border: 1px solid var(--button-border); border-radius: var(--radius-button); background: var(--button-surface); color: var(--text); font-size: var(--text-control); text-decoration: none; }
 .share-dialog button:hover, .share-dialog a:hover, .public-share button:hover { background: var(--surface-hover); }
 .share-dialog button.share-primary { background: var(--primary); color: var(--canvas); }
 .share-dialog button:disabled { opacity: .55; cursor: default; }

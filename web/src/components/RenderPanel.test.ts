@@ -1,15 +1,17 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { agentManifestSchema } from "../schemas";
 import type { ProjectDetail } from "../types";
 import { RenderPanel } from "./RenderPanel";
+
+vi.mock("./ActionDialog", () => ({ ActionDialog: ({ children }: { children: ReactNode }) => children }));
 
 function panel({ dirty, current = "v2", active = false, queued = false }: { dirty: boolean; current?: string; active?: boolean; queued?: boolean }) {
   const version = { id: "v2", label: "预览第二版", sourcePath: "snapshots/v2", videoPath: "v2.mp4", reportPath: undefined, createdAt: 2 };
   const project = { id: "project", title: "视频", aspectRatio: "16:9", renderJobs: [], queueDepth: queued ? 1 : 0, activeTurnId: active ? "turn" : null,
     manifest: agentManifestSchema.parse({ schemaVersion: 1, phase: "draft_review", dirty, outputSpec: {}, artifacts: [], versions: [version], currentDraft: current, studioEntry: "index.html" }) } as unknown as ProjectDetail;
-  return renderToStaticMarkup(createElement(RenderPanel, { project, version, onRefresh: async () => {}, onGeneratePreview: () => {} }));
+  return renderToStaticMarkup(createElement(RenderPanel, { project, version, onRefresh: async () => {}, exportRequest: 1 }));
 }
 
 describe("export distinguishes saved scene edits from rendered versions", () => {

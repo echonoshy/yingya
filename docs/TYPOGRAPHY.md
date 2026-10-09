@@ -7,7 +7,7 @@
 | 角色 | 字体与使用位置 |
 | --- | --- |
 | 正文与强调主字 | Noto Sans SC Variable；官网“让想法”、工作内容标题、正文与操作。 |
-| 活泼展示字 | 站酷快乐体子集，CSS 名称 `Yingya Display`；“有画面”、创作／项目／素材／登录固定标题、产品方向入口。 |
+| 活泼展示字 | 站酷快乐体子集，CSS 名称 `Yingya Display`；“有画面”、创作等固定展示标题、产品方向入口。 |
 | 手写短句 | 霞鹜文楷 Regular 子集，CSS 名称 `Yingya Note`；“今天”“一步步”“无限种讲法”、故事方向和“讲法”键帽。 |
 | 衬线强调 | Noto Serif SC 900 子集，CSS 名称 `Yingya Serif`；仅用于覆盖表内的固定字形。 |
 | 数字与快捷键 | 已有依赖 Fragment Mono 的 Latin 400；序号、Enter、时间和等宽字符。 |

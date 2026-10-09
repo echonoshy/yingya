@@ -26,6 +26,10 @@ class ImageJobsRuntime(rolling.RollingRuntime):
         self.assertEqual(accepted['status'], 'running')
         self.assertEqual(self.request(path, payload)['id'], accepted['id'])
         self.assertEqual(len(self.request(path)), 1)
+        with self.assertRaises(urllib.error.HTTPError) as active:
+            self.request(path + '/' + accepted['id'], method='DELETE')
+        self.assertEqual(active.exception.code, 409)
+        self.assertEqual(self.request(path, method='DELETE'), [])
         with self.assertRaises(urllib.error.HTTPError) as conflict:
             self.request(path, dict(payload, prompt='different'))
         self.assertEqual(conflict.exception.code, 409)
@@ -37,6 +41,9 @@ class ImageJobsRuntime(rolling.RollingRuntime):
         other = json.loads(subprocess.check_output([str(rolling.BINARY), 'admin-create', 'imageother', 'other@example.test'], env=self.env, cwd=rolling.REPO, text=True))
         self.request('/api/auth/login', {'email': other['email'], 'password': other['password']})
         self.assertEqual(self.request(path), [])
+        with self.assertRaises(urllib.error.HTTPError) as forbidden:
+            self.request(path + '/' + accepted['id'], method='DELETE')
+        self.assertEqual(forbidden.exception.code, 404)
         with self.assertRaises(urllib.error.HTTPError):
             self.request('/api/u/' + self.user['id'] + '/assets/image-jobs')
         self.request('/api/auth/login', {'email': self.user['email'], 'password': self.user['password']})
@@ -62,6 +69,23 @@ class ImageJobsRuntime(rolling.RollingRuntime):
         self.wait(lambda: any(j['id'] == failed['id'] and j['status'] == 'failed' and j['error'] for j in self.request(path)))
         self.assertEqual(len(self.request(path)), 3)
         self.assertEqual(len(self.request('/api/assets/library')['assets']), 2)
+
+        # History deletion is persistent and does not remove media or replay old requests.
+        self.assertEqual(self.request(path + '/' + completed['id'], method='DELETE'), [completed['id']])
+        self.assertEqual(len(self.request(path)), 2)
+        self.assertEqual(len(self.request(path, method='DELETE')), 1)
+        self.assertEqual([j['id'] for j in self.request(path)], [failed['id']])
+        self.assertEqual(self.request(path, method='DELETE'), [])
+        self.assertEqual(self.request(path + '/' + failed['id'], method='DELETE'), [failed['id']])
+        with self.assertRaises(urllib.error.HTTPError) as cleared:
+            self.request(path, payload)
+        self.assertEqual(cleared.exception.code, 409)
+        self.assertEqual(len(self.request('/api/assets/library')['assets']), 2)
+        self.assertTrue(self.request(completed['images'][0]['url']).startswith(b'\x89PNG'))
+        self.make_release('v3')
+        self.release('v3')
+        self.wait(lambda: self.worker()['release'] == 'v3')
+        self.assertEqual(self.request(path), [])
 
 if __name__ == '__main__':
     suite = unittest.TestSuite([ImageJobsRuntime('test_image_jobs_survive_disconnect_and_release')])

@@ -21,7 +21,7 @@ export function ModelSelector({ models, value, onChange, variant = "default", di
   models: CodexModel[];
   value: ModelSelection;
   onChange: (value: ModelSelection) => void;
-  variant?: "default" | "creation";
+  variant?: "default" | "creation" | "workspace";
   disabled?: boolean;
 }) {
   const menuModels = useMemo(() => selectableModels(models), [models]);
@@ -51,7 +51,7 @@ export function ModelSelector({ models, value, onChange, variant = "default", di
   const displayName = matchingModel?.displayName ?? value.model;
   const effortName = effortLabels[value.reasoningEffort] ?? value.reasoningEffort;
 
-  return <div className={`model-selector${variant === "creation" ? " model-selector--creation" : ""}`} ref={root} onKeyDown={event => {
+  return <div className={`model-selector${variant !== "default" ? ` model-selector--${variant}` : ""}`} ref={root} onKeyDown={event => {
     if (disabled) return;
     if (open && event.key === "Tab") setOpen(false);
     if (!open && event.key === "ArrowDown") { event.preventDefault(); setOpen(true); return; }
@@ -63,8 +63,8 @@ export function ModelSelector({ models, value, onChange, variant = "default", di
       items[next]?.focus();
     }
     if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); root.current?.querySelector<HTMLButtonElement>(".model-trigger")?.focus(); } }}>
-    <button type="button" className="model-trigger" disabled={disabled} aria-label={`制作助手模型：${displayName}，思考深度：${effortName}`} title={`制作助手模型：${displayName} · ${effortName}`} aria-controls={presence.value ? menuId : undefined} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
-      {variant === "creation" ? <><Cpu className="model-trigger-icon" aria-hidden="true"/><span className="model-trigger-label"><span className="model-trigger-name">{displayName}</span><span className="model-trigger-effort">{effortName}</span></span></> : <span className="model-trigger-label">{displayName} · {effortName}</span>}<CaretDown className="control-chevron" aria-hidden="true"/>
+    <button type="button" className="model-trigger" disabled={disabled} aria-label={`制作助手模型：${displayName}，思考深度：${effortName}`} title={`制作助手模型：${displayName} · 思考深度：${effortName}`} aria-controls={presence.value ? menuId : undefined} onClick={() => setOpen(current => !current)} aria-haspopup="menu" aria-expanded={open}>
+      {variant !== "default" ? <>{variant === "creation" ? <Cpu className="model-trigger-icon" aria-hidden="true"/> : null}<span className="model-trigger-label"><span className="model-trigger-name">{displayName}</span><span className="model-trigger-effort">{effortName}</span></span></> : <span className="model-trigger-label">{displayName} · {effortName}</span>}<CaretDown className="control-chevron" aria-hidden="true"/>
     </button>
     {presence.value ? <div id={menuId} ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} className="model-menu" role="menu" style={position}>
       <div className="model-menu-primary" role="group" aria-label="制作助手模型">

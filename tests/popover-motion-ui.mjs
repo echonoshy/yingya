@@ -96,19 +96,16 @@ try {
   await page.getByRole('button', { name: '添加素材', exact: true }).click();
   await page.getByRole('menuitem', { name: '素材库', exact: true }).click();
   await page.locator('.cap-modal').waitFor();await page.keyboard.press('Escape');await page.locator('.cap-modal').waitFor({state:'detached'});
-  await page.getByRole('button', { name: '生成参考图', exact: true }).click();
+  await page.getByRole('button', { name: '添加素材', exact: true }).click();
+  await page.getByRole('menuitem', { name: '内置内容', exact: true }).click();
   await settled('.action-dialog');
-  await closeFrames('.action-dialog', () => page.keyboard.press('Escape'), 'reference image dialog');
+  await closeFrames('.action-dialog', () => page.keyboard.press('Escape'), 'builtin content dialog');
   // Native popovers use immediate dismissal: no retained flash or stale open state.
   await page.getByRole('button', { name: /参考时长：/ }).click();
   await page.getByRole('dialog', { name: '参考时长', exact: true }).waitFor();
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('.duration-panel').evaluate(el => el.matches(':popover-open')), false);
   await page.goto(base + '/app#/assets');
-  await page.getByRole('button', { name: '创建素材', exact: true }).click();
-  await page.getByRole('menu', { name: '创建素材', exact: true }).waitFor();
-  await page.locator('h1').click();
-  assert.equal(await page.locator('.asset-create-menu').count(), 0);
   await page.getByRole('combobox', { name: '素材排序' }).click(); await page.keyboard.press('Escape');
   assert.equal(await page.locator('.select-control-menu:popover-open').count(), 0);
   await page.goto(base + '/app#/');

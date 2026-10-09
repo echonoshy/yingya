@@ -1,5 +1,6 @@
+import { assetName } from "../assetNames";
 import { useUploadQueue } from "../hooks/useUploadQueue";
-import { UploadProgressList } from "./UploadProgressList";
+import { ComposerAttachments } from "./ComposerAttachments";
 import { SelectControl } from "./SelectControl";
 import { BrandWordmark } from "../marketing/BrandLogo";
 import { FeedbackResults } from "./FeedbackResults";
@@ -11,19 +12,15 @@ import { ProductStoryboard } from "./ProductStoryboard";
 import {
   sceneRevisionContext,
   sceneRevisionPrefix,
-  sceneRevisionPrompt,
   sceneRevisionLabel,
   sceneRevisionSchema,
-  type SceneRevision,
 } from "../sceneRevision";
 import { flushSync } from "react-dom";
-import { AssetRoleSelect } from "./AssetRoleSelect";
 import { useWorkbench } from "../hooks/useWorkbench";
 import {
   assetRoleLabels,
   fileRoleKey,
   materialOnlyPrompt,
-  regeneratePreviewPrompt,
   sceneAtTime,
   sceneStart,
   sourceFilePath,
@@ -41,7 +38,6 @@ import { ActionDialog } from "./ActionDialog";
 import type { ContentCategory } from "../projectContents";
 import { AssetPicker } from "./AssetPicker";
 import { PlanDocument } from "./PlanDocument";
-import { LiveCompositionPreview } from "./LiveCompositionPreview";
 import { PlaybackBar } from "./PlaybackBar";
 import { TimeRangeDialog } from "./TimeRangeDialog";
 import {
@@ -76,13 +72,10 @@ import {
   DownloadSimple,
   Eye,
   File,
-  FileAudio,
-  FileText,
   PencilSimple,
   Queue,
   Stop,
   Terminal,
-  VideoCamera,
   Warning,
   X,
 } from "@phosphor-icons/react";
@@ -257,7 +250,6 @@ export function AgentWorkspace({
   }
   const rangeDraftRef = useRef<{ key: string; draft: FeedbackDraft } | null>(null);
   const attemptRef = useRef<SubmissionAttempt | null>(null);
-  const previewAttemptRef = useRef<SubmissionAttempt | null>(null);
   const [sendStage, setSendStage] = useState<
     "idle" | "uploading" | "sending" | "sent" | "failed"
   >("idle");
@@ -266,13 +258,7 @@ export function AgentWorkspace({
     turnId: string;
     queued: boolean;
   } | null>(null);
-  const [assetFeedback, setAssetFeedback] = useState("");
   const [submissionSyncFailed, setSubmissionSyncFailed] = useState(false);
-  useEffect(() => {
-    if (!assetFeedback) return;
-    const timer = window.setTimeout(() => setAssetFeedback(""), 4000);
-    return () => window.clearTimeout(timer);
-  }, [assetFeedback]);
   const [confirming, setConfirming] = useState(false);
   const sendingRef = useRef(false);
   const [exportRequest, setExportRequest] = useState(0);
@@ -287,10 +273,11 @@ export function AgentWorkspace({
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
-  const maxThreadWidth = Math.max(320, Math.min(560, viewportWidth - 480));
+  const minThreadWidth = 280;
+  const maxThreadWidth = Math.max(minThreadWidth, viewportWidth - 400);
   const visibleThreadWidth = Math.min(
     maxThreadWidth,
-    Math.max(320, threadWidth),
+    Math.max(minThreadWidth, threadWidth),
   );
   const [libraryAssets, setLibraryAssets] = useState<AssetLibraryItem[]>([]);
   const [libraryFolders, setLibraryFolders] = useState<AssetFolder[]>([]);
@@ -300,7 +287,7 @@ export function AgentWorkspace({
     [],
   );
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  const [assetRoles, setAssetRoles] = useSavedState(
+  const [assetRoles] = useSavedState(
     `yingya-draft-asset-roles:${project.id}`,
     z.record(z.string(), assetRoleSchema),
     {},
@@ -463,7 +450,6 @@ export function AgentWorkspace({
   }
 
   function clearSubmissionFeedback() {
-    setAssetFeedback("");
     if (sendingRef.current || (sendStage !== "sent" && sendStage !== "failed"))
       return;
     setSendStage("idle");
@@ -490,7 +476,6 @@ export function AgentWorkspace({
     sendingRef.current = true;
     setBusy(true);
     setError("");
-    setAssetFeedback("");
     setSubmissionSyncFailed(false);
     setSendStage(
       files.length ||
@@ -577,13 +562,13 @@ export function AgentWorkspace({
                 index < files.length
                   ? fileRoleKey(files[index])
                   : `library:${selectedAssets[index - files.length].id}`
-              ] ?? "auto",
+              ] ?? "reference",
             ),
           ),
         );
         const assetContexts = selectedAssets.map(
           (asset) =>
-            `素材 · ${assetName(asset)}（${assetRoleLabels[assetRoles[`library:${asset.id}`] ?? "auto"]}）`,
+            `素材 · ${assetName(asset)}（${assetRoleLabels[assetRoles[`library:${asset.id}`] ?? "reference"]}）`,
         );
         const submissionContexts = contexts.map((value) => {
           if (!value.startsWith(sceneRevisionPrefix)) return value;
@@ -648,6 +633,7 @@ export function AgentWorkspace({
         queued: accepted.status === "queued",
       });
       setSendStage("sent");
+      uploads.clearCompleted();
       try {
         await refresh();
       } catch {
@@ -656,63 +642,6 @@ export function AgentWorkspace({
     } catch (reason) {
       setSendStage("failed");
       setError(reason instanceof Error ? reason.message : "消息发送失败");
-    } finally {
-      sendingRef.current = false;
-      setBusy(false);
-    }
-  }
-  async function generatePreview() {
-    if (
-      busy ||
-      running ||
-      project.queueDepth > 0 ||
-      oldVersion ||
-      !selectedVersion ||
-      !project.manifest.dirty ||
-      sendingRef.current
-    )
-      return;
-    sendingRef.current = true;
-    setBusy(true);
-    setError("");
-    const signature = JSON.stringify({
-      baseVersionId: selectedVersion.id,
-      ...selection,
-    });
-    const attempt =
-      previewAttemptRef.current?.signature === signature
-        ? previewAttemptRef.current
-        : submissionAttempt(project.id, signature);
-    previewAttemptRef.current = attempt;
-    attempt.input ??= {
-      baseVersionId: selectedVersion.id,
-      clientRequestId: attempt.id,
-      text: regeneratePreviewPrompt,
-      interrupt: false,
-      ...selection,
-    };
-    try {
-      const accepted = await api.sendTurn(project.id, attempt.input);
-      previewAttemptRef.current = null;
-      setSendResult({
-        label: "已提交新版预览制作",
-        turnId: accepted.turnId,
-        queued: accepted.status === "queued",
-      });
-      setSendStage("sent");
-      setMobilePanel("thread");
-      try {
-        await refresh();
-      } catch {
-        setSubmissionSyncFailed(true);
-      }
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "新版预览请求发送失败，请重试",
-      );
-      setMobilePanel("thread");
     } finally {
       sendingRef.current = false;
       setBusy(false);
@@ -775,26 +704,6 @@ export function AgentWorkspace({
     setText(current => current.trim() && current.trim() !== value.trim() ? `${current.trimEnd()}\n\n${value}` : value);
     setMobilePanel("thread");
     composerRef.current?.focus();
-    requestAnimationFrame(() => composerRef.current?.focus());
-  }
-  function prepareSceneRevision(revision: SceneRevision, file?: File) {
-    if (contexts.some((value) => value.startsWith(sceneRevisionPrefix))) {
-      setError("请先发送或移除当前镜头修改，再选择下一处修改");
-      return;
-    }
-    if (revision.versionId !== selectedVersion?.id || oldVersion) {
-      setError("请切到当前版本后修改");
-      return;
-    }
-    clearSubmissionFeedback();
-    setContexts((current) => [...current, sceneRevisionContext(revision)]);
-    setText((current) =>
-      [current.trim(), sceneRevisionPrompt(revision)]
-        .filter(Boolean)
-        .join("\n\n"),
-    );
-    if (file) setFiles((current) => [...current, file]);
-    setMobilePanel("thread");
     requestAnimationFrame(() => composerRef.current?.focus());
   }
   async function answerWaitingInput(choice: string) {
@@ -882,7 +791,7 @@ export function AgentWorkspace({
   } as CSSProperties;
   function dragThread(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId))
-      setThreadWidth(Math.min(maxThreadWidth, Math.max(320, event.clientX - event.currentTarget.parentElement!.getBoundingClientRect().left)));
+      setThreadWidth(Math.min(maxThreadWidth, Math.max(minThreadWidth, event.clientX - event.currentTarget.parentElement!.getBoundingClientRect().left)));
   }
   function finishResize(
     event: ReactPointerEvent<HTMLDivElement>,
@@ -902,14 +811,14 @@ export function AgentWorkspace({
     max: number,
     direction: number,
   ) {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const arrowDirection = event.key === "ArrowLeft" ? -1 : 1;
     const next = Math.min(
       max,
       Math.max(
         min,
-        value + arrowDirection * direction * (event.shiftKey ? 24 : 8),
+        event.key === "Home" ? min : event.key === "End" ? max : value + arrowDirection * direction * (event.shiftKey ? 24 : 8),
       ),
     );
     setValue(next);
@@ -921,7 +830,6 @@ export function AgentWorkspace({
       (asset) => !selectedAssets.some((selected) => selected.id === asset.id),
     );
     if (!additions.length) return;
-    setAssetFeedback(`已加入 ${additions.length} 个参考文件，可在对话中发送`);
     setSelectedAssets((items) => {
       const selectedIds = new Set(items.map((item) => item.id));
       return [
@@ -931,16 +839,8 @@ export function AgentWorkspace({
     });
   }
   const chat = (
-    <main className="thread">
-      <header className="thread-header">
-        <div>
-          <span>创作对话</span>
-          <b>{running ? "正在制作" : visibleCheckpoint ? "等待确认" : selectedVersion ? "可以继续修改" : "随时补充想法"}</b>
-        </div>
-        {titleError ? (
-          <small className="thread-title-error">{titleError}</small>
-        ) : null}
-      </header>
+    <main className="thread" aria-label="创作对话">
+      {titleError ? <p className="thread-title-error" role="alert">{titleError}</p> : null}
       <section
         className="timeline"
         aria-label="创作消息"
@@ -1137,29 +1037,10 @@ export function AgentWorkspace({
                 setSelectedAssets((items) =>
                   items.filter((item) => item.id !== asset.id),
                 );
-                setAssetFeedback(`已移除 ${assetName(asset)}`);
               } else selectReferenceAssets([asset]);
             }}
           />
         ) : null}
-        <SelectedAssetChips
-          assets={selectedAssets}
-          roles={assetRoles}
-          onRole={(id, role) =>
-            setAssetRoles((current) => ({
-              ...current,
-              [`library:${id}`]: role,
-            }))
-          }
-          onRemove={(asset) => {
-            clearSubmissionFeedback();
-            setSelectedAssets((items) =>
-              items.filter((item) => item.id !== asset.id),
-            );
-            setAssetFeedback(`已移除 ${assetName(asset)}`);
-            composerRef.current?.focus({ preventScroll: true });
-          }}
-        />
         {contexts.length ? (
           <div className="context-chips">
             {contexts.map((value) => (
@@ -1179,7 +1060,6 @@ export function AgentWorkspace({
             ))}
           </div>
         ) : null}
-        <UploadProgressList items={uploads.items} onClear={uploads.clearCompleted}/>
         <div
           className="composer-feedback"
           role="status"
@@ -1195,11 +1075,6 @@ export function AgentWorkspace({
             <span className="composer-feedback-error">
               <Warning />
               发送未完成，可重试
-            </span>
-          ) : assetFeedback ? (
-            <span key={assetFeedback}>
-              <Check />
-              {assetFeedback}
             </span>
           ) : sendStage === "sent" &&
             sendResult &&
@@ -1237,6 +1112,14 @@ export function AgentWorkspace({
             setFiles((current) => [...current, ...added]);
           }}
         >
+          <ComposerAttachments
+            files={files}
+            assets={selectedAssets}
+            uploads={uploads.items}
+            disabled={busy}
+            onRemoveFile={file => { clearSubmissionFeedback(); setFiles(current => current.filter(item => item !== file)); composerRef.current?.focus({ preventScroll: true }); }}
+            onRemoveAsset={asset => { clearSubmissionFeedback(); setSelectedAssets(current => current.filter(item => item.id !== asset.id)); composerRef.current?.focus({ preventScroll: true }); }}
+          />
           {showRequirementsHint ? (
             <p
               className="composer-requirements-hint"
@@ -1272,34 +1155,6 @@ export function AgentWorkspace({
               running ? "继续输入，默认排到当前任务之后…" : "描述想修改的内容…"
             }
           />
-          <div className="attachment-row">
-            {files.map((file, index) => (
-              <span key={`${file.name}-${index}`}>
-                {file.name}
-                <AssetRoleSelect
-                  name={file.name}
-                  value={assetRoles[fileRoleKey(file)]}
-                  disabled={busy}
-                  onChange={(role) =>
-                    setAssetRoles((current) => ({
-                      ...current,
-                      [fileRoleKey(file)]: role,
-                    }))
-                  }
-                />
-                <button
-                  type="button"
-                  aria-label={`移除 ${file.name}`}
-                  onClick={() =>
-                    setFiles((value) => value.filter((item) => item !== file))
-                  }
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-
           <div className="composer-tools composer-toolbar">
             <div className="composer-resources">
               <ComposerMoreMenu
@@ -1326,6 +1181,7 @@ export function AgentWorkspace({
             <div className="composer-delivery">
               <div className="composer-settings">
                 <ModelSelector
+                  variant="workspace"
                   models={models}
                   value={selection}
                   onChange={onSelection}
@@ -1452,7 +1308,7 @@ export function AgentWorkspace({
               <PencilSimple />
             </button>
           )}
-          <span className={`project-state project-state--${project.status}`}>
+          <span className={`project-state project-state--${project.status}`} title={state.sourceNotice || undefined}>
             {state.label}
           </span>
         </div>
@@ -1462,14 +1318,12 @@ export function AgentWorkspace({
           <button
             className="export-button"
             aria-label="分享与下载"
-            onClick={() => {
-              selectCanvasTab("preview");
-              setMobilePanel("canvas");
-              setExportRequest((value) => value + 1);
-            }}
+            aria-haspopup="dialog"
+            title="分享与下载"
+            onClick={() => setExportRequest((value) => value + 1)}
           >
-            <DownloadSimple />
-            <span>分享与下载</span>
+            {project.renderJobs.some(job => job.status === "queued" || job.status === "running") ? <CircleNotch className="spin"/> : <DownloadSimple/>}
+            <span>{project.renderJobs.some(job => job.status === "queued" || job.status === "running") ? "正在导出" : "分享与下载"}</span>
           </button>
         </div>
       </header>
@@ -1478,7 +1332,7 @@ export function AgentWorkspace({
         role="separator"
         aria-label="调整创作对话宽度"
         aria-orientation="vertical"
-        aria-valuemin={320}
+        aria-valuemin={minThreadWidth}
         aria-valuemax={maxThreadWidth}
         aria-valuenow={visibleThreadWidth}
         tabIndex={0}
@@ -1488,12 +1342,12 @@ export function AgentWorkspace({
             visibleThreadWidth,
             setThreadWidth,
             "yingya-review-thread-width",
-            320,
+            minThreadWidth,
             maxThreadWidth,
             1,
           )
         }
-        onDoubleClick={() => { const next = Math.min(maxThreadWidth, Math.max(320, Math.round(viewportWidth * .32))); setThreadWidth(next); writeNumberSetting("yingya-review-thread-width", next); }}
+        onDoubleClick={() => { const next = Math.min(maxThreadWidth, Math.max(minThreadWidth, Math.min(440, Math.round(viewportWidth * .32)))); setThreadWidth(next); writeNumberSetting("yingya-review-thread-width", next); }}
         onPointerDown={(event) =>
           event.currentTarget.setPointerCapture(event.pointerId)
         }
@@ -1560,11 +1414,6 @@ export function AgentWorkspace({
       </ActionDialog> : null}
       <ArtifactCanvas
         onVideoDuration={(path, duration) => { if (Number.isFinite(duration)) videoDurations.current.set(path, duration); }}
-        onRevision={prepareSceneRevision}
-        generationDisabled={
-          busy || running || project.queueDepth > 0 || oldVersion
-        }
-        onGeneratePreview={() => void generatePreview()}
         selectedVersionId={selectedVersion?.id ?? ""}
         onSelectVersion={selectVersion}
         exportRequest={exportRequest}
@@ -1590,84 +1439,11 @@ export function AgentWorkspace({
           feedbackDraft.items.length >= 8
         }
         onTimedFeedback={addTimedFeedback}
-        onCompose={selectQuickReply}
         onRefresh={refresh}
       />
     </div>
   );
   return legacy;
-}
-
-function SelectedAssetChips({
-  assets,
-  onRemove,
-  roles,
-  onRole,
-}: {
-  assets: AssetLibraryItem[];
-  roles: Record<string, import("../types").AssetRole>;
-  onRole: (id: string, role: import("../types").AssetRole) => void;
-  onRemove: (asset: AssetLibraryItem) => void;
-}) {
-  const [previous, setPrevious] = useState(assets);
-  const [visible, setVisible] = useState(() =>
-    assets.map((asset) => ({ asset, exiting: false })),
-  );
-  if (previous !== assets) {
-    setPrevious(assets);
-    // The parent selection changes immediately; retain only the visual shell during exit.
-    setVisible((current) => [
-      ...current.map((item) => ({
-        asset: assets.find((asset) => asset.id === item.asset.id) ?? item.asset,
-        exiting: !assets.some((asset) => asset.id === item.asset.id),
-      })),
-      ...assets
-        .filter((asset) => !current.some((item) => item.asset.id === asset.id))
-        .map((asset) => ({ asset, exiting: false })),
-    ]);
-  }
-  return (
-    <div
-      className={`selected-asset-chips ${assets.length ? "" : "selected-asset-chips--empty"}`}
-      role="group"
-      aria-label="已选择素材"
-    >
-      {visible.map(({ asset, exiting }) => (
-        <span
-          key={asset.id}
-          className={exiting ? "is-exiting" : ""}
-          aria-hidden={exiting || undefined}
-          inert={exiting}
-          onAnimationEnd={(event) => {
-            if (event.target === event.currentTarget && exiting)
-              setVisible((items) =>
-                items.filter(
-                  (item) => item.asset.id !== asset.id || !item.exiting,
-                ),
-              );
-          }}
-        >
-          <AssetReferenceThumb asset={asset} />
-          <span>
-            <b>{assetName(asset)}</b>
-            <small>{assetTypeLabel(asset)}</small>
-          </span>
-          <button
-            type="button"
-            aria-label={`移除素材 ${assetName(asset)}`}
-            onClick={() => onRemove(asset)}
-          >
-            <X />
-          </button>
-          <AssetRoleSelect
-            name={assetName(asset)}
-            value={roles[`library:${asset.id}`]}
-            onChange={(role) => onRole(asset.id, role)}
-          />
-        </span>
-      ))}
-    </div>
-  );
 }
 
 function ConnectionBadge({ state }: { state: AgentConnectionState }) {
@@ -2282,9 +2058,6 @@ function WorkflowRecoveryCard({
 
 function ArtifactCanvas({
   onVideoDuration,
-  onRevision,
-  generationDisabled,
-  onGeneratePreview,
   selectedVersionId,
   onSelectVersion,
   exportRequest,
@@ -2300,13 +2073,9 @@ function ArtifactCanvas({
   onPreview,
   onContext,
   onTimedFeedback,
-  onCompose,
   onRefresh,
 }: {
   onVideoDuration: (path: string, duration: number) => void;
-  onRevision: (revision: SceneRevision, file?: File) => void;
-  generationDisabled: boolean;
-  onGeneratePreview: () => void;
   selectedVersionId: string;
   onSelectVersion: (id: string) => void;
   exportRequest: number;
@@ -2321,7 +2090,6 @@ function ArtifactCanvas({
   onTab: (value: CanvasTab) => void;
   onPreview: (artifact: Artifact) => void;
   onContext: (value: string) => void;
-  onCompose: (text: string) => void;
   onTimedFeedback: (
     versionId: string,
     videoPath: string,
@@ -2332,18 +2100,6 @@ function ArtifactCanvas({
   const [rangeOpen, setRangeOpen] = useState(false);
   const [videoDuration, setVideoDuration] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
-  const exportRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!exportRequest) return;
-    const frame = requestAnimationFrame(() => {
-      exportRef.current?.scrollIntoView({
-        block: "center",
-        behavior: "instant",
-      });
-      exportRef.current?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [exportRequest]);
   const tabListRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!contentRef.current) return;
@@ -2397,7 +2153,6 @@ function ArtifactCanvas({
   const [captureError, setCaptureError] = useState("");
   const [videoLoadError, setVideoLoadError] = useState(false);
   const [videoRetry, setVideoRetry] = useState(0);
-  const [livePreview, setLivePreview] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const version = selectedProjectVersion(project, versionId);
@@ -2419,7 +2174,6 @@ function ArtifactCanvas({
   };
   useEffect(() => {
     setPlaybackTime(0);
-    setLivePreview(false);
   }, [version?.id]);
   const updatePlayback = useCallback((time: number) => {
     setPlaybackTime(Math.floor(time * 10) / 10);
@@ -2439,10 +2193,10 @@ function ArtifactCanvas({
     finalVideoArtifact?.path ?? version?.videoPath ?? videoArtifact?.path;
   useEffect(() => {
     setVideoLoadError(false); setVideoDuration(0); setRangeOpen(false);
-    if (!videoPath || activeTab !== "preview" || livePreview) return;
+    if (!videoPath || activeTab !== "preview") return;
     const timer = window.setTimeout(() => { if (!videoRef.current || videoRef.current.readyState < 2) setVideoLoadError(true); }, 15000);
     return () => clearTimeout(timer);
-  }, [videoPath, version?.id, activeTab, videoRetry, livePreview]);
+  }, [videoPath, version?.id, activeTab, videoRetry]);
   const canAnnotate = Boolean(
     version &&
     videoPath &&
@@ -2623,16 +2377,7 @@ function ArtifactCanvas({
             </button>
           ))}
         </div>
-        <div>
-          {workflowState(project).sourceNotice ? (
-            <span
-              className="dirty-chip"
-              title={workflowState(project).sourceNotice}
-            >
-              源文件有更新
-            </span>
-          ) : null}
-        </div>
+
       </header>
       {rollbackError ? (
         <p className="form-error" role="alert">
@@ -2658,10 +2403,6 @@ function ArtifactCanvas({
                           : "视频预览"
                         : "视频预览"}
                     </h3>
-                    <div className="preview-mode" role="group" aria-label="预览来源">
-                      <button aria-pressed={!livePreview} onClick={() => setLivePreview(false)}>成片</button>
-                      <button aria-pressed={livePreview} onClick={() => { videoRef.current?.pause(); setLivePreview(true); }}>实时画面</button>
-                    </div>
                   </div>
                   {project.activeTurnId && version ? (
                     <div className="preview-version-notice">
@@ -2672,7 +2413,7 @@ function ArtifactCanvas({
                       </span>
                     </div>
                   ) : null}
-                  {livePreview ? <LiveCompositionPreview key={project.id} projectId={project.id} onCompose={onCompose}/> : <div
+                  <div
                     className={`preview-stage-shell ${videoPath ? "" : "preview-stage-shell--planning"}`}
                   >
                     <div
@@ -2722,8 +2463,8 @@ function ArtifactCanvas({
                       )}
                     </div>
                     {videoPath ? <PlaybackBar videoRef={videoRef} sourceKey={`${version?.id}:${videoPath}:${videoRetry}`}/> : null}
-                  </div>}
-                  {videoPath && !livePreview ? (
+                  </div>
+                  {videoPath ? (
                     <>
                       {videoLoadError ? <p className="form-error" role="alert">视频暂时无法读取，已有作品和意见仍已保留<button onClick={() => setVideoRetry(value => value + 1)}>重新加载视频</button></p> : null}
                       <div className="canvas-actions">
@@ -2821,17 +2562,10 @@ function ArtifactCanvas({
                       ) : null}
                     </>
                   ) : null}
-                  {view?.scenes.length && !livePreview ? (
+                  {view?.scenes.length ? (
                     <ProductStoryboard
                       scenes={versionMedia.scenes}
-                      assets={versionMedia.assets}
                       selectedId={version ? resolvedSceneId : undefined}
-                      versionId={version?.id}
-                      scenesRevision={view.scenesRevision}
-                      disabled={generationDisabled}
-                      onCompose={onCompose}
-                      onRevision={onRevision}
-                      onBeginRevision={() => videoRef.current?.pause()}
                       onSelect={(scene) => {
                         const time = sceneStart(scene, bindings);
                         if (time !== undefined && videoRef.current) {
@@ -2844,45 +2578,25 @@ function ArtifactCanvas({
                     />
                   ) : null}
                   {workbench.error ? (
-                    <p className="form-error" role="alert">
-                      素材信息读取失败：{workbench.error}
+                    <div className="workbench-read-error" role="alert">
+                      <span>{workbench.error}</span>
                       <button type="button" onClick={workbench.refresh}>
-                        重试
+                        重新读取
                       </button>
-                    </p>
+                    </div>
                   ) : null}
                   <FeedbackResults project={project} onRetry={onFeedback} onView={(id,time) => { if (time !== undefined) writeNumberSetting(`yingya-video-time:${project.id}:${id}`, time); setVersionId(id); if (id === version?.id && time !== undefined && videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = time; } }}/>
                   {version ? (
                     <VersionComparison project={project} current={version} />
                   ) : null}
-                  <div
-                    ref={exportRef}
-                    className="export-destination"
-                    role="group"
-                    tabIndex={-1}
-                    aria-label="导出设置"
-                  >
-                    {version ? (
-                      <PersistentRenderPanel
-                        onGeneratePreview={onGeneratePreview}
-                        generationDisabled={generationDisabled}
-                        project={project}
-                        version={version}
-                        videoPath={videoPath}
-                        exportRequest={exportRequest}
-                        onRefresh={onRefresh}
-                      />
-                    ) : exportRequest ? (
-                      <p role="status">
-                        视频生成后，可在这里分享或下载。
-                      </p>
-                    ) : null}
-                  </div>
+
                 </div>
               </section>
             ) : null}
             {activeTab === "contents" ? <ProjectContentPanel project={project} query={artifactQuery} onQuery={setArtifactQuery} category={contentCategory} onCategory={setContentCategory} onPreview={onPreview} onContext={onContext} onAdd={onAddAssets}/> : null}
       </div>
+      <PersistentRenderPanel project={project} version={version} videoPath={videoPath} exportRequest={exportRequest} onRefresh={onRefresh}/>
+
     </section>
   );
 }
@@ -2919,51 +2633,7 @@ function saveVideoTime(video: HTMLVideoElement, key: string) {
   )
     writeNumberSetting(key, video.currentTime);
 }
-function assetName(asset: AssetLibraryItem) {
-  return asset.sourceName?.trim() || asset.prompt?.trim() || "未命名素材";
-}
-function assetTypeLabel(asset: AssetLibraryItem) {
-  return (
-    {
-      image: "图片",
-      video: "视频",
-      audio: "音频",
-      document: "文档",
-      file: "文件",
-    } as const
-  )[asset.category];
-}
-function AssetReferenceThumb({ asset }: { asset: AssetLibraryItem }) {
-  if (asset.category === "image")
-    return (
-      <span className="asset-reference-thumb">
-        <img src={asset.url} alt="" />
-      </span>
-    );
-  if (asset.category === "video")
-    return (
-      <span className="asset-reference-thumb">
-        <VideoCamera />
-      </span>
-    );
-  if (asset.category === "audio")
-    return (
-      <span className="asset-reference-thumb">
-        <FileAudio />
-      </span>
-    );
-  if (asset.category === "document")
-    return (
-      <span className="asset-reference-thumb">
-        <FileText />
-      </span>
-    );
-  return (
-    <span className="asset-reference-thumb">
-      <File />
-    </span>
-  );
-}
+
 async function uploadLibraryAsset(projectId: string, asset: AssetLibraryItem) {
   return api.importLibraryAsset(asset.id, projectId);
 }

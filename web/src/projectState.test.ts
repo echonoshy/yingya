@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { projectDetailSchema } from './schemas';
-import { workflowState, projectSummary, projectCategory } from './projectState';
+import { workflowState, projectSummary, projectCategory, projectStatus } from './projectState';
 const make = () => projectDetailSchema.parse({ id: 'p', title: '视频', status: 'waiting_input', statusLabel: '等待输入', queueDepth: 0, model: 'model', reasoningEffort: 'high', aspectRatio: '9:16', createdAt: 1, updatedAt: 2, messages: [], queue: [], eventCursor: 0, manifest: { schemaVersion: 1, phase: 'briefing', dirty: true, outputSpec: {}, artifacts: [], versions: [], studioEntry: '' } });
 describe('workflow status scope', () => {
   it('does not label an unfinished brief as an edited video', () => { const p = make(); expect(workflowState(p).label).toBe('等待补充要求'); expect(workflowState(p).sourceNotice).toBe(''); expect(projectSummary(p).workflowLabel).toBe('等待补充要求'); });
@@ -46,10 +46,17 @@ describe('library categories', () => {
       expect(projectCategory(project)).toBe('review');
     }
     const project = make(); project.status = 'completed';
-    expect(projectCategory(project)).toBe('ready');
+    expect(projectCategory(project)).toBe('completed');
     project.activeTurnId = 'next-edit';
     expect(projectCategory(project)).toBe('active');
     project.activeTurnId = undefined; project.status = 'waiting_input'; project.workflowStatus = 'review';
     expect(projectCategory(project)).toBe('review');
+  });
+  it('uses matching directory labels without source notices and keeps exports distinct', () => {
+    const project = make();
+    project.workflowStatus = 'completed'; project.workflowLabel = '已导出 · 源文件有更新';
+    expect(projectCategory(project)).toBe('completed'); expect(projectStatus(project)).toBe('已导出');
+    project.workflowStatus = 'ready'; project.workflowLabel = '已有视频 · 源文件有更新';
+    expect(projectCategory(project)).toBe('ready'); expect(projectStatus(project)).toBe('可导出');
   });
 });

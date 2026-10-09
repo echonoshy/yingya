@@ -63,7 +63,13 @@
   --tab-gap: 24px;
   --radius-control: 6px;
   --radius-pill: 999px;
-  --radius-button: 6px;
+  --radius-button: 10px;
+  --button-height: 44px;
+  --button-surface: #fff;
+  --button-border: #d8dcdf;
+  --button-hover: #f2f4f5;
+  --button-shadow: 0 1px 2px #1113100a;
+  --button-primary-shadow: 0 1px 2px #11131014, inset 0 1px 0 #ffffff16;
   --radius-panel: 6px;
   --motion-quick: 160ms;
   --motion-standard: 240ms;
@@ -102,10 +108,11 @@
 html, body, #root { min-width: 320px; min-height: 100%; }
 body { margin: 0; min-height: var(--app-height, 100dvh); overflow: hidden; background: var(--black); color: var(--text); font-size: var(--text-body); line-height: var(--leading-ui); }
 button, textarea, select, input { font: inherit; }
-button { color: inherit; }
+button { color: inherit; border-radius: 0; touch-action: manipulation; transition: background-color var(--motion-quick) ease, border-color var(--motion-quick) ease, color var(--motion-quick) ease, box-shadow var(--motion-quick) ease; }
 button:focus-visible, input:is([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"]):focus-visible { outline: 2px solid var(--purple-300); outline-offset: 2px; }
-button:disabled { opacity: .42; cursor: not-allowed; }
+button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 button:not(:disabled) { cursor: pointer; }
+button:active:not(:disabled) { filter: brightness(.96); }
 ::selection { background: var(--purple-500); color: white; }
 ::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-thumb { background: var(--prey-600); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
@@ -126,12 +133,15 @@ button:not(:disabled) { cursor: pointer; }
 .action-dialog::backdrop { background: color-mix(in srgb, var(--primary) 24%, transparent); }
 .action-dialog header, .action-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .action-dialog h2 { margin: 0; font-size: var(--text-subheading); }
-.action-dialog header button { display: grid; place-items: center; min-width: 36px; height: 36px; border: 0; border-radius: var(--radius-control); background: var(--background); }
+.action-dialog header button { display: grid; place-items: center; min-width: var(--button-height); height: var(--button-height); border: 0; border-radius: var(--radius-button); background: var(--background); }
 .action-dialog p { font-size: var(--text-control); line-height: var(--leading-body); overflow-wrap: anywhere; }
 .action-dialog footer { justify-content: flex-end; margin-top: 20px; }
-.action-dialog footer button { min-height: 40px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); }
-.action-dialog footer .primary-button { background: var(--primary); color: var(--canvas); }
+.action-dialog footer button { min-height: var(--button-height); padding: 0 16px; border: 1px solid var(--button-border); border-radius: var(--radius-button); background: var(--button-surface); }
+.action-dialog footer .primary-button { background: var(--primary); color: var(--canvas); box-shadow: var(--button-primary-shadow); }
+.action-dialog header button:hover:not(:disabled), .action-dialog footer button:hover:not(:disabled) { background: var(--button-hover); border-color: var(--line-strong); }
+.action-dialog footer .primary-button:hover:not(:disabled) { background: var(--primary-hover); }
 .action-dialog footer .danger-action { background: var(--danger); color: var(--canvas); border-color: var(--danger); }
+.action-dialog footer .danger-action:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 88%, black); border-color: var(--danger); }
 .action-dialog .voice-menu { position: static; width: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; animation: none; }
 .action-dialog:has(.voice-menu) { width: min(480px, calc(100vw - 32px)); padding: 0; }
 .action-dialog:has(.voice-menu) > header { position: sticky; top: 0; z-index: 1; background: var(--canvas); padding: 16px; border-bottom: 1px solid var(--line); }
@@ -147,7 +157,7 @@ button:not(:disabled) { cursor: pointer; }
 .project-filters button, .home-starters button, .canvas-actions button, .asset-picker-trigger, .workspace.workspace--canvas .canvas-tabs button, .workspace-tabs button, .asset-media-tabs button, .asset-library-controls button, .task-center-trigger, .action-dialog label, .action-dialog footer button { font-size: var(--text-control); }
 .action-dialog h2 { font-size: var(--text-section); font-weight: var(--weight-emphasis); }
 .action-dialog p { font-size: var(--text-control); line-height: var(--leading-body); }
-.action-dialog input, .action-dialog textarea, .asset-create-form textarea, .asset-creator input:not([type="checkbox"]), .asset-creator textarea, .preview-copy input, .annotation-fields textarea { font-size: var(--text-field); }
+.action-dialog input, .action-dialog textarea, .asset-create-form textarea, .asset-creator input:not([type="checkbox"]), .asset-creator textarea, .annotation-fields textarea { font-size: var(--text-field); }
 @media (max-width: 800px) {
   :root { --text-field: var(--text-input); }
 }

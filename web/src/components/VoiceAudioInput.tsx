@@ -7,6 +7,7 @@ async function recordingFile(blob: Blob) {
   const context = new AudioContext();
   try {
     const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+    if (buffer.duration < 1) throw new Error("请至少录制 1 秒清晰人声");
     const data = new ArrayBuffer(44 + buffer.length * 2);
     const view = new DataView(data);
     const write = (offset: number, text: string) => [...text].forEach((char, i) => view.setUint8(offset + i, char.charCodeAt(0)));
@@ -23,8 +24,8 @@ async function recordingFile(blob: Blob) {
   } finally { await context.close(); }
 }
 
-export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChange }: {
-  value: File | null; onChange: (file: File | null) => void; disabled?: boolean; onBusyChange: (busy: boolean) => void;
+export function VoiceAudioInput({ value, onChange, disabled = false, active = true, onBusyChange }: {
+  value: File | null; onChange: (file: File | null) => void; disabled?: boolean; active?: boolean; onBusyChange: (busy: boolean) => void;
 }) {
   const [status, setStatus] = useState<"idle" | "requesting" | "recording" | "processing">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -34,6 +35,7 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const generation = useRef(0);
+  const player = useRef<HTMLAudioElement>(null);
   const busy = status !== "idle";
 
   useEffect(() => {
@@ -51,10 +53,17 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
     stream.current?.getTracks().forEach(track => track.stop());
   }, []);
   useEffect(() => {
+    if (!active) {
+      player.current?.pause();
+      if (recorder.current?.state === "recording") recorder.current.stop();
+      if (status === "requesting") { generation.current++; setStatus("idle"); }
+    }
+  }, [active, status]);
+  useEffect(() => {
     if (status !== "recording") return;
     const start = Date.now();
     const timer = window.setInterval(() => setSeconds(Math.min(30, Math.floor((Date.now() - start) / 1000))), 200);
-    const limit = window.setTimeout(() => recorder.current?.state === "recording" && recorder.current.stop(), 30_000);
+    const limit = window.setTimeout(() => recorder.current?.state === "recording" && recorder.current.stop(), 29_500);
     return () => { clearInterval(timer); clearTimeout(limit); };
   }, [status]);
 
@@ -86,8 +95,8 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
         try {
           const file = await recordingFile(new Blob(chunks, { type: next.mimeType }));
           if (attempt === generation.current) onChange(file);
-        } catch {
-          if (attempt === generation.current) setError("未能保存录音，请重新录制或上传文件");
+        } catch (reason) {
+          if (attempt === generation.current) setError(reason instanceof Error ? reason.message : "未能保存录音，请重新录制或上传文件");
         } finally { if (attempt === generation.current) setStatus("idle"); }
       };
       next.start(); setSeconds(0); setStatus("recording");
@@ -98,6 +107,25 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
       setError(reason instanceof DOMException && reason.name === "NotAllowedError"
         ? "未获得麦克风权限，请在浏览器中允许访问后重试，或上传音频文件"
         : "无法使用麦克风，请检查设备后重试，或上传音频文件");
+    }
+  }
+
+  async function acceptFile(file: File) {
+    if (!file.size || file.size > 10 * 1024 * 1024) { setError("请选择非空且不超过 10 MB 的音频文件"); return; }
+    if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|flac|aac|webm)$/i.test(file.name)) { setError("请选择音频文件"); return; }
+    const attempt = ++generation.current;
+    setError(""); setStatus("processing");
+    let context: AudioContext | undefined;
+    try {
+      context = new AudioContext();
+      const buffer = await context.decodeAudioData(await file.arrayBuffer());
+      if (buffer.duration < 1 || buffer.duration > 30.05) throw new Error("参考音频需要 1–30 秒，请剪短或重新录制");
+      if (attempt === generation.current) onChange(file);
+    } catch (reason) {
+      if (attempt === generation.current) setError(reason instanceof Error && reason.message.includes("1–30") ? reason.message : "无法读取此音频，请上传可播放的 WAV、MP3 或 M4A 文件");
+    } finally {
+      await context?.close();
+      if (attempt === generation.current) setStatus("idle");
     }
   }
 
@@ -114,12 +142,10 @@ export function VoiceAudioInput({ value, onChange, disabled = false, onBusyChang
       <input ref={input} type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.aac,.webm" hidden aria-label="上传参考音频" disabled={disabled || busy} onChange={event => {
         const file = event.target.files?.[0]; event.target.value = "";
         if (!file) return;
-        if (!file.size || file.size > 10 * 1024 * 1024) { setError("请选择非空且不超过 10 MB 的音频文件"); return; }
-        if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|ogg|flac|aac|webm)$/i.test(file.name)) { setError("请选择音频文件"); return; }
-        setError(""); onChange(file);
+        void acceptFile(file);
       }}/>
-      <p className={`voice-reference-status ${busy ? "is-busy" : ""}`} role="status">{status === "recording" ? <><Microphone/>正在录音 <time>00:{String(seconds).padStart(2, "0")} / 00:30</time></> : status === "requesting" ? "请允许使用麦克风…" : status === "processing" ? "正在保存录音…" : "建议 30 秒，文件不超过 10 MB"}</p>
-      {value && !busy ? <div className="voice-reference-preview"><div><span title={value.name}>{value.name}</span><button type="button" aria-label="移除参考音频" title="移除参考音频" disabled={disabled} onClick={() => { onChange(null); setError(""); }}><X/></button></div><audio src={url || undefined} controls aria-label="试听参考音频"/></div> : null}
+      <p className={`voice-reference-status ${busy ? "is-busy" : ""}`} role="status">{status === "recording" ? <><Microphone/>正在录音 <time>00:{String(seconds).padStart(2, "0")} / 00:30</time></> : status === "requesting" ? "请允许使用麦克风…" : status === "processing" ? "正在处理参考音频…" : "1–30 秒，不超过 10 MB；避免音乐、混响与多人说话"}</p>
+      {value && !busy ? <div className="voice-reference-preview"><div><span title={value.name}>{value.name}</span><button type="button" aria-label="移除参考音频" title="移除参考音频" disabled={disabled} onClick={() => { onChange(null); setError(""); }}><X/></button></div><audio ref={player} src={url || undefined} controls aria-label="试听参考音频"/></div> : null}
     </div>
     {error ? <p className="voice-reference-error" role="alert">{error}</p> : null}
   </div>;

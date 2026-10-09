@@ -1,6 +1,7 @@
 import { CaretDown, Images, Plus, UploadSimple, Waveform } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { usePopoverPosition } from "../hooks/usePopoverPosition";
+import { api } from "../api";
 import { VoiceSelector } from "./VoiceSelector";
 import { useMotionPresence } from "../hooks/useMotionPresence";
 
@@ -36,7 +37,10 @@ export function ComposerMoreMenu({
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
   const position = usePopoverPosition(open, trigger, materialActions ? 320 : settings ? 480 : 280);
-  const voiceName = voiceId === "default" ? "默认音色" : voiceId;
+  const [voiceLabel, setVoiceLabel] = useState("");
+  useEffect(() => { if (!open || voiceId === "default") return;
+    setVoiceLabel(""); let cancelled = false; void api.listVoices().then(result => { if (!cancelled) { const voice = result.uploaded_voices.find(item => item.name === voiceId); setVoiceLabel(voice?.display_name || voice?.name || "项目已保存音色"); } }).catch(() => undefined); return () => { cancelled = true; }; }, [open, voiceId]);
+  const voiceName = voiceId === "default" ? "默认音色" : voiceLabel || "已选择音色";
   function close() {
     setOpen(false);
     trigger.current?.focus({ preventScroll: true });

@@ -22,7 +22,7 @@ export function ComposerForm({ onFiles, filesDisabled = false, className = "", c
     if (!event.clipboardData.getData("text/plain")) event.preventDefault();
     if (filesDisabled) { setNotice("请等待当前操作完成后再添加附件"); return; }
     onFiles(images);
-    setNotice(`已添加 ${images.length} 个附件，发送时上传`);
+    setNotice("");
   }} onChange={event => { setNotice(""); props.onChange?.(event); }} onSubmit={event => { setNotice(""); props.onSubmit?.(event); }} onDragEnter={event => {
     if (!isFileDrag(event)) return;
     event.preventDefault();
@@ -46,7 +46,7 @@ export function ComposerForm({ onFiles, filesDisabled = false, className = "", c
       ? items.filter(item => item.kind === "file" && !item.webkitGetAsEntry?.()?.isDirectory).map(item => item.getAsFile()).filter((file): file is File => file !== null)
       : Array.from(event.dataTransfer.files);
     if (files.length) onFiles(files);
-    setNotice(hasDirectory ? "暂不支持拖入文件夹，请选择其中的文件" : files.length ? `已添加 ${files.length} 个附件，发送时上传` : "未读取到文件，请使用添加附件按钮重试");
+    setNotice(hasDirectory ? "暂不支持拖入文件夹，请选择其中的文件" : files.length ? "" : "未读取到文件，请使用添加附件按钮重试");
   }} onDragEnd={resetDrag}>
     {children}
     {dragging ? <div className="composer-drop-overlay"><Paperclip aria-hidden="true"/><span>{filesDisabled ? "请等待当前操作完成" : "松开以添加附件"}</span></div> : null}

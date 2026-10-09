@@ -7,7 +7,7 @@
 .home-stage .home-brand-mark { flex-shrink: 0; }
 .home-stage .stage-header nav { display: flex; align-items: center; gap: 36px; }
 .home-stage .stage-header nav a { display: inline-flex; align-items: center; gap: 12px; min-height: 44px; font-size: 14px; }
-.home-stage .stage-header nav a:last-child { padding: 0 18px; border: 1px solid var(--line); border-radius: 5px; background: #fff; box-shadow: 0 2px 0 #11131008; }
+.home-stage .stage-header nav a:last-child { padding: 0 18px; border: 1px solid var(--button-border); border-radius: var(--radius-button); background: #fff; box-shadow: 0 2px 0 #11131008; }
 .home-stage svg { width: 18px; height: 18px; flex-shrink: 0; }
 .home-stage .home-hero { width: min(1440px,calc(100% - 64px)); margin: 28px auto 72px; display: grid; grid-template-columns: minmax(300px,.72fr) minmax(0,1.65fr); grid-template-areas: "intro film" "composer film"; align-items: start; gap: 20px 48px; }
 .home-intro { grid-area: intro; min-width: 0; }
@@ -27,7 +27,7 @@
 .home-stage .home-input-label { font: 600 13px/1.5 var(--font-ui); }
 .home-stage .home-source-help { margin: -2px 0 2px; color: var(--muted); font: 12px/1.6 var(--font-ui); }
 .home-stage .home-sources { display: flex; gap: 18px; position: relative; margin-bottom: 5px; }
-.home-stage .home-sources button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 0 6px; border: 0; background: transparent; font: 13px var(--font-ui); color: var(--muted); }
+.home-stage .home-sources button { display: inline-flex; align-items: center; gap: 6px; min-height: var(--button-height); padding: 0 0 6px; border: 0; background: transparent; font: 13px var(--font-ui); color: var(--muted); }
 .home-stage .home-sources svg { width: 14px; height: 14px; }
 .home-stage .home-sources button[aria-pressed=true] { color: var(--accent-text); font-weight: 600; }
 .home-stage .home-source-underline { position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; transform-origin: left; transform: translateX(var(--source-x,0px)) scaleX(var(--source-width,52)); background: var(--signal-blue); pointer-events: none; transition: transform 280ms var(--home-ease); }
@@ -39,7 +39,7 @@
 .home-stage .home-typewriter { position: absolute; inset: 0; padding: 12px 14px; pointer-events: none; font-size: 14px; line-height: 1.7; white-space: pre-line; overflow: hidden; }
 .home-stage .home-caret { display: inline-block; vertical-align: text-bottom; }
 .home-stage .home-caret { height: 20px; border-right: 2px solid var(--signal-blue); margin-left: 4px; animation: home-caret 1s steps(1) infinite; }
-.home-stage .home-start { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 0; border-radius: 4px; background: var(--primary); color: #fff; padding: 12px 20px; min-height: 48px; font: 550 14px var(--font-ui); white-space: nowrap; box-shadow: 0 3px 0 #11131020; }
+.home-stage .home-start { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 0; border-radius: var(--radius-button); background: var(--primary); color: #fff; padding: 12px 20px; min-height: 48px; font: var(--weight-medium) var(--text-control)/var(--leading-ui) var(--font-ui); white-space: nowrap; box-shadow: var(--button-primary-shadow); }
 .home-stage .home-start:hover { background: var(--primary-hover); }
 .home-stage :is(.home-start,.stage-header nav a) svg { transition: transform 180ms var(--home-ease); }
 .home-stage :is(.home-start,.stage-header nav a):is(:hover,:focus-visible) svg:last-child { transform: translateX(4px); }
@@ -57,10 +57,10 @@
  .home-stage :is(.stage-header,.home-footer) { width: calc(100% - 40px); }.home-stage .stage-header { min-height: 68px; }.home-stage .stage-header nav { gap: 8px; }.home-stage .stage-header nav a { font-size: 13px; }.home-stage .stage-header nav a:not(:last-child) { display: none; }.home-stage .stage-header nav a:last-child { border: 0; padding: 0; box-shadow: none; background: transparent; }.home-stage .print-brand { --wordmark-size: 26px; }
  .home-stage .home-hero { width: calc(100% - 40px); margin: 16px auto 40px; gap: 20px; }.home-stage #marketing-title { font-size: clamp(52px,13.5vw,72px); line-height: 1.18; }.home-stage .home-composer > .paper-delivery { top: 2px; left: 145px; right: auto; }
 .home-stage .home-subtitle { max-width: 320px; font-size: 14px; margin: 16px 0 0; text-align: left; }
- .home-stage .home-composer { gap: 6px; }.home-stage .home-sources { justify-content: space-between; gap: 10px; margin-bottom: 3px; }.home-stage .home-sources button { font-size: 12px; gap: 4px; min-height: 38px; }.home-stage .home-input-wrap textarea { height: 70px; min-height: 70px; padding: 10px 12px; }.home-stage .home-typewriter { padding: 10px 12px; }.home-stage .home-start { min-height: 44px; }
+ .home-stage .home-composer { gap: 6px; }.home-stage .home-sources { justify-content: space-between; gap: 10px; margin-bottom: 3px; }.home-stage .home-sources button { font-size: 12px; gap: 4px; min-height: var(--button-height); }.home-stage .home-input-wrap textarea { height: 70px; min-height: 70px; padding: 10px 12px; }.home-stage .home-typewriter { padding: 10px 12px; }.home-stage .home-start { min-height: 44px; }
  .home-stage .home-footer { flex-wrap: wrap; gap: 8px; padding-block: 16px; }.home-stage .home-footer nav { gap: 16px; }.home-stage .home-info-dialog { padding: 18px; }
 }
-@media (max-width: 360px) { .home-stage .home-hero { margin-top: 8px; gap: 16px; }.home-stage #marketing-title { font-size: 50px; } }
+@media (max-width: 360px) { .home-stage .home-hero { margin-top: 4px; gap: 12px; }.home-stage #marketing-title { font-size: 50px; } }
 @media (prefers-reduced-motion: reduce) { .home-stage .home-source-underline { transition: none; }.home-stage .home-caret { animation: none; }.home-stage :is(.home-start,.stage-header nav a):is(:hover,:focus-visible) svg { transform: none; } }
 .home-stage .home-info-dialog { width: min(620px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 24px; background: var(--canvas); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px; }
 .home-stage .home-info-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }

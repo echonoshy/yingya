@@ -1,10 +1,10 @@
 /* Shared menu surfaces and selection feedback across product routes. */
 :root {
   --menu-padding: 6px;
-  --menu-option-height: 40px;
+  --menu-option-height: 44px;
 }
 
-:is(.model-menu, .aspect-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
+:is(.model-menu, .aspect-menu, .usage-model-menu, .home-project-menu, .account-menu) {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--menu-background);
@@ -12,15 +12,15 @@
   box-shadow: 0 12px 36px #1113101a;
 }
 
-:is(.aspect-menu, .usage-model-menu, .home-project-menu, .asset-create-menu, .account-menu) {
+:is(.aspect-menu, .usage-model-menu, .home-project-menu, .account-menu) {
   padding: var(--menu-padding);
 }
 
-:is(.model-menu, .aspect-menu, .home-project-menu, .asset-create-menu, .account-menu) button,
+:is(.model-menu, .aspect-menu, .home-project-menu, .account-menu) button,
 .usage-model-option {
   min-height: var(--menu-option-height);
   padding: 8px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-button);
   font-family: var(--font-ui);
   font-size: var(--text-control);
   font-weight: var(--weight-medium);
@@ -28,7 +28,7 @@
   letter-spacing: 0;
 }
 
-:is(.model-menu, .aspect-menu, .home-project-menu, .asset-create-menu, .account-menu) button:hover:not(:disabled),
+:is(.model-menu, .aspect-menu, .home-project-menu, .account-menu) button:hover:not(:disabled),
 .usage-model-option.is-active {
   background: var(--surface-hover);
 }
@@ -41,7 +41,7 @@
   font-weight: var(--weight-emphasis);
 }
 
-:is(.model-menu, .aspect-menu, .home-project-menu, .asset-create-menu, .account-menu) button:focus-visible {
+:is(.model-menu, .aspect-menu, .home-project-menu, .account-menu) button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

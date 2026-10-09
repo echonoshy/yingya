@@ -1,0 +1,9 @@
+.video-delivery-dialog { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 24px; overflow-y: auto; }
+.video-delivery-dialog .delivery-version { margin: 8px 0 20px; color: var(--muted); font: var(--text-control)/var(--leading-ui) var(--font-ui); }
+.video-delivery-dialog .render-panel { margin: 0; padding: 0; border: 0; }
+.video-delivery-dialog .render-options { grid-template-columns: minmax(0, 1fr); }
+.video-delivery-dialog .current-video-buttons { flex-wrap: wrap; }
+.video-delivery-dialog .render-download { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 14px; border: 1px solid var(--button-border); border-radius: var(--radius-button); background: #fff; color: var(--text); font: var(--weight-medium) var(--text-control)/var(--leading-ui) var(--font-ui); text-decoration: none; }
+.video-delivery-dialog .render-download:hover { background: var(--button-hover); }
+.video-delivery-dialog .render-download svg { width: 16px; height: 16px; }
+@media (max-width: 600px) { .video-delivery-dialog { padding: 18px; } }

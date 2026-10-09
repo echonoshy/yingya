@@ -57,7 +57,6 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
     { id: "document-1", url: "/assets/uploads/brief.pdf", projectPath: "assets/uploads/brief.pdf", mimeType: "application/pdf", category: "document", prompt: null, sourceName: "品牌创作说明.pdf", kind: "uploaded", folderId: null, createdAt: now - 3 },
   ];
   const media = { scenes: [], assets: [] };
-  await page.route("**/mock-remotion-storyboard*", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body style='margin:0;background:#1d1d1f;color:white;font:16px sans-serif;display:grid;place-items:center;height:100vh'><main><b>Remotion 实时画面</b><p>Agent 正在更新 Composition</p></main></body></html>" }));
   await page.route("**/assets/uploads/**", route => {
     const pathname = new URL(route.request().url()).pathname;
     const contentType = pathname.endsWith(".mp4") ? "video/mp4" : pathname.endsWith(".mp3") ? "audio/mpeg" : "application/octet-stream";
@@ -79,6 +78,7 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       libraryAssets = [{ ...libraryImages[0], category: "image", folderId: null }, ...libraryAssets];
       return json(route, { threadId: "image-thread-1", turnId: "image-turn-1", status: "completed", text: "", images: [{ id: "image-2", url: libraryImages[0].url, projectPath: libraryImages[0].projectPath, mimeType: "image/png", revisedPrompt: input.prompt }] });
     }
+    if (pathname === "/api/assets/voice-jobs" && method === "GET") return json(route, []);
     if (pathname === "/api/assets/image-jobs" && method === "GET") return json(route, imageJobs);
     if (pathname === "/api/assets/image-jobs" && method === "POST") {
       const input = request.postDataJSON();
@@ -171,10 +171,6 @@ async function installApiMock(page, seed = detail, { creationDelayMs = 0 } = {})
       return route.fulfill({ status: 204, body: "" });
     }
     if (pathname.endsWith("/checkpoint") && method === "POST") return json(route, { turnId: "turn-confirm", status: "queued", queueDepth: 1 });
-    if (pathname.endsWith("/studio") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-remotion-storyboard`, previewUrl: `${baseUrl}/mock-remotion-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: now });
-    if (pathname.endsWith("/studio/heartbeat") && method === "POST") return json(route, { storyboardUrl: `${baseUrl}/mock-remotion-storyboard`, previewUrl: `${baseUrl}/mock-remotion-studio`, state: "running", host: "", port: 0, projectName: current.id, lastSeenAt: Date.now() });
-    if (pathname.endsWith("/studio") && method === "DELETE") return route.fulfill({ status: 204, body: "" });
-    if (pathname.endsWith("/studio/dirty") && method === "POST") return route.fulfill({ status: 204, body: "" });
     if (pathname.endsWith("/render") && method === "POST") {
       const input = request.postDataJSON();
       const dimensions = input.resolution === "portrait-4k" ? "2160x3840" : "1080x1920";
@@ -198,7 +194,7 @@ async function assertAssetWorkshop(browser) {
   await page.goto(workspaceUrl);
   await page.getByRole("button", { name: "素材工坊", exact: true }).click();
   await page.getByLabel("搜索素材").waitFor();
-  await page.getByRole("heading", { name: "我的素材", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "素材", exact: true }).waitFor();
   if (await page.getByText("最近项目", { exact: true }).count()) throw new Error("Asset workshop should not show video projects in its navigation");
   const mediaTabs = page.getByRole("navigation", { name: "素材类型" });
   await mediaTabs.getByRole("button", { name: /^视频/ }).waitFor();
@@ -226,7 +222,7 @@ async function assertAssetWorkshop(browser) {
   await page.getByRole("button", { name: "创建", exact: true }).click();
   await page.getByRole("button", { name: /^活动素材/ }).waitFor();
   const uploadRequest = page.waitForRequest(request => request.url().endsWith("/assets/library") && request.method() === "POST");
-  await page.locator('.asset-library-header input[type="file"]').setInputFiles({ name: "活动执行方案.pdf", mimeType: "application/pdf", buffer: Buffer.from("pdf-test") });
+  await page.locator('.asset-workspace-toolbar input[type="file"]').setInputFiles({ name: "活动执行方案.pdf", mimeType: "application/pdf", buffer: Buffer.from("pdf-test") });
   await uploadRequest;
   await page.getByRole("button", { name: /活动执行方案\.pdf.*上传/ }).waitFor();
   await page.getByRole("button", { name: /活动执行方案\.pdf.*上传/ }).click();
@@ -245,23 +241,22 @@ async function assertAssetWorkshop(browser) {
   await page.keyboard.press("Escape");
   await page.locator(".editorial-inspector").waitFor({ state: "hidden" });
   await page.getByRole("button", { name: /全部素材/ }).click();
-  await page.getByRole("button", { name: "AI 生成", exact: true }).click();
-  await page.getByRole("button", { name: /深色背景中的发光新芽，电影级侧光.*AI 生成/ }).waitFor();
-  await page.getByRole("button", { name: "全部来源" }).click();
-  await page.getByRole("button", { name: /创建素材/ }).click();
-  await page.getByRole("menuitem", { name: "生成图片" }).click();
+  await page.getByRole("combobox", { name: "素材来源", exact: true }).click(); await page.getByRole("option", { name: "AI 生成", exact: true }).click();
+  await page.getByRole("button", { name: /image_image-1.png.*AI 生成/ }).waitFor();
+  await page.getByRole("combobox", { name: "素材来源" }).click(); await page.getByRole("option", { name: "全部来源", exact: true }).click();
+  await page.getByRole("link", { name: "生成素材", exact: true }).click();
   const prompt = page.getByPlaceholder("主体、场景、构图、光线和画幅要求");
   await prompt.fill("极简桌面上的透明智能设备，冷色轮廓光，16:9");
   const requestPromise = page.waitForRequest(request => request.url().endsWith("/assets/image-jobs") && request.method() === "POST");
   await page.getByRole("button", { name: "生成图片" }).click();
   const payload = (await requestPromise).postDataJSON();
   if (payload.prompt !== "极简桌面上的透明智能设备，冷色轮廓光，16:9") throw new Error(`Unexpected image prompt: ${JSON.stringify(payload)}`);
-  await page.getByRole("dialog", { name: "生成记录", exact: true }).waitFor();
-  await page.keyboard.press("Escape");
-  await page.locator(".asset-mixed-grid b").getByText(payload.prompt, { exact: true }).waitFor();
+  await page.getByRole("region", { name: "图片生成工作区" }).getByText("已完成", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "查看素材库", exact: true }).click();
+  await page.locator(".asset-mixed-grid b").filter({ hasText: /^image_/ }).first().waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-images.png", fullPage: true });
-  await page.getByRole("button", { name: /^音色/ }).click();
-  await page.getByRole("heading", { name: "音色", exact: true }).waitFor();
+  await page.getByRole("link", { name: "生成素材", exact: true }).click();
+  await page.getByRole("navigation", { name: "生成类型" }).getByRole("link", { name: "音色", exact: true }).click();
   await page.getByText("映芽讲解", { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-asset-voices.png", fullPage: true });
   if (errors.length) throw new Error(`Asset workshop errors:\n${errors.join("\n")}`);
@@ -290,11 +285,11 @@ async function assertWorkflowRecovery(browser) {
   };
   await installApiMock(page, failed);
   await page.goto(`${workspaceUrl}#/projects/${detail.id}`);
-  await page.getByText("制作需要恢复").waitFor();
+  await page.getByText("制作暂时中断", { exact: true }).waitFor();
   await page.screenshot({ path: "/tmp/yingya-ui-recovery.png", fullPage: true });
-  await page.getByRole("button", { name: /重新生成制作方案/ }).click();
+  await page.getByRole("button", { name: "继续制作", exact: true }).click();
   const composer = page.getByPlaceholder("描述想修改的内容…");
-  if (await composer.inputValue() !== "重新生成制作方案") throw new Error("Recovery action did not populate the composer");
+  if (!(await composer.inputValue()).includes("保留已有资料")) throw new Error("Recovery action did not populate the composer");
   await page.close();
 }
 
@@ -306,13 +301,15 @@ async function assertIncompleteWorkflowRecovery(browser) {
   };
   await installApiMock(page, incomplete);
   await page.goto(`${workspaceUrl}#/projects/${detail.id}`);
-  const recovery = page.getByRole("status");
-  await recovery.getByText("检查已通过，草稿待封存", { exact: true }).waitFor();
-  await recovery.getByText("只补齐缺失的版本与审核登记", { exact: false }).waitFor();
+  const recovery = page.locator(".workflow-recovery");
+  await recovery.getByText("制作尚未完成", { exact: true }).waitFor();
+  await recovery.getByText("查看原因", { exact: true }).click();
+  await recovery.getByText("检查已通过，草稿待封存", { exact: false }).waitFor();
+
   if (await page.getByText("制作需要恢复", { exact: true }).count()) throw new Error("Recoverable incomplete work should not be presented as a failed workflow");
   await page.screenshot({ path: "/tmp/yingya-ui-incomplete.png", fullPage: true });
-  await recovery.getByRole("button", { name: "检查并恢复项目流程" }).click();
-  if (await page.getByPlaceholder("描述想修改的内容…").inputValue() !== "检查并恢复项目流程") throw new Error("Incomplete recovery action did not populate the composer");
+  await recovery.getByRole("button", { name: "继续制作", exact: true }).click();
+  if (!(await page.getByPlaceholder("描述想修改的内容…").inputValue()).includes("保留已有成果")) throw new Error("Incomplete recovery action did not populate the composer");
   await page.close();
 }
 
@@ -358,12 +355,12 @@ async function assertLostExecutionState(browser) {
     await installApiMock(page, seed);
     await page.route("**/event-log*", route => json(route, {items: [{seq: 1, projectId: seed.id, turnId: "lost-turn", method: "item/started", payload: {params: {item: {id: "lost-cmd", type: "commandExecution", command: "base64 -w0 assets/audio/scene-1.wav"}}}, createdAt: now + 20}], latestSeq: 1, hasMore: false, nextBefore: null}));
     await page.goto(`${workspaceUrl}#/projects/${seed.id}`);
-    await page.getByText("制作需要恢复", {exact: true}).waitFor();
-    const recover = page.getByRole("button", {name: "检查并恢复项目流程", exact: true});
+    await page.getByText("制作暂时中断", {exact: true}).waitFor();
+    const recover = page.getByRole("button", {name: "继续制作", exact: true});
     await recover.focus();
     await page.keyboard.press("Enter");
     const composer = page.getByPlaceholder("描述想修改的内容…");
-    if (await composer.inputValue() !== "检查并恢复项目流程") throw new Error("Recovery did not populate composer");
+    if (!(await composer.inputValue()).includes("保留已有成果")) throw new Error("Recovery did not populate composer");
     if (await page.locator(".activity-item--running").count()) throw new Error("Orphaned command is still spinning");
     if (await page.getByText("制作流程已安全暂停", {exact: true}).count()) throw new Error("Unverified stop claim is visible");
     if (!await page.locator(".activity-item--interrupted").count()) throw new Error("Missing interrupted command status");

@@ -34,10 +34,6 @@ export function sourceFilePath(sourcePath: string, relative: string) {
   if (parts.includes("..")) return undefined;
   return parts.join("/");
 }
-export function defaultExportFps(project: Pick<ProjectDetail, "manifest">) {
-  const value = project.manifest.outputSpec.fps ?? project.manifest.outputSpec.frameRate;
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 120 ? value : 30;
-}
 export function selectedProjectVersion(project: ProjectDetail, requested: string) {
   return project.manifest.versions.find(version => version.id === requested)
     ?? project.manifest.versions.find(version => version.id === project.manifest.currentDraft)

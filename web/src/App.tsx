@@ -1,6 +1,5 @@
 import { StudioCodeTag } from "./components/StudioCodeTag";
 import { briefSources, briefTemplates, sourceBrief } from './creationBrief';
-import { ReferenceImageDialog } from './components/ReferenceImageDialog';
 import { referenceFilms } from './marketing/showcaseMedia';
 import { KineticType } from './components/KineticType';
 import { PaperDelivery } from './components/PaperDelivery';
@@ -18,12 +17,12 @@ import { useUploadQueue } from "./hooks/useUploadQueue";
 
 import { CreationLibraryDialog } from "./components/CreationLibraryDialog";
 import { ComposerForm } from "./components/ComposerForm";
-import { AssetRoleSelect } from "./components/AssetRoleSelect";
+import { ComposerAttachments } from "./components/ComposerAttachments";
 import { assetRoleSchema } from "./schemas";
 import { fileRoleKey, materialOnlyPrompt } from "./workbench";
 import { SelectionIndicator } from "./components/SelectionIndicator";
 import { useMotionPresence } from "./hooks/useMotionPresence";
-import { ArrowRight, UploadSimple, Files, FilmStrip, Globe, Scroll, Palette, MusicNotes, Image, CircleNotch, CloudSlash, DotsThree, MagnifyingGlass, PencilSimple, Trash, X } from "@phosphor-icons/react";
+import { ArrowRight, SquaresFour, ListBullets, UploadSimple, Files, FilmStrip, Globe, Scroll, Palette, MusicNotes, Image, CircleNotch, CloudSlash, DotsThree, MagnifyingGlass, PencilSimple, Trash, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { useDraftFiles } from "./hooks/useDraftFiles";
 
@@ -44,6 +43,7 @@ import { userStorageKey } from "./session";
 import { selectableModels, modelAllowed, defaultModelId } from "./models";
 
 const briefIcons = { reference: FilmStrip, website: Globe, script: Scroll, style: Palette };
+const projectViewSchema = z.enum(["grid", "list"]);
 const referencePreviewSchema = z.array(z.object({ id: z.string(), url: z.string() }));
 
 const fallbackModels: CodexModel[] = selectableModels([]);
@@ -53,10 +53,10 @@ function savedSelection(): ModelSelection {
 }
 
 export function App({ accountPanel }: { accountPanel?: ReactNode }) {
-  const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openError, setOpenError] = useState(""); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection); const [voiceId, setVoiceId] = useState(() => readStringSetting("yingya-voice-id", "default"));
+  const [projects, setProjects] = useState<ProjectRecord[]>([]); const [active, setActive] = useState<ProjectDetail | null>(null); const [loading, setLoading] = useState(true); const [offline, setOffline] = useState(false); const [openFailure, setOpenFailure] = useState<{ id: string; message: string } | null>(null); const [models, setModels] = useState(fallbackModels); const [selection, setSelection] = useState(savedSelection); const [voiceId, setVoiceId] = useState(() => readStringSetting("yingya-voice-id", "default"));
   const [route, navigate] = useAppRoute();
   const libraryUploads = useUploadQueue<Awaited<ReturnType<typeof api.uploadLibraryAsset>>>();
-  const [opening, setOpening] = useState(Boolean(route.projectId));
+  const [openAttempt, setOpenAttempt] = useState(0);
   const saveSelection = (next: ModelSelection) => { setSelection(next); writeModelSelection(next); };
   const saveVoice = (next: string) => { setVoiceId(next); writeStringSetting("yingya-voice-id", next); };
   const refreshProjects = useCallback(async () => { try { setProjects(await api.listProjects()); setOffline(false); } catch { setOffline(true); } finally { setLoading(false); } }, []);
@@ -65,14 +65,14 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
   const open = (id: string) => navigate({ section: "create", projectId: id });
   useEffect(() => {
     let cancelled = false;
-    if (!route.projectId) { setActive(null); setOpening(false); setOpenError(""); return; }
-    setOpening(true); setOpenError("");
+    if (!route.projectId) { setActive(null); setOpenFailure(null); return; }
+    setOpenFailure(null);
     void api.getProject(route.projectId).then(detail => {
       if (cancelled) return;
       setActive(detail); setSelection(modelAllowed(detail.model) ? { model: detail.model, reasoningEffort: detail.reasoningEffort } : savedSelection()); setVoiceId(detail.voiceId); setOffline(false);
-    }).catch(reason => { if (!cancelled) { setActive(null); setOpenError(reason instanceof Error ? reason.message : "项目加载失败"); } }).finally(() => { if (!cancelled) setOpening(false); });
+    }).catch(reason => { if (!cancelled) { setActive(null); setOpenFailure({ id: route.projectId!, message: reason instanceof Error ? reason.message : "项目加载失败" }); } });
     return () => { cancelled = true; };
-  }, [route.projectId]);
+  }, [route.projectId, openAttempt]);
   useEffect(() => {
     let disposed = false, inFlight = false;
     const sync = async () => {
@@ -102,26 +102,29 @@ export function App({ accountPanel }: { accountPanel?: ReactNode }) {
     setProjects(current => current.map(project => project.id === id ? { ...project, ...updated } : project));
     setActive(current => current?.id === id ? { ...current, ...updated } : current);
   }
-  if (offline && !active) return <div className="state-screen"><CloudSlash/><h1>暂时无法连接工作台</h1><p>已有项目会保留，连接恢复后可以继续创作</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
+  if (offline && !active && !route.projectId) return <div className="state-screen"><CloudSlash/><h1>暂时无法连接工作台</h1><p>已有项目会保留，连接恢复后可以继续创作</p><button className="primary-button" onClick={() => void refreshProjects()}>重新连接</button></div>;
   const showCreate = () => { navigate({ section: "create" }); void refreshProjects(); };
   const showAssets = () => navigate({ section: "assets" });
   const showProjects = () => { navigate({ section: "create", homeSection: "projects" }); void refreshProjects(); };
-  const surface = opening && (!projects.length || active !== null) ? <div className="state-screen" role="status"><h1>正在恢复项目…</h1><button className="primary-button" onClick={showCreate}>返回所有项目</button></div>
-    : active && route.projectId === active.id ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showProjects}/>
-    : route.section === "assets" ? <AssetStudio uploads={libraryUploads} key={route.assetTool ?? "library"} initialTool={route.assetTool} accountPanel={accountPanel} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
-    : <StartScreen onCreate={showCreate} homeSection={route.homeSection} accountPanel={accountPanel} openingProjectId={opening ? route.projectId : undefined} projects={projects} loading={loading} openError={openError} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onRename={renameProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
+  const openError = openFailure && openFailure.id === route.projectId ? openFailure.message : "";
+  const surface = route.projectId ? active?.id === route.projectId
+    ? <AgentWorkspace key={active.id} project={active} models={models} selection={selection} onSelection={saveSelection} onVoice={voice => setProjectVoice(active.id, voice)} onProject={updateActiveProject} onRename={renameProject} onBack={showProjects}/>
+    : <main className="state-screen project-open-state" aria-busy={!openError}>
+        <div role={openError ? "alert" : "status"}>{openError ? <CloudSlash aria-hidden="true"/> : <CircleNotch className="spin" aria-hidden="true"/>}<h1>{openError ? "项目暂时无法打开" : "正在打开项目…"}</h1><p>{openError || projects.find(project => project.id === route.projectId)?.title}</p></div>
+        <div className="project-open-actions">{openError ? <button className="primary-button" onClick={() => { setOpenFailure(null); setOpenAttempt(value => value + 1); }}>重新加载</button> : null}<button className="secondary-button" onClick={showProjects}>返回项目</button></div>
+      </main>
+    : route.section === "assets" ? <AssetStudio uploads={libraryUploads} key="library" initialTool={route.assetTool} initialSection={route.assetSection} accountPanel={accountPanel} models={models} selection={selection} voiceId={voiceId} onSelection={saveSelection} onVoice={saveVoice} onCreate={showCreate}/>
+    : <StartScreen onCreate={showCreate} homeSection={route.homeSection} accountPanel={accountPanel} projects={projects} loading={loading} models={models} selection={selection} onSelection={saveSelection} voiceId={voiceId} onVoice={saveVoice} onOpen={open} onDelete={deleteProject} onRename={renameProject} onAssets={showAssets} onCreated={project => { setActive(project); navigate({ section: "create", projectId: project.id }); void refreshProjects(); }}/>;
   return <>{surface}{route.section !== "assets" && libraryUploads.items.length ? <div className="upload-dock"><UploadProgressList items={libraryUploads.items} onRetry={libraryUploads.retry} onClear={libraryUploads.clearCompleted}/></div> : null}{active && route.projectId === active.id ? <div className="workspace-account">{accountPanel}</div> : null}<TaskCenter projects={projects} offline={offline} onOpen={open}/></>;
 
 }
 
-function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, projects, loading, openError, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onRename, onAssets, onCreated }: { onCreate: () => void; homeSection?: "styles" | "projects"; accountPanel?: ReactNode; openingProjectId?: string; projects: ProjectRecord[]; loading: boolean; openError: string; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onRename: (id: string, title: string) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
+function StartScreen({ onCreate, homeSection, accountPanel, projects, loading, models, selection, onSelection, voiceId, onVoice, onOpen, onDelete, onRename, onAssets, onCreated }: { onCreate: () => void; homeSection?: "styles" | "projects"; accountPanel?: ReactNode; projects: ProjectRecord[]; loading: boolean; models: CodexModel[]; selection: ModelSelection; onSelection: (value: ModelSelection) => void; voiceId: string; onVoice: (voiceId: string) => void; onOpen: (id: string) => void; onDelete: (project: ProjectRecord) => Promise<void>; onRename: (id: string, title: string) => Promise<void>; onAssets: () => void; onCreated: (value: ProjectDetail) => void }) {
   const [prompt, setPrompt, promptSaved] = useSavedState("yingya-home-prompt", z.string(), ""); const [aspectRatio, setAspectRatio] = useSavedState("yingya-knowledge-aspect", z.enum(["9:16", "16:9", "1:1"]), "16:9"); const [files, setFiles, fileDraftStatus] = useDraftFiles("home");
   const [preparation, setPreparation] = useState<HomeSource>("reference");
   const referenceFileRef = useRef<HTMLInputElement>(null);
   const musicFileRef = useRef<HTMLInputElement>(null);
   const imageFileRef = useRef<HTMLInputElement>(null);
-  const [imageOpen, setImageOpen] = useState(false);
-  const [imageBusy, setImageBusy] = useState(false);
   const [builtInOpen, setBuiltInOpen] = useState(false);
   const [visualReferences, setVisualReferences] = useSavedState('yingya-home-reference-previews', referencePreviewSchema, []);
   const brief = sourceBrief(preparation);
@@ -160,6 +163,7 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
   const [covers, setCovers] = useState<Record<string, string>>({});
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [projectSort, setProjectSort] = useState('recent');
+  const [projectView, setProjectView] = useSavedState('yingya-project-view', projectViewSchema, 'grid');
   const [renaming, setRenaming] = useState<ProjectRecord | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [renameBusy, setRenameBusy] = useState(false);
@@ -186,7 +190,7 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
     return () => { cancelled = true; };
   }, [coverProjectIds]);
   async function submit(event: FormEvent) {
-    event.preventDefault(); if ((!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || imageBusy || fileDraftStatus === "loading") return;
+    event.preventDefault(); if ((!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || fileDraftStatus === "loading") return;
     const normalizedPrompt = prompt.trim() || materialOnlyPrompt;
     const requirements = { targetDurationSeconds: duration, durationMode: "target" as const, subtitles: "auto" as const, music: "auto" as const, audioMode: "auto" as const, creationMode: "motion" as const, reviewMode: "review" as const, aspectMode: aspectAuto ? "auto" as const : "fixed" as const, workflow: "knowledge-explainer" as const };
     const effectiveVoiceId = voiceId;
@@ -226,7 +230,7 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
               run: async () => ({ path: await upload(`library:${id}`, () => api.importLibraryAsset(id, projectId)) }) })),
           ]);
           const uploadedPaths = uploaded.map(item => item.path);
-          await Promise.all(uploadedPaths.map((path, index) => api.setAssetRole(projectId, path, assetRoles[index < files.length ? fileRoleKey(files[index]) : `library:${libraryIds[index - files.length]}`] ?? "auto")));
+          await Promise.all(uploadedPaths.map((path, index) => api.setAssetRole(projectId, path, assetRoles[index < files.length ? fileRoleKey(files[index]) : `library:${libraryIds[index - files.length]}`] ?? "reference")));
           attempt.turnInput = { baseVersionId: null, text: normalizedPrompt, clientRequestId: attempt.turnRequestId, attachments: uploadedPaths, ...selection };
           saveCreationAttempt(attemptKey, attempt);
         }
@@ -257,7 +261,6 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
     <AppNavigation active={projectsPage ? "projects" : "create"} onCreate={startCreating} onAssets={onAssets} accountPanel={accountPanel}/>
     <main className="home-main">
       <div className="home-scroll">
-        {openError ? <div className="open-project-error" role="alert">{openError}</div> : null}
         {!projectsPage ? <section className="home-create" aria-label="新建视频">
           <div className="creation-copy">
           <StudioCodeTag name="Create" className="creation-code-tag"/>
@@ -270,9 +273,10 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
           <ComposerForm className="composer composer--hero" onSubmit={submit} filesDisabled={busy || fileDraftStatus === "loading" || acceptedCreation} onFiles={added => setFiles(current => [...current, ...added])}>
           <PaperDelivery cue={delivery}/>
           <label id="create-prompt-label" className="creation-prompt-label" htmlFor="creation-prompt">创作目标与参考说明</label>
+          <ComposerAttachments files={files} disabled={busy || acceptedCreation} onRemoveFile={file => { setFiles(current => current.filter(item => item !== file)); promptRef.current?.focus({ preventScroll: true }); }}/>
           <textarea id="creation-prompt" aria-labelledby="create-prompt-label" aria-describedby="create-prompt-hint" ref={promptRef} value={prompt} onChange={event => setPrompt(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={brief.hint}/>
           {visualReferences.some(image => libraryIds.includes(image.id)) ? <div className="creation-reference-strip" aria-label="本次创作的图片参考">{visualReferences.filter(image => libraryIds.includes(image.id)).map((image, index) => <figure key={image.id}><img src={image.url} alt={`已选参考图 ${index + 1}`}/><figcaption>画面参考</figcaption><button type="button" disabled={busy || acceptedCreation} aria-label={`移除已选参考图 ${index + 1}`} onClick={() => setLibraryIds(current => current.filter(id => id !== image.id))}><X/></button></figure>)}</div> : null}
-          <div className="attachment-row">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<AssetRoleSelect name={file.name} value={assetRoles[fileRoleKey(file)]} onChange={role => setAssetRoles(current => ({ ...current, [fileRoleKey(file)]: role }))}/><button type="button" aria-label={`移除 ${file.name}`} onClick={() => setFiles(value => value.filter(item => item !== file))}>×</button></span>)}</div>
+
           <div className="composer-tools"><div className="home-creation-options"><input ref={musicFileRef} hidden multiple type="file" accept="audio/*" aria-label="上传背景音乐" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); setAssetRoles(current => ({ ...current, ...Object.fromEntries(added.map(file => [fileRoleKey(file), 'required'])) })); event.target.value = ''; }}/><input ref={imageFileRef} hidden multiple type="file" accept="image/*" aria-label="上传参考图" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); setAssetRoles(current => ({ ...current, ...Object.fromEntries(added.map(file => [fileRoleKey(file), 'reference'])) })); event.target.value = ''; }}/><input ref={referenceFileRef} hidden multiple type="file" accept="video/*" aria-label="上传参考视频" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); setAssetRoles(current => ({ ...current, ...Object.fromEntries(added.map(file => [fileRoleKey(file), 'reference'])) })); event.target.value = ''; }}/><input ref={fileRef} hidden multiple type="file" onChange={event => { const added = Array.from(event.target.files ?? []); setFiles(current => [...current, ...added]); event.target.value = ""; }}/><ComposerMoreMenu narration triggerLabel="添加素材" materialActions={[
             { label: '背景音乐', icon: <MusicNotes aria-hidden="true"/>, onSelect: () => musicFileRef.current?.click(), disabled: busy || fileDraftStatus === 'loading' || acceptedCreation },
             { label: '参考图', icon: <Image aria-hidden="true"/>, onSelect: () => imageFileRef.current?.click(), disabled: busy || fileDraftStatus === 'loading' || acceptedCreation },
@@ -280,10 +284,15 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
             { label: '上传其他文件', icon: <UploadSimple aria-hidden="true"/>, onSelect: () => fileRef.current?.click(), disabled: busy || fileDraftStatus === 'loading' || acceptedCreation },
             { label: '素材库', icon: <Files aria-hidden="true"/>, onSelect: () => setLibraryOpen(true), disabled: busy || acceptedCreation, hint: libraryIds.length ? `已选 ${libraryIds.length} 项` : undefined },
             { label: '内置内容', icon: <Palette aria-hidden="true"/>, onSelect: () => setBuiltInOpen(true), disabled: busy || acceptedCreation },
-          ]} onUpload={() => fileRef.current?.click()} onSelectAssets={() => setLibraryOpen(true)} selectedCount={libraryIds.length} voiceId={voiceId} onVoice={onVoice} running={busy || acceptedCreation}/><DurationControl value={duration} onChange={setDuration} disabled={busy || acceptedCreation}/><AspectRatioSelector value={aspectAuto ? "auto" : aspectRatio} onChange={value => { setAspectAuto(value === "auto"); if (value !== "auto") setAspectRatio(value); }}/><ModelSelector models={models} value={selection} onChange={onSelection} variant="creation"/></div><div className="creation-submit-actions"><button type="button" className="creation-image-first" disabled={busy || acceptedCreation} onClick={() => setImageOpen(true)}>{imageBusy ? <CircleNotch className="spin"/> : <Image/>}{imageBusy ? "参考图生成中" : "生成参考图"}</button><button className="send-button" disabled={(!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || imageBusy || fileDraftStatus === "loading"} aria-label={acceptedCreation ? "继续打开任务" : "生成图文方案"}><span>{acceptedCreation ? "继续打开任务" : "生成图文方案"}</span><ArrowRight weight="bold"/></button></div></div>
+          ]} onUpload={() => fileRef.current?.click()} onSelectAssets={() => setLibraryOpen(true)} selectedCount={libraryIds.length} voiceId={voiceId} onVoice={onVoice} running={busy || acceptedCreation}/>
+            <DurationControl value={duration} onChange={setDuration} disabled={busy || acceptedCreation}/>
+            <AspectRatioSelector value={aspectAuto ? "auto" : aspectRatio} disabled={busy || acceptedCreation} onChange={value => { setAspectAuto(value === "auto"); if (value !== "auto") setAspectRatio(value); }}/>
+            <ModelSelector models={models} value={selection} onChange={onSelection} variant="creation" disabled={busy || acceptedCreation}/>
+          </div>
+          <button type="submit" className="send-button" disabled={(!prompt.trim() && !files.length && !libraryIds.length && !acceptedCreation) || busy || fileDraftStatus === "loading"} aria-label={acceptedCreation ? "继续打开任务" : "开始创作"} title={acceptedCreation ? "继续打开任务" : "开始创作"}><ArrowRight weight="bold" aria-hidden="true"/></button></div>
           </ComposerForm>
-          <div className="creation-input-meta"><p id="create-prompt-hint" className="creation-input-hint"><span>{prompt.trim() || files.length || libraryIds.length ? "先看参考图与关键画面，确认方向后再制作" : "在「添加素材」中上传音乐、图片或视频，剧本与大纲直接填入文本框"}</span></p><span className="creation-shortcut"><kbd>Enter</kbd> 生成图文方案 <span>·</span> <kbd>Shift ↵</kbd> 换行</span></div>
-          {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加</p> : files.length ? <p className="draft-save-status">{fileDraftStatus === "saved" ? "附件已暂存，提交时上传" : "正在暂存附件…"}</p> : null}
+          <div className="creation-input-meta"><p id="create-prompt-hint" className="creation-input-hint"><span>{prompt.trim() || files.length || libraryIds.length ? "先看参考图与关键画面，确认方向后再制作" : "在「添加素材」中上传音乐、图片或视频，剧本与大纲直接填入文本框"}</span></p><span className="creation-shortcut"><kbd>Enter</kbd> 提交 <span>·</span> <kbd>Shift ↵</kbd> 换行</span></div>
+          {fileDraftStatus === "error" ? <p className="form-error" role="status">附件无法保存在此浏览器，刷新后需重新添加</p> : null}
 
           <UploadProgressList items={uploads.items}/>
           {acceptedCreation ? <p className="draft-save-status" role="status">任务已提交，继续打开可恢复制作进度</p> : null}
@@ -298,25 +307,25 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
         </section> : null}
         {!projectsPage && recentProjects.length ? <section className="recent-creations" aria-label="继续创作">
           <header><h2>继续创作</h2><a href="#/projects">查看全部<ArrowRight/></a></header>
-          <div>{recentProjects.map(project => <button className="recent-project" key={project.id} disabled={openingProjectId === project.id} onClick={() => onOpen(project.id)}>
+          <div>{recentProjects.map(project => <button className="recent-project" key={project.id} onClick={() => onOpen(project.id)}>
             <ProjectCover poster={project.posterUrl} fallback={covers[project.id]} title={project.title} status={projectStatus(project)}/>
-            <span className="recent-project-copy"><b>{project.title}</b><small><span>{openingProjectId === project.id ? "正在打开…" : projectStatus(project)}</span><time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time></small></span><span className="recent-project-action">{projectCategory(project) === "review" ? "审阅方案" : projectGroup(project) === "ready" ? "观看视频" : "继续创作"}<ArrowRight/></span>
+            <span className="recent-project-copy"><b>{project.title}</b><small><span>{projectStatus(project)}</span><time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time></small></span><span className="recent-project-action">{projectCategory(project) === "review" ? "审阅方案" : ["ready", "completed"].includes(projectGroup(project)) ? "观看视频" : "继续创作"}<ArrowRight/></span>
           </button>)}</div>
         </section> : null}
-        {projectsPage ? <section className="home-projects">
-          <StudioCodeTag name="Projects" className="library-code-tag"/>
-          <header><div className="home-project-heading"><h1><KineticType text="我的项目" reveal/></h1><p>从第一份方案，到每一次新的修改。</p><span className="sr-only" aria-live="polite">{loading ? "正在读取…" : `${visibleProjects.length} 个项目`}</span></div><button aria-label="创建新作品" className="project-create-button primary-button" onClick={startCreating}>新建视频<ArrowRight/></button></header>
+        {projectsPage ? <section className={`home-projects project-directory--${projectView}`} aria-label="项目">
+          <header className="catalog-heading"><h1><em>项目</em></h1><button aria-label="创建新作品" className="catalog-primary-action primary-button" onClick={startCreating}>新建视频<ArrowRight/></button></header>
           <div className="editorial-project-toolbar"><div className="project-filters" role="tablist" aria-label="筛选项目"><SelectionIndicator value={filter} line/>{projectFilters.map((item, index) => <button key={item.id} id={`project-filter-${item.id}`} role="tab" aria-controls="home-project-results" aria-selected={filter === item.id} tabIndex={filter === item.id ? 0 : -1} className={filter === item.id ? "active" : ""} onClick={() => setFilter(item.id)} onKeyDown={event => {
             const nextIndex = event.key === "ArrowRight" ? (index + 1) % projectFilters.length : event.key === "ArrowLeft" ? (index + projectFilters.length - 1) % projectFilters.length : event.key === "Home" ? 0 : event.key === "End" ? projectFilters.length - 1 : -1;
             if (nextIndex < 0) return;
             event.preventDefault(); setFilter(projectFilters[nextIndex].id); document.getElementById(`project-filter-${projectFilters[nextIndex].id}`)?.focus();
-          }}>{item.label}<span aria-hidden="true">{filterCounts[item.id]}</span></button>)}</div><div className="editorial-project-search"><label className="home-project-search"><MagnifyingGlass/><input type="search" aria-label="搜索项目" placeholder="搜索项目名称" value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button type="button" aria-label="清除搜索" onClick={() => setSearch("")}><X/></button> : null}</label><CatalogSort label="作品排序" value={projectSort} onChange={setProjectSort} options={[{ value: "recent", label: "最近更新" }, { value: "oldest", label: "最早更新" }, { value: "name", label: "名称排序" }]}/></div></div><p className="editorial-result-count" aria-live="polite">{loading ? "正在读取作品…" : `${visibleProjects.length} 个作品`}</p>
+          }}>{item.label}<span aria-hidden="true">{filterCounts[item.id]}</span></button>)}</div><div className="editorial-project-actions"><label className="home-project-search"><MagnifyingGlass/><input type="search" aria-label="搜索项目" placeholder="搜索项目名称" value={search} onChange={event => setSearch(event.target.value)}/>{search ? <button type="button" aria-label="清除搜索" onClick={() => setSearch("")}><X/></button> : null}</label><CatalogSort label="作品排序" value={projectSort} onChange={setProjectSort} options={[{ value: "recent", label: "最近更新" }, { value: "oldest", label: "最早更新" }, { value: "name", label: "名称排序" }]}/><div className="catalog-view-toggle" role="group" aria-label="项目显示方式"><button type="button" aria-label="网格视图" title="网格视图" aria-pressed={projectView === "grid"} onClick={() => setProjectView("grid")}><SquaresFour/></button><button type="button" aria-label="列表视图" title="列表视图" aria-pressed={projectView === "list"} onClick={() => setProjectView("list")}><ListBullets/></button></div></div></div><p className="sr-only" aria-live="polite">{loading ? "正在读取作品…" : `${visibleProjects.length} 个作品`}</p>
+          {projectView === "list" && visibleProjects.length > 0 ? <div className="project-list-heading" aria-hidden="true"><span>项目名称</span><span>状态</span><span>画幅</span><span>最近更新</span><span/></div> : null}
           <div className="home-project-list" key={filter} id="home-project-results" role="tabpanel" aria-labelledby={`project-filter-${filter}`}>
             {visibleProjects.map((project, index) => <article ref={openMenu === project.id ? projectMenuRoot : undefined} style={{ "--item-index": Math.min(index, 5) } as CSSProperties} key={project.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenMenu(current => current === project.id ? "" : current); }} onKeyDown={event => { if (event.key === "Escape") { setOpenMenu(""); event.currentTarget.querySelector<HTMLButtonElement>(".home-project-menu-button")?.focus(); } }}>
-              <button className="home-project-open" disabled={openingProjectId === project.id} aria-busy={openingProjectId === project.id} onClick={() => onOpen(project.id)}>
+              <button className="home-project-open" onClick={() => onOpen(project.id)}>
                 <ProjectCover poster={project.posterUrl} fallback={covers[project.id]} title={project.title} status={projectStatus(project)}/>
-                <span className="home-project-copy"><b title={project.title}>{project.title}</b><span className="home-project-meta"><small className={`home-status home-status--${projectGroup(project)}`}><i/>{openingProjectId === project.id ? "正在打开…" : projectStatus(project)}</small><span className="home-project-ratio">{project.aspectRatio}</span><time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time></span></span>
-                {openingProjectId === project.id ? <CircleNotch className="home-project-loading spin"/> : <ArrowRight className="home-project-arrow"/>}
+                <span className="home-project-copy"><b title={project.title}>{project.title}</b><span className="home-project-meta"><small className={`home-status home-status--${projectGroup(project)}`}><i/>{projectStatus(project)}</small><span className="home-project-ratio">{project.aspectRatio}</span><time dateTime={new Date(project.updatedAt).toISOString()}>{formatHomeTime(project.updatedAt)}</time></span></span>
+                <ArrowRight className="home-project-arrow"/>
               </button>
               <button className="home-project-menu-button" aria-label={`项目操作 ${project.title}`} aria-expanded={openMenu === project.id} onClick={() => setOpenMenu(current => current === project.id ? "" : project.id)}><DotsThree weight="bold"/></button>
               {menuPresence.value === project.id ? <div ref={menuPresence.ref} inert={menuPresence.exiting} aria-hidden={menuPresence.exiting || undefined} className="home-project-menu"><button onClick={() => onOpen(project.id)}><ArrowRight/>打开项目</button><button onClick={() => { setOpenMenu(""); setRenaming(project); setRenameTitle(project.title); setRenameError(""); }}><PencilSimple/>重命名</button><button disabled={Boolean(project.activeTurnId)} onClick={() => void removeProject(project)}><Trash/>删除项目</button></div> : null}
@@ -325,25 +334,19 @@ function StartScreen({ onCreate, homeSection, accountPanel, openingProjectId, pr
             {!loading && !visibleProjects.length ? <div className="home-project-empty"><b>{projects.length ? "没有符合条件的项目" : "还没有视频项目"}</b><span>{projects.length ? "试试其他关键词，或切换项目状态" : "新建视频，开始你的第一个作品"}</span>{projects.length ? <button className="home-reset-filters" onClick={() => { setSearch(""); setFilter("all"); }}>查看全部项目</button> : <button className="home-reset-filters" onClick={startCreating}>开始创作<ArrowRight/></button>}</div> : null}
           </div>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <StudioCodeTag name="Projects" closing className="library-code-tag"/>
         </section> : null}
       </div>
     </main>
     {deleting ? <ActionDialog title="删除项目" busy={deleteBusy} onClose={() => setDeleting(null)}><p>确定删除「{deleting.title}」？项目文件与生成内容将被删除，已有分享链接也会失效。</p>{deleteError ? <p className="form-error" role="alert">{deleteError}</p> : null}<footer><button type="button" disabled={deleteBusy} onClick={() => setDeleting(null)}>保留项目</button><button type="button" className="danger-button" disabled={deleteBusy} onClick={async () => { setDeleteBusy(true); setDeleteError(''); try { await onDelete(deleting); setDeleting(null); } catch (reason) { setDeleteError(reason instanceof Error ? reason.message : '删除失败，请重试'); } finally { setDeleteBusy(false); } }}>{deleteBusy ? '正在删除…' : '确认删除'}</button></footer></ActionDialog> : null}
     {renaming ? <ActionDialog title="重命名作品" busy={renameBusy} onClose={() => setRenaming(null)}><form onSubmit={async event => { event.preventDefault(); if (renameBusy || !renameTitle.trim()) return; setRenameBusy(true); setRenameError(''); try { await onRename(renaming.id, renameTitle.trim()); setRenaming(null); } catch (reason) { setRenameError(reason instanceof Error ? reason.message : '名称保存失败，请重试'); } finally { setRenameBusy(false); } }}><label>作品名称<input autoFocus value={renameTitle} maxLength={120} disabled={renameBusy} onChange={event => setRenameTitle(event.target.value)} /></label>{renameError ? <p className="form-error" role="alert">{renameError}</p> : null}<footer><button type="button" disabled={renameBusy} onClick={() => setRenaming(null)}>取消</button><button className="primary-button" disabled={renameBusy || !renameTitle.trim()}>{renameBusy ? '正在保存…' : '保存名称'}</button></footer></form></ActionDialog> : null}
-          <ReferenceImageDialog open={imageOpen} brief={prompt} models={models} selection={selection} onSelection={onSelection} onBusyChange={setImageBusy} onClose={() => setImageOpen(false)} onChoose={images => {
-            setLibraryIds(current => [...new Set([...current, ...images.map(image => image.id)])]);
-            setAssetRoles(current => ({ ...current, ...Object.fromEntries(images.map(image => [`library:${image.id}`, 'reference'])) }));
-            setVisualReferences(current => [...current.filter(image => !images.some(next => next.id === image.id)), ...images.map(({ id, url }) => ({ id, url }))]);
-          }}/>
     {libraryOpen ? <CreationLibraryDialog selectedIds={libraryIds} onSelect={setLibraryIds} roles={assetRoles} onRole={(id, role) => setAssetRoles(current => ({ ...current, [id]: role }))} onClose={() => setLibraryOpen(false)}/> : null}
   </div>;
 }
 
-type ProjectFilter = "all" | "active" | "review" | "ready";
+type ProjectFilter = "all" | "active" | "review" | "ready" | "completed";
 
 const projectFilters: { id: ProjectFilter; label: string }[] = [
-  { id: "all", label: "全部" }, { id: "active", label: "制作中" }, { id: "review", label: "待处理" }, { id: "ready", label: "可导出" },
+  { id: "all", label: "全部" }, { id: "active", label: "制作中" }, { id: "review", label: "待处理" }, { id: "ready", label: "可导出" }, { id: "completed", label: "已导出" },
 ];
 
 function formatHomeTime(timestamp: number) {

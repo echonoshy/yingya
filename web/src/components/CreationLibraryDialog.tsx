@@ -1,3 +1,4 @@
+import { assetName } from "../assetNames";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import { api } from "../api";
@@ -30,7 +31,7 @@ export function CreationLibraryDialog({ selectedIds, onSelect, roles, onRole, on
     <header><h2 id="creation-library-title">从素材库选择</h2><button className="cap-icon" aria-label="关闭素材选择" onClick={onClose}><X/></button></header>
     <div className="cap-modal-body">{error ? <p className="cap-error" role="alert">{error}<button onClick={() => setRetry(value => value + 1)}>重试</button></p> : !loaded ? <p role="status">正在读取素材…</p> : <>
       <AssetPicker assets={assets} folders={folders} selectedIds={selectedIds} onToggle={asset => onSelect(selectedIds.includes(asset.id) ? selectedIds.filter(id => id !== asset.id) : [...selectedIds, asset.id])}/>
-      <div className="selected-material-roles">{assets.filter(asset => selectedIds.includes(asset.id)).map(asset => <div key={asset.id}><span>{asset.sourceName || asset.prompt || "未命名素材"}</span><AssetRoleSelect name={asset.sourceName || asset.prompt || "未命名素材"} value={roles[`library:${asset.id}`]} onChange={role => onRole(`library:${asset.id}`, role)}/></div>)}</div>
+      <div className="selected-material-roles">{assets.filter(asset => selectedIds.includes(asset.id)).map(asset => <div key={asset.id}><span>{assetName(asset)}</span><AssetRoleSelect name={assetName(asset)} value={roles[`library:${asset.id}`]} onChange={role => onRole(`library:${asset.id}`, role)}/></div>)}</div>
       {selectedIds.some(id => !assets.some(asset => asset.id === id)) ? <button onClick={() => onSelect(selectedIds.filter(id => assets.some(asset => asset.id === id)))}>移除已不可用的素材选择</button> : null}
     </>}<div className="cap-modal-actions"><button className="cap-primary" onClick={onClose}>完成选择{selectedIds.length ? ` · ${selectedIds.length} 项` : ""}</button></div></div>
   </dialog>;

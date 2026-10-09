@@ -81,7 +81,7 @@ cargo run -- admin-create admin admin@yingya.local
 ## 存储和会话
 
 - SQLite：`data/yingya.sqlite`，保存用户、密码哈希、邀请、哈希后的会话令牌、请求和额度账本。不会挂载给 Agent。
-- 用户内容：`data/users/<user-id>/projects`、`assets`、`voices`、`image-jobs`。
+- 用户内容：`data/users/<user-id>/projects`、`assets`、`voices`、`image-jobs`、`voice-jobs`。
 - 用户运行状态：`data/users/<user-id>/runtime`，包含独立 Codex home、工具 home 和封面缓存。
 - Cookie：HttpOnly、SameSite=Strict，有效期 30 天；退出后服务端立即吊销。
 - 浏览器草稿按用户划分 localStorage 与 IndexedDB；其他标签页收到账号切换通知后重新加载。
@@ -89,13 +89,17 @@ cargo run -- admin-create admin admin@yingya.local
 
 现有 `data/video-projects`、`data/assets` 和共享 Codex 历史保留原样，不自动分配给第一个登录的人。已有共享项目需要在确认归属邮箱后另行迁移。新统计不回填无法完整归属的旧数据。
 
-### 图片生成记录
+### 素材生成记录
 
 `GET /api/assets/image-jobs` 读取本用户记录，`POST` 接收画面描述、参考图、模型与 `clientRequestId`，持久保存后立即返回。相同请求编号不会重复生成。任务独立于浏览器运行，持有 worker 活动引用直到图片入库和记录更新，滚动发布等待其完成。参考图生成的旧同步接口也保存同一类记录。
 
 记录保存在用户目录的 `image-jobs/*.json`，包含描述、参考图、状态、结果和失败原因；不共享到其他账号。异常重启将未结束的记录标为中断，保留输入供用户确认重试，不自动重复调用外部服务。功能发布前的生成请求没有完整任务记录，已有成功图片仍从素材库读取。
 
-验证：`cargo test image_job`、`cargo build --locked && python3 tests/image-jobs-runtime.test.py`、`node tests/image-generation-ui.mjs`。后两项分别使用隔离的真实 API / 滚动 worker 与浏览器 fixtures，不把模拟模型产物称为供应商生成验收。
+音色创建使用 `GET/POST /api/assets/voice-jobs`，POST 以 multipart 提交描述生成或授权克隆参数与 `clientRequestId`。同编号、同输入返回原记录；冲突输入不重提，不重复扣额度。受理后持有 worker 活动引用，关闭页面不打断任务，滚动更新等待完成；异常重启将运行记录标为中断，不自动重复创建。任务与参考音频保存在本用户 `voice-jobs` 私有目录，原音只由本人通过 `/api/assets/voice-jobs/<id>/reference` 读取；克隆重试恢复原音后仍需确认授权。旧同步音色接口保留兼容。
+
+图片与音色记录均支持 `DELETE /api/assets/{image,voice}-jobs/<id>` 单条清理，以及集合路径的 `DELETE` 批量清理已完成记录；返回清理的编号数组。运行任务返回冲突，批量操作保留运行和失败记录。清理只将本用户记录标为 `dismissed`，列表与参考音频接口不再展示；不删除素材库文件或音色。私有请求回执保留以防迟到重试再次生成、扣费，清理后的同编号 POST 返回冲突，用户重新生成须使用新编号。
+
+验证：`cargo test voice_job`、`cargo test image_job`、`cargo build --locked && python3 tests/image-jobs-runtime.test.py`、`node tests/image-generation-ui.mjs`。后两项分别使用隔离的真实 API / 滚动 worker 与浏览器 fixtures，不把模拟模型产物称为供应商生成验收。
 
 ## 执行隔离
 
@@ -109,7 +113,7 @@ Codex 版本以 `package.json` 的固定依赖为准，使用 Responses HTTP/SSE
 
 网络经过本用户专属 Unix socket 网关：普通出站只允许公共 HTTP/HTTPS，拒绝私网和宿主回环直连；语音和映芽内部请求由网关注入服务端用户身份。使用开发代理时，平台与内置 CDN 的可信域名保留域名路由，其他目的地固定到已校验的公网 IP。Chromium 也经过同一网关。代理环境只由宿主网关使用，不将宿主服务密钥传入 Agent 的环境变量。自定义后端端口需同步设置 `YINGYA_INTERNAL_API_BASE`。
 
-VoxCPM2 只应监听 `127.0.0.1:8791`。自定义音色在服务端加用户命名空间，列表、预览和合成均限制归属。参考音频副本保存在各自的 `voices` 目录。
+VoxCPM2 只应监听 `127.0.0.1:8791`。自定义音色在服务端加用户命名空间，列表、预览和合成均限制归属。参考音频副本保存在各自的 `voices` 目录。每个音色使用不可变 ID，用户可修改的名称与说明另存在 `voices/<ID 的 SHA-256>/profile.json`；旧的名称型 ID 继续可用。删除操作将该音色标为不再列入可选库，新项目不能选择；已有项目的 ID、参考音频及内部合成访问保留，避免重命名、删除或再次使用同一显示名称改变旧项目声音。内置音色不能编辑或删除。上传的参考音频在转交语音服务前检查可读性、纯音频格式及 1–30 秒时长，检查临时文件用后移除。
 
 ## 预览
 

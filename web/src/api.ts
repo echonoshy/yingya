@@ -1,7 +1,7 @@
 import { uploadForm, type UploadOptions } from "./upload";
 import { explanationPlanSchema, type PlanReceipt } from "./explanationPlan";
 import { scopedUrl, sessionHeaders, sessionFetch } from "./session";
-import { imageJobSchema, assetRoleSchema, workbenchSchema, feedbackAssetSchema } from "./schemas";
+import { imageJobSchema, voiceJobSchema, assetRoleSchema, workbenchSchema, feedbackAssetSchema } from "./schemas";
 import { z } from "zod";
 import { mediaAssetSchema, agentMediaSchema, assetFolderSchema, assetLibraryItemSchema, assetLibrarySchema, codexModelSchema, eventPageSchema, imageLibrarySchema, imageTurnSchema, projectDetailSchema, projectRecordSchema, renderVideoResultSchema, turnAcceptedSchema, uploadedVoiceSchema, voiceListSchema } from "./schemas";
 import type { CreateProjectInput, TurnInput } from "./types";
@@ -59,8 +59,6 @@ const threadStartedSchema = z.object({ threadId: z.string() });
 
 export const api = {
   getProjectContents: (id: string, signal: AbortSignal) => request(`/api/agent-projects/${id}/contents`, z.object({ files: z.array(z.object({ path: z.string(), name: z.string(), size: z.number(), modifiedAt: z.number() })), truncated: z.boolean() }), { signal }),
-  openCompositionPreview: (id: string, signal: AbortSignal) => request(`/api/agent-projects/${id}/studio`, z.object({ previewUrl: z.string(), sourceRevision: z.string().optional() }), { method: "POST", signal }),
-  heartbeatCompositionPreview: (id: string, signal: AbortSignal) => request(`/api/agent-projects/${id}/studio/heartbeat`, z.object({ previewUrl: z.string(), sourceRevision: z.string().optional() }), { method: "POST", signal }),
   uploadFeedbackAsset: async (id: string, uploadId: string, file: Blob) => { const body = new FormData(); body.append("uploadId", uploadId); body.append("file", file, "frame.png"); return request(`/api/agent-projects/${id}/feedback-assets`, feedbackAssetSchema, { method: "POST", body }); },
   listProjects: () => request("/api/agent-projects", z.array(projectRecordSchema)),
   getProject: (id: string) => request(`/api/agent-projects/${id}`, projectDetailSchema),
@@ -95,14 +93,19 @@ export const api = {
   searchAudio: (query: string, type: "music" | "sound_effects") => request(`/api/heygen/audio?${new URLSearchParams({ query, type, limit: "20" })}`, z.object({ data: z.array(z.object({ id: z.string(), name: z.string(), description: z.string(), audioUrl: z.string(), duration: z.number(), type: z.string() })), hasMore: z.boolean().default(false) })),
   importAudio: (id: string, input: { id: string; query: string; type: string }) => request(`/api/agent-projects/${id}/heygen/audio`, mediaAssetSchema, { method: "POST", body: JSON.stringify(input) }),
   listVoices: () => request("/api/voices", voiceListSchema),
-  designVoice: (input: { name: string; description: string }) => request("/api/voices/design", uploadedVoiceSchema, { method: "POST", body: JSON.stringify(input) }),
-  cloneVoice: (input: { name: string; description: string; refText: string; audio: File; authorized: boolean }) => {
-    const body = new FormData();
-    body.append("name", input.name); body.append("description", input.description); body.append("refText", input.refText); body.append("authorized", String(input.authorized)); body.append("audio", input.audio);
-    return request("/api/voices", uploadedVoiceSchema, { method: "POST", body });
-  },
+  updateVoice: (id: string, input: { name: string; description: string }) => request(`/api/voices/${encodeURIComponent(id)}`, uploadedVoiceSchema, { method: "PATCH", body: JSON.stringify(input) }),
+  deleteVoice: (id: string) => requestVoid(`/api/voices/${encodeURIComponent(id)}`, { method: "DELETE" }),
   previewVoice: (voiceId: string, text?: string) => requestBlob("/api/voices/preview", { method: "POST", body: JSON.stringify({ voiceId, ...(text ? { text } : {}) }) }),
+  deleteAssetJob: (kind: "image" | "voice", id?: string) => request(`/api/assets/${kind}-jobs${id ? `/${encodeURIComponent(id)}` : ""}`, z.array(z.string()), { method: "DELETE" }),
   listImageJobs: (signal?: AbortSignal) => request("/api/assets/image-jobs", z.array(imageJobSchema), { signal }),
+  listVoiceJobs: (signal?: AbortSignal) => request("/api/assets/voice-jobs", z.array(voiceJobSchema), { signal }),
+  voiceJobReference: (id: string) => requestBlob(`/api/assets/voice-jobs/${encodeURIComponent(id)}/reference`),
+  createVoiceJob: (input: { clientRequestId: string; mode: "design" | "clone"; name: string; description: string; refText?: string; authorized?: boolean; audio?: File }) => {
+    const body = new FormData();
+    body.append("clientRequestId", input.clientRequestId); body.append("mode", input.mode); body.append("name", input.name); body.append("description", input.description);
+    if (input.mode === "clone") { body.append("refText", input.refText || ""); body.append("authorized", String(input.authorized)); if (input.audio) body.append("audio", input.audio); }
+    return requestWithNetworkRetry("/api/assets/voice-jobs", voiceJobSchema, { method: "POST", body });
+  },
   createImageJob: (input: { clientRequestId: string; prompt: string; referenceImages: string[]; model: string; reasoningEffort: string }) => requestWithNetworkRetry("/api/assets/image-jobs", imageJobSchema, { method: "POST", body: JSON.stringify(input) }),
   listImages: () => request("/api/assets/images", imageLibrarySchema),
   listAssetLibrary: () => request("/api/assets/library", assetLibrarySchema),

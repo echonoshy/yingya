@@ -1,0 +1,31 @@
+.composer-attachments { display: flex; flex-wrap: wrap; gap: 12px; max-height: 176px; overflow-y: auto; margin: 0; padding: 8px; list-style: none; }
+.composer-attachment { position: relative; flex: 0 0 auto; width: 184px; max-width: 100%; height: 64px; }
+.composer-attachment--media { width: 64px; }
+.composer-attachment-preview { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; height: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--canvas); color: var(--text); overflow: hidden; text-align: left; }
+.composer-attachment-preview:hover { border-color: var(--line-strong); }
+.composer-attachment-preview:focus-visible, .composer-attachment-remove:focus-visible { outline: 2px solid var(--signal-blue); outline-offset: 2px; }
+.composer-attachment--media .composer-attachment-preview { justify-content: center; padding: 0; }
+.composer-attachment-preview > img, .composer-attachment-preview > video { width: 100%; height: 100%; object-fit: cover; }
+.composer-attachment-preview .composer-attachment-icon { flex-shrink: 0; width: 24px; height: 24px; color: var(--muted); }
+.composer-attachment-copy { display: grid; gap: 2px; min-width: 0; }
+.composer-attachment-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--weight-medium) var(--text-control)/var(--leading-ui) var(--font-ui); }
+.composer-attachment-copy small { color: var(--muted); font: var(--text-caption)/var(--leading-caption) var(--font-ui); }
+.composer-attachment-preview .composer-attachment-play { position: absolute; bottom: 6px; left: 6px; width: 16px; height: 16px; color: white; filter: drop-shadow(0 1px 2px #0008); }
+.composer-attachment-remove { position: absolute; display: grid; place-items: center; top: -8px; right: -8px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text); }
+.composer-attachment-remove::before { content: ""; position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 1px solid var(--line); box-shadow: 0 1px 3px #11131012; }
+.composer-attachment-remove svg { position: relative; width: 12px; height: 12px; }
+.composer-attachment-remove:hover::before { background: var(--surface); border-color: var(--line-strong); }
+.composer-attachment-remove:disabled { opacity: .4; cursor: wait; }
+.composer-attachment-status { position: absolute; display: flex; align-items: center; gap: 3px; left: 4px; right: 4px; bottom: 4px; padding: 2px 4px; border-radius: 6px; background: #fffe; font: var(--text-caption)/var(--leading-caption) var(--font-ui); }
+.composer-attachment-status svg { flex-shrink: 0; width: 14px; height: 14px; }
+.composer-attachment--media .composer-attachment-status span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.composer-attachment[data-state="error"] .composer-attachment-preview { border-color: var(--danger); }
+.composer-attachment[data-state="error"] .composer-attachment-status { color: var(--danger); }
+.composer-attachment-dialog { width: min(800px, calc(100vw - 32px)); }
+.composer-attachment-view { min-width: 0; max-height: 65dvh; overflow: auto; }
+.composer-attachment-view > img, .composer-attachment-view > video { display: block; max-width: 100%; max-height: 60dvh; margin: auto; border-radius: 12px; }
+.composer-attachment-view > audio { width: 100%; margin: 16px 0; }
+.composer-attachment-download { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 12px; color: var(--accent-text); font-size: var(--text-control); }
+.composer-attachment-download svg { width: 18px; height: 18px; }
+.clean-create .composer-attachments { margin-inline: 16px; }
+@media (pointer: coarse) { .composer-attachments { padding: 16px; gap: 16px; } .composer-attachment-remove { width: 44px; height: 44px; top: -16px; right: -16px; } }

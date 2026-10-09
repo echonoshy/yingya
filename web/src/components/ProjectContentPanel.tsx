@@ -23,8 +23,12 @@ export function ProjectContentPanel({ project, query, onQuery, category, onCateg
       if (pending || controller.signal.aborted || document.hidden) return;
       pending = true; setLoading(true);
       try {
-        const [contents, media] = await Promise.all([api.getProjectContents(project.id, controller.signal), api.getProjectMedia(project.id)]);
-        if (!controller.signal.aborted) { setFiles(contents.files); setAssets(media.assets); setTruncated(contents.truncated); setError(""); }
+        const [contents, media] = await Promise.allSettled([api.getProjectContents(project.id, controller.signal), api.getProjectMedia(project.id)]);
+        if (!controller.signal.aborted) {
+          if (contents.status === "fulfilled") { setFiles(contents.value.files); setTruncated(contents.value.truncated); }
+          if (media.status === "fulfilled") setAssets(media.value.assets);
+          setError(contents.status === "rejected" ? "项目文件暂时无法读取，已显示的内容仍可查看。" : media.status === "rejected" ? "部分素材信息暂时无法读取，项目文件仍可查看。" : "");
+        }
       } catch { if (!controller.signal.aborted) setError("项目内容暂时无法读取，已显示的文件仍可查看。"); }
       finally { pending = false; if (!controller.signal.aborted) setLoading(false); }
     }

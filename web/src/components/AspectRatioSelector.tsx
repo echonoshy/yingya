@@ -5,18 +5,20 @@ import { useMotionPresence } from "../hooks/useMotionPresence";
 
 const options = [
   { value: "auto", label: "自动画幅", hint: "根据内容选择", icon: Sparkle },
-  { value: "16:9", label: "16:9", hint: "横屏", icon: Rectangle },
-  { value: "9:16", label: "9:16", hint: "竖屏", icon: DeviceMobile },
-  { value: "1:1", label: "1:1", hint: "方形", icon: Square },
+  { value: "16:9", label: "16:9", hint: "横屏 · 演示与讲解", icon: Rectangle },
+  { value: "9:16", label: "9:16", hint: "竖屏 · 手机观看", icon: DeviceMobile },
+  { value: "1:1", label: "1:1", hint: "方形 · 社交动态", icon: Square },
 ] as const;
 
 export type AspectRatioValue = typeof options[number]["value"];
 
-export function AspectRatioSelector({ value, onChange }: {
+export function AspectRatioSelector({ value, onChange, disabled = false }: {
   value: AspectRatioValue;
+  disabled?: boolean;
   onChange: (value: AspectRatioValue) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   const presence = useMotionPresence(open ? true : null);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -43,6 +45,7 @@ export function AspectRatioSelector({ value, onChange }: {
   return <div className="home-aspect-select aspect-selector" ref={root}
     onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
     onKeyDown={event => {
+      if (disabled) return;
       if (!open && ["ArrowDown", "ArrowUp"].includes(event.key)) {
         event.preventDefault(); setOpen(true); return;
       }
@@ -57,10 +60,10 @@ export function AspectRatioSelector({ value, onChange }: {
         : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
       items[next]?.focus({ preventScroll: true });
     }}>
-    <button ref={trigger} className="aspect-trigger" type="button" aria-label="首页视频画幅"
+    <button ref={trigger} className="aspect-trigger" type="button" disabled={disabled} aria-label="首页视频画幅" title={`视频画幅：${selected.label}`}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined}
       onClick={() => setOpen(current => !current)}>
-      <SelectedIcon className="aspect-trigger-icon" aria-hidden="true"/><span>{selected.label}</span><CaretDown className="control-chevron" aria-hidden="true" />
+      <SelectedIcon className="aspect-trigger-icon" aria-hidden="true"/><span>{value === "auto" ? "自动" : selected.label}</span><CaretDown className="control-chevron" aria-hidden="true" />
     </button>
     {presence.value ? <div ref={presence.ref} inert={presence.exiting} aria-hidden={presence.exiting || undefined} id={menuId} className="aspect-menu" role="menu" aria-label="选择视频画幅" style={position}>
       {options.map(({ value: option, label, hint, icon: Icon }) => <button key={option} type="button"

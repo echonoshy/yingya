@@ -308,6 +308,13 @@ pub async fn scene_data(root: &Path, source_path: &str, project_id: &str) -> Res
         .as_array_mut()
         .ok_or_else(|| "素材索引必须为数组".to_owned())?;
     for asset in array {
+        // Agent-authored indexes also use `type`; expose the same canonical
+        // field as /media without rewriting the workspace or version snapshot.
+        if let Some(fields) = asset.as_object_mut()
+            && let Some(kind) = fields.remove("type")
+        {
+            fields.entry("kind").or_insert(kind);
+        }
         if let Some(path) = asset
             .get("projectPath")
             .or_else(|| asset.get("path"))
@@ -646,6 +653,52 @@ mod tests {
             "/api/agent-projects/project/files/assets/source.mp4"
         );
         assert!(version_source(&root, &manifest, "missing").await.is_err());
+        fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn editorial_media_types_are_readable_in_workspace_and_version_without_rewriting() {
+        let root = fixture().await;
+        let assets = json!([
+            {"id":"voice-1","type":"audio","path":"assets/voice.wav","voiceId":"default","durationSeconds":12.0},
+            {"id":"captions-1","type":"captions","path":"assets/captions.json"},
+            {"id":"frame-1","kind":"image","projectPath":"assets/frame.png"}
+        ]);
+        let bytes = serde_json::to_vec(&assets).unwrap();
+        for source in [".", ".yingya/versions/v1"] {
+            let directory = root.join(source);
+            fs::create_dir_all(&directory).await.unwrap();
+            fs::write(directory.join("assets.json"), &bytes)
+                .await
+                .unwrap();
+            let data = scene_data(&root, source, "project").await.unwrap();
+            let parsed = data["assets"].as_array().unwrap();
+            assert_eq!(parsed.len(), 3);
+            assert_eq!(parsed[0]["kind"], "audio");
+            assert_eq!(parsed[0]["durationSeconds"], 12.0);
+            assert_eq!(parsed[1]["kind"], "captions");
+            assert_eq!(parsed[2]["kind"], "image");
+            for asset in parsed {
+                for key in ["id", "name", "kind", "projectPath", "url", "source"] {
+                    assert!(asset[key].is_string(), "missing {key}: {asset}");
+                }
+                assert!(asset["createdAt"].is_number());
+            }
+            assert_eq!(data["assets"][0]["voiceId"], "default");
+            let prefix = if source == "." {
+                String::new()
+            } else {
+                format!("{source}/")
+            };
+            assert_eq!(
+                parsed[0]["url"],
+                format!("/api/agent-projects/project/files/{prefix}assets/voice.wav")
+            );
+            assert_eq!(
+                fs::read(directory.join("assets.json")).await.unwrap(),
+                bytes
+            );
+        }
         fs::remove_dir_all(root).await.unwrap();
     }
 

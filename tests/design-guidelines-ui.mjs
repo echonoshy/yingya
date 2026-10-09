@@ -43,16 +43,10 @@ try {
   });
 
   await page.goto(base + '/app#/assets');
-  const create = page.getByRole('button', { name: '创建素材', exact: true });
-  async function open(kind) { await create.click(); await page.getByRole('menuitem', { name: kind, exact: true }).click(); }
+  async function open(kind) { await page.getByRole('link', { name: '生成素材', exact: true }).click(); await page.getByRole('navigation', { name: '生成类型' }).getByRole('link', { name: kind === '生成图片' ? '图片' : '音色', exact: true }).click(); }
   await open('生成图片');
-  const image = page.getByRole('dialog', { name: '生成图片', exact: true });
-  assert.equal(await image.evaluate(el => el.matches(':modal')), true);
+  const image = page.getByRole('region', { name: '图片生成工作区', exact: true });
   await image.getByLabel('画面描述').fill('清晨的树林，横幅插画');
-  for (let i = 0; i < 14; i++) {
-    await page.keyboard.press('Tab');
-    assert.equal(await image.evaluate(el => el.contains(document.activeElement)), true, 'Tab stays in modal');
-  }
   await image.getByRole('button', { name: /^制作助手模型/ }).click();
   await page.getByRole('menu').waitFor();
   await page.keyboard.press('Escape');
@@ -62,20 +56,15 @@ try {
   await image.getByRole('alert').waitFor();
   assert.equal(await image.getByLabel('画面描述').inputValue(), '清晨的树林，横幅插画');
   await page.screenshot({ path: `${out}/image-retry.png` });
-  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: '素材库', exact: true }).click();
   await image.waitFor({ state: 'hidden' });
-  assert.equal(await create.evaluate(el => el === document.activeElement), true);
   await open('生成图片');
   assert.equal(await image.getByLabel('画面描述').inputValue(), '清晨的树林，横幅插画');
   failImage = false;
   await image.getByRole('button', { name: '生成图片', exact: true }).click();
-  await image.waitFor({ state: 'hidden' });
-  await page.getByRole('dialog', { name: '生成记录', exact: true }).waitFor();
-  await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: /^全部/ }).first().click();
-
+  await image.getByText('已完成', { exact: true }).waitFor();
   await open('创建音色');
-  const voice = page.getByRole('dialog', { name: '创建音色', exact: true });
+  const voice = page.getByRole('region', { name: '音色管理', exact: true });
   await voice.getByLabel('音色名称').fill('保留的音色草稿');
   await voice.getByRole('button', { name: '重新加载音色' }).waitFor();
   failVoices = false;
@@ -91,18 +80,17 @@ try {
   await voice.getByLabel('试听文案').fill('验证手机上的音色试听');
   await voice.getByRole('button', { name: '试听 映芽讲解', exact: true }).click();
   await voice.locator('audio').waitFor();
-  await page.waitForFunction(() => document.querySelector('.studio-voice-audio')?.readyState >= 2);
+  await page.waitForFunction(() => document.querySelector('.voice-player audio')?.readyState >= 2);
   assert.deepEqual(previewPayload, { voiceId: '映芽讲解', text: '验证手机上的音色试听' });
   await voice.getByRole('button', { name: '设为默认', exact: true }).click();
-  assert.equal(await voice.locator('article', { hasText: '映芽讲解' }).getByRole('button', { name: '新项目默认' }).isDisabled(), true);
+  assert.equal(await voice.locator('article', { hasText: '映芽讲解' }).getByRole('button', { name: '已默认' }).isDisabled(), true);
   await page.screenshot({ path: `${out}/voice-mobile-playing.png` });
-  await voice.getByRole('button', { name: '克隆音色', exact: true }).focus();
+  await voice.getByRole('group', { name: '音色创建方式' }).getByRole('button', { name: '克隆音色', exact: true }).focus();
   await page.keyboard.press('Enter');
   await voice.getByLabel('参考音频原文').waitFor();
-  assert.equal(await voice.getByRole('button', { name: '克隆音色' }).getAttribute('aria-pressed'), 'true');
-  await page.keyboard.press('Escape');
+  assert.equal(await voice.getByRole('group', { name: '音色创建方式' }).getByRole('button', { name: '克隆音色' }).getAttribute('aria-pressed'), 'true');
+  await page.getByRole('link', { name: '素材库', exact: true }).click();
   await voice.waitFor({ state: 'hidden' });
-  assert.equal(await create.evaluate(el => el === document.activeElement), true);
 
   await page.getByLabel('账号：qa@example.com', { exact: true }).click();
   await page.getByRole('button', { name: '使用情况', exact: true }).click();

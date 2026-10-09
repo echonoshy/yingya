@@ -9,7 +9,7 @@ Remotion 是唯一制作与导出引擎。新项目使用 Remotion，无需试�
 - `remotion.json`：`schemaVersion: 1`、`engine: "remotion"`、入口、画幅、整数帧率/帧数、props 和 media。
 - `src/Video.tsx`：默认导出的 React 画面组件，以 `useCurrentFrame()` 驱动画面。
 - `media`：所有音视频的素材路径、起始帧、持续帧、源入点、音量和用途；宿主统一挂载。
-- `build` 生成 `index.html`、Player 资源及 `remotion-build.json`。源或素材改变后必须重建。
+- `build` 生成 `index.html`、Player 资源及 `remotion-build.json`。源或素材改变后必须重建。这些预览用于制作与检查；普通工作台统一播放已保存版本的成片，不嵌入 Studio 或提供工程预览切换。
 - 快照保留 TSX、配置、素材、生成预览、构建凭证、场景和制作要求。不能手改凭证认证过期源码。
 - 缺少或无效引擎标记直接失败。初始化拒绝覆盖已有源。导出 FPS 必须等于源帧率。
 

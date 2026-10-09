@@ -22,9 +22,10 @@ try{
  for(const width of [390,320]) {
   await page.setViewportSize({width,height:844});
   await page.getByRole('button',{name:'我的项目',exact:true}).click();
-  const heading=await page.getByRole('heading',{name:'我的项目',exact:true}).boundingBox();
+  const toolbar=await page.locator('.editorial-project-toolbar').boundingBox();
+  assert.equal(await page.locator('.home-project-heading').count(),0);
   const navigation=await page.locator('.app-navigation').boundingBox();
-  assert.ok(heading.y>=navigation.y+navigation.height,'Projects heading must clear sticky mobile navigation');
+  assert.ok(toolbar.y>=navigation.y+navigation.height,'Projects toolbar must clear sticky mobile navigation');
   await page.locator('.app-primary-navigation').getByRole('button',{name:'新建视频',exact:true}).click();
   await page.waitForURL('**/app#/');
   // Navigation updates the URL before the scheduled animation-frame focus runs.
@@ -40,7 +41,7 @@ try{
  await page.screenshot({path:out+'/home.png'});
 
  const creationRequest=page.waitForRequest(request=>new URL(request.url()).pathname.endsWith('/agent-projects')&&request.method()==='POST');
- await page.getByRole('button',{name:'生成图文方案',exact:true}).click();
+ await page.getByRole('button',{name:'开始创作',exact:true}).click();
  const creation=(await creationRequest).postDataJSON();assert.equal(creation.requirements.workflow,'knowledge-explainer');for(const key of ['presentation','styleId','referenceExample'])assert.equal(key in creation.requirements,false,`retired setting ${key} must not affect creation`);
  await page.waitForURL('**/app#/projects/22222222-2222-4222-8222-222222222222');
 
@@ -69,6 +70,8 @@ try{
   await page.setViewportSize({width,height});
   if(width<1024){assert.equal(await separator.isVisible(),false);const tabBoxes=await page.locator('.workspace-tabs > button').evaluateAll(buttons=>buttons.map(button=>button.getBoundingClientRect().toJSON()));assert.equal(tabBoxes.length,3);assert.ok(tabBoxes.every(box=>Math.abs(box.y-tabBoxes[0].y)<1),'All mobile views stay in one row');const marker=await page.locator('.workspace-tabs .selection-indicator').boundingBox();assert.ok(marker.height<=3,'Mobile selection must not cover its label');const navBox=await page.locator('.workspace-tabs').boundingBox();assert.ok(marker.y>=navBox.y&&marker.y+marker.height<=navBox.y+navBox.height+1,'Selection underline remains inside navigation');}
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`horizontal overflow ${width}`);
+  assert.ok(await page.locator('.project-confirm-dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1),`confirmation overflow ${width}`);
+  const confirmBounds=await page.getByRole('button',{name:'确认方案并制作',exact:true}).boundingBox();assert.ok(confirmBounds.y+confirmBounds.height<=height,`confirmation visible ${width}`);
   if(width<1024){const backIcon=await page.locator(".project-back svg").boundingBox();assert.ok(backIcon?.width>=16&&backIcon?.height>=16,"Back navigation icon must remain visible on mobile");}
   await page.screenshot({path:`${out}/plan-${width}.png`});
  }
@@ -136,7 +139,8 @@ try{
  assert.equal(await page.locator('.feedback-drafts textarea').count(),2);assert.match(await page.locator('.feedback-drafts').innerText(),/初稿 1/);
  assert.equal(requests.some(path=>path.includes('/rollback')),false);
  let createdShare;await page.route(url=>url.pathname==='/api/shares',route=>{if(route.request().method()==='GET')return route.fulfill({json:{shares:[]}});createdShare=route.request().postDataJSON();return route.fulfill({json:{id:'share-1',projectId:seed.id,ownerId:'qa-user',artifactId:'video',title:seed.title,version:'修改版 2',createdAt:1750000000,expiresAt:null,status:'active',bytes:1024,reservedBytesToday:0,url:'/s/'+ 'a'.repeat(64)}});});
- const share=page.getByRole('button',{name:'分享当前视频',exact:true});await share.click();await page.getByRole('dialog',{name:'分享当前视频'}).waitFor();await page.getByRole('button',{name:'创建分享链接',exact:true}).click();await page.getByRole('button',{name:'复制链接',exact:true}).waitFor();assert.equal(createdShare.versionId,'draft-2');await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await share.evaluate(el=>document.activeElement===el),true);
+ await page.getByRole('button',{name:'分享与下载',exact:true}).click();
+ const share=page.getByRole('button',{name:'分享当前视频',exact:true});await share.click();await page.getByRole('dialog',{name:'分享当前视频'}).waitFor();await page.getByRole('button',{name:'创建分享链接',exact:true}).click();await page.getByRole('button',{name:'复制链接',exact:true}).waitFor();assert.equal(createdShare.versionId,'draft-2');await page.keyboard.press('Escape');await page.getByRole('dialog',{name:'分享当前视频',exact:true}).waitFor({state:'hidden'});assert.equal(await share.evaluate(el=>document.activeElement===el),true);await page.keyboard.press('Escape');await page.getByRole('dialog',{name:'分享与下载',exact:true}).waitFor({state:'hidden'});assert.ok(await page.getByRole('button',{name:'分享与下载',exact:true}).evaluate(el=>document.activeElement===el));
  for(const [width,height] of [[390,844],[320,568]]){await page.setViewportSize({width,height});await page.getByRole('button',{name:'预览',exact:true}).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.getByRole('button',{name:'对此处提修改',exact:true}).click();await page.locator('.feedback-drafts textarea').last().waitFor({state:'visible'});await page.locator('.feedback-drafts textarea').last().fill('手机上的时间点意见');const sendBounds=await page.getByRole('button',{name:'发送消息',exact:true}).boundingBox();assert.ok(sendBounds.y+sendBounds.height<=height,`send must stay visible at ${width}`);await page.screenshot({path:`${out}/feedback-${width}.png`});}
 
  await page.setViewportSize({width:390,height:420});await page.locator('.thread-footer textarea[aria-label="修改描述"]').fill('模拟可视区域变短，发送仍应可见');const compactSend=await page.getByRole('button',{name:'发送消息',exact:true}).boundingBox();assert.ok(compactSend.y+compactSend.height<=420);

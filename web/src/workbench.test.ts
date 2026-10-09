@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultExportFps, materialOnlyPrompt, sceneAtTime, selectedProjectVersion, sourceClip, sourceFilePath } from "./workbench";
+import { materialOnlyPrompt, sceneAtTime, selectedProjectVersion, sourceClip, sourceFilePath } from "./workbench";
 import { agentManifestSchema, workbenchSchema } from "./schemas";
 import type { MediaScene, ProjectDetail, SourceBinding } from "./types";
 
@@ -37,14 +37,5 @@ describe("version-bound source interpretation", () => {
     expect(result.workspace.scenes).toHaveLength(2);
     expect(result.workspace.scenesRevision).toBeNull();
     expect(result.contentIndexValidation?.semanticClaimsVerified).toBe(false);
-  });
-});
-
-describe("bounded scene effects and export defaults", () => {
-  it("uses the project frame rate and falls back to 30 for invalid or absent metadata", () => {
-    expect(defaultExportFps({ manifest })).toBe(30);
-    expect(defaultExportFps({ manifest: { ...manifest, outputSpec: { fps: 24 } } })).toBe(24);
-    expect(defaultExportFps({ manifest: { ...manifest, outputSpec: { frameRate: 60 } } })).toBe(60);
-    expect(defaultExportFps({ manifest: { ...manifest, outputSpec: { fps: 0 } } })).toBe(30);
   });
 });

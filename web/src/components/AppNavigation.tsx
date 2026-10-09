@@ -14,7 +14,7 @@ export function AppNavigation({ active, onCreate, onAssets, onProjects, accountP
     sync();
     viewport.addEventListener('change', sync);
     return () => viewport.removeEventListener('change', sync);
-  }, []);
+  }, [Boolean(children)]);
   return <><header className="home-nav app-navigation">
     <div className="app-navigation-surface">
       <BrandLogo />

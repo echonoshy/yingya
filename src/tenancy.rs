@@ -1551,7 +1551,7 @@ pub(super) async fn voice_proxy(
         };
     }
     if path == "v1/audio/voices" && request.method() == "GET" {
-        return match state.voices.list_visible().await {
+        return match state.voices.list_for_synthesis().await {
             Ok(v) => Json(v).into_response(),
             Err(e) => failure(StatusCode::BAD_GATEWAY, &e.to_string()),
         };

@@ -1,6 +1,6 @@
 {
   "name": "yingya",
-  "version": "0.5.72",
+  "version": "0.5.93",
   "private": true,
   "description": "映芽 · Yingya，把资料、想法和已有素材制作成能独立讲解、直接分享的视频。",
   "scripts": {
@@ -19,7 +19,7 @@
     "test:editorial": "python3 tests/media-analysis.test.py",
     "test:tts": "node --test tests/voxcpm2-client.test.mjs",
     "test:rust": "cargo test --all-targets",
-    "test:ui": "node tests/knowledge-browser.mjs && node tests/ui-qa.mjs && node tests/design-guidelines-ui.mjs && node tests/control-consistency-ui.mjs && node tests/asset-drag-ui.mjs && node tests/creation-uploads-ui.mjs && node tests/popover-motion-ui.mjs",
+    "test:ui": "node tests/knowledge-browser.mjs && node tests/composer-attachments-ui.mjs && node tests/ui-qa.mjs && node tests/design-guidelines-ui.mjs && node tests/control-consistency-ui.mjs && node tests/asset-drag-ui.mjs && node tests/catalog-interactions-ui.mjs && node tests/asset-upload-queue-ui.mjs && node tests/image-generation-ui.mjs && node tests/creation-uploads-ui.mjs && node tests/popover-motion-ui.mjs && node tests/workspace-delivery-ui.mjs",
     "test:marketing": "node tests/marketing-ui-qa.mjs",
     "test:avatar": "cargo build --locked && npm run web:build && node tests/avatar-browser.mjs",
     "test:admin": "node tests/admin-qa.mjs",

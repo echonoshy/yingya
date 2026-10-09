@@ -175,9 +175,22 @@ The service listens on `127.0.0.1:8791` by default; local clients use
 automatically. For manual use through `npm run codex`, install the host copy
 with `npm run voxcpm2:skill:install`.
 
-The web composer includes a project voice library. Users can preview the
-default voice, create and save a voice from a natural-language description, or
-clone an authorized 1–30 second reference recording with its exact transcript.
+The Assets → Generate → Voices tab (`/app#/assets/generate/voice`) owns creation and management;
+the composer provides selection and preview. Users can search, preview custom
+text, download samples, edit labels/descriptions, remove library entries, or
+choose the default for new projects. Voices can be generated from a description
+or cloned from an authorized 1–30 second recording (up to 10 MB) with its exact
+transcript. Browser and backend validation reject unreadable or out-of-range
+samples. `PATCH /api/voices/{id}` edits display metadata; `DELETE` removes the
+voice from the selectable library. IDs stay stable and existing projects retain
+synthesis access; storage and isolation rules are in [USER_SANDBOX.md](USER_SANDBOX.md).
+The UI submits durable multipart tasks through `POST /api/assets/voice-jobs` and
+polls the same resource with GET. Accepted work continues after the browser closes;
+identical `clientRequestId` retries reuse the record and media charge. Clone samples
+are retained privately for authorized retries. Synchronous voice endpoints remain
+available for compatibility. Job-history DELETE endpoints clear terminal entries
+without removing voices; completed-only bulk cleanup leaves active and failed jobs.
+Receipt retention and cleared-ID retry rules are in [USER_SANDBOX.md](USER_SANDBOX.md).
 Each project stores its selected VoxCPM2 voice in `.yingya/voice.json`; every
 narration segment and revision reuses that voice ID for consistent timbre.
 

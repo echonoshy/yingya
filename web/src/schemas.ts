@@ -57,7 +57,7 @@ export const renderVideoResultSchema = z.object({ jobId: z.string(), status: z.l
 export const eventPageSchema = z.object({ items: z.array(agentEventSchema), nextBefore: z.number().nullish().transform(value => value ?? undefined), latestSeq: z.number(), hasMore: z.boolean() });
 export const uploadedVoiceSchema = z.object({
   name: z.string(), consent: z.string().default(""), created_at: z.number().default(0), file_size: z.number().default(0), mime_type: z.string().default(""),
-  ref_text: optionalString, speaker_description: optionalString,
+  ref_text: optionalString, speaker_description: optionalString, display_name: optionalString, used_by: z.number().default(0),
 });
 export const voiceListSchema = z.object({ voices: z.array(z.string()), uploaded_voices: z.array(uploadedVoiceSchema) });
 export const imageLibraryAssetSchema = z.object({
@@ -121,6 +121,13 @@ export const imageJobSchema = z.object({
   createdAt: z.number(), updatedAt: z.number(), images: imageTurnSchema.shape.images, error: optionalString,
 });
 export type ImageJob = z.infer<typeof imageJobSchema>;
+export const voiceJobSchema = z.object({
+  id: z.string(), mode: z.enum(["design", "clone"]), name: z.string(), description: z.string(), refText: z.string(),
+  referenceName: optionalString, referenceMime: optionalString,
+  status: z.enum(["running", "completed", "failed"]), createdAt: z.number(), updatedAt: z.number(),
+  voice: uploadedVoiceSchema.nullish(), error: optionalString,
+});
+export type VoiceJob = z.infer<typeof voiceJobSchema>;
 
 export type CodexModel = z.infer<typeof codexModelSchema>;
 export type ProjectRecord = z.infer<typeof projectRecordSchema>;

@@ -6,6 +6,8 @@ mod image_jobs;
 mod project_content;
 #[path = "tenancy.rs"]
 mod tenancy;
+#[path = "voice_jobs.rs"]
+mod voice_jobs;
 use crate::accounts::{Accounts, User};
 use crate::sandbox::Sandbox;
 use std::{
@@ -74,6 +76,7 @@ struct AppState {
     heygen: HeyGenClient,
     assets: AssetStore,
     image_jobs: image_jobs::ImageJobs,
+    voice_jobs: voice_jobs::VoiceJobs,
     root: Arc<PathBuf>,
     agent_projects: AgentProjectStore,
     agent_events: broadcast::Sender<AgentEvent>,
@@ -386,6 +389,9 @@ async fn user_router(
     let image_jobs = image_jobs::ImageJobs::new(paths.app_data.join("image-jobs"))
         .await
         .map_err(|error| std::io::Error::other(error.to_string()))?;
+    let voice_jobs = voice_jobs::VoiceJobs::new(paths.app_data.join("voice-jobs"))
+        .await
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
     let agent_projects = AgentProjectStore::new(paths.projects.clone()).await?;
     agent_projects
         .recover_interrupted()
@@ -406,6 +412,7 @@ async fn user_router(
         heygen,
         assets,
         image_jobs,
+        voice_jobs,
         root: Arc::new(root.clone()),
         agent_projects,
         agent_events,
@@ -446,7 +453,13 @@ async fn user_router(
         )
         .route(
             "/api/assets/image-jobs",
-            get(image_jobs::list).post(image_jobs::create),
+            get(image_jobs::list)
+                .post(image_jobs::create)
+                .delete(image_jobs::clear_completed),
+        )
+        .route(
+            "/api/assets/image-jobs/{id}",
+            axum::routing::delete(image_jobs::dismiss),
         )
         .route("/api/assets/images", get(list_images).post(upload_image))
         .route(
@@ -474,8 +487,26 @@ async fn user_router(
             get(list_asset_folders).post(create_asset_folder),
         )
         .route("/api/heygen/audio", get(search_heygen_audio))
+        .route(
+            "/api/assets/voice-jobs",
+            get(voice_jobs::list)
+                .post(voice_jobs::create)
+                .delete(voice_jobs::clear_completed),
+        )
+        .route(
+            "/api/assets/voice-jobs/{id}",
+            axum::routing::delete(voice_jobs::dismiss),
+        )
+        .route(
+            "/api/assets/voice-jobs/{id}/reference",
+            get(voice_jobs::reference),
+        )
         .route("/api/voices", get(list_voices).post(clone_voice))
         .route("/api/voices/design", post(design_voice))
+        .route(
+            "/api/voices/{id}",
+            patch(update_voice_profile).delete(delete_voice_profile),
+        )
         .route("/api/voices/preview", post(preview_voice))
         .route("/api/voices/resolve", post(resolve_voice))
         .route(
@@ -866,7 +897,102 @@ async fn rename_agent_project(
 }
 
 async fn list_voices(State(state): State<AppState>) -> Result<Json<VoiceList>, ApiError> {
-    Ok(Json(state.voices.list_visible().await?))
+    let mut catalog = state.voices.list_visible().await?;
+    let projects = state
+        .agent_projects
+        .list()
+        .await
+        .map_err(ApiError::Project)?;
+    for voice in &mut catalog.uploaded_voices {
+        voice.used_by = projects
+            .iter()
+            .filter(|p| p.voice_id.eq_ignore_ascii_case(&voice.name))
+            .count();
+    }
+    Ok(Json(catalog))
+}
+
+async fn editable_voice(state: &AppState, id: &str) -> Result<UploadedVoice, ApiError> {
+    state
+        .voices
+        .list_visible()
+        .await?
+        .uploaded_voices
+        .into_iter()
+        .find(|voice| voice.name.eq_ignore_ascii_case(id))
+        .ok_or_else(|| ApiError::NotFound("音色不存在或不可编辑".into()))
+}
+
+async fn check_voice_label(
+    state: &AppState,
+    label: &str,
+    except: Option<&str>,
+) -> Result<(), ApiError> {
+    if label.eq_ignore_ascii_case("default")
+        || label.eq_ignore_ascii_case("yingya-default-narrator")
+        || label == "默认音色"
+    {
+        return Err(ApiError::Validation("请使用其他音色名称".into()));
+    }
+    if state
+        .voices
+        .list_visible()
+        .await?
+        .uploaded_voices
+        .iter()
+        .any(|voice| {
+            Some(voice.name.as_str()) != except
+                && voice
+                    .display_name
+                    .as_deref()
+                    .unwrap_or(&voice.name)
+                    .to_lowercase()
+                    == label.to_lowercase()
+        })
+    {
+        return Err(ApiError::Conflict(format!("音色“{label}”已经存在")));
+    }
+    Ok(())
+}
+
+async fn update_voice_profile(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<VoiceDesignRequest>,
+) -> Result<Json<UploadedVoice>, ApiError> {
+    let _guard = state.voices.catalog_lock.lock().await;
+    let mut voice = editable_voice(&state, &id).await?;
+    let label = validate_voice_name(&request.name)?;
+    let description = request.description.trim();
+    if description.chars().count() > 200 {
+        return Err(ApiError::Validation("音色说明不能超过 200 个字符".into()));
+    }
+    check_voice_label(&state, &label, Some(&voice.name)).await?;
+    state
+        .voices
+        .save_profile(&voice.name, &label, description, false)
+        .await?;
+    voice.display_name = Some(label);
+    voice.speaker_description = Some(description.into());
+    Ok(Json(voice))
+}
+
+async fn delete_voice_profile(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let _guard = state.voices.catalog_lock.lock().await;
+    let voice = editable_voice(&state, &id).await?;
+    state
+        .voices
+        .save_profile(
+            &voice.name,
+            voice.display_name.as_deref().unwrap_or(&voice.name),
+            voice.speaker_description.as_deref().unwrap_or(""),
+            true,
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn design_voice(
@@ -878,10 +1004,16 @@ async fn design_voice(
     if description.chars().count() < 4 || description.chars().count() > 200 {
         return Err(ApiError::Validation("音色描述需要 4–200 个字符".to_owned()));
     }
-    if state.voices.exists(&name).await? {
-        return Err(ApiError::Conflict(format!("音色“{name}”已经存在")));
-    }
-    Ok(Json(state.voices.create_design(&name, description).await?))
+    let _guard = state.voices.catalog_lock.lock().await;
+    check_voice_label(&state, &name, None).await?;
+    let id = format!("voice-{}", &Uuid::new_v4().simple().to_string()[..20]);
+    state
+        .voices
+        .save_profile(&id, &name, description, false)
+        .await?;
+    let mut voice = state.voices.create_design(&id, description).await?;
+    voice.display_name = Some(name);
+    Ok(Json(voice))
 }
 
 async fn clone_voice(
@@ -919,9 +1051,8 @@ async fn clone_voice(
         ));
     }
     let name = validate_voice_name(name.as_deref().unwrap_or_default())?;
-    if state.voices.exists(&name).await? {
-        return Err(ApiError::Conflict(format!("音色“{name}”已经存在")));
-    }
+    let _guard = state.voices.catalog_lock.lock().await;
+    check_voice_label(&state, &name, None).await?;
     let ref_text = ref_text.unwrap_or_default();
     if ref_text.trim().is_empty() || ref_text.chars().count() > 500 {
         return Err(ApiError::Validation(
@@ -941,20 +1072,30 @@ async fn clone_voice(
             "参考音频需要是 1–30 秒且不超过 10 MB 的清晰人声".to_owned(),
         ));
     }
-    Ok(Json(
-        state
-            .voices
-            .upload(
-                &name,
-                description.trim(),
-                ref_text.trim(),
-                "yingya-user-authorized",
-                &filename,
-                &mime_type,
-                bytes,
-            )
-            .await?,
-    ))
+    state
+        .voices
+        .validate_sample(&bytes)
+        .await
+        .map_err(ApiError::Validation)?;
+    let id = format!("voice-{}", &Uuid::new_v4().simple().to_string()[..20]);
+    state
+        .voices
+        .save_profile(&id, &name, description.trim(), false)
+        .await?;
+    let mut voice = state
+        .voices
+        .upload(
+            &id,
+            description.trim(),
+            ref_text.trim(),
+            "yingya-user-authorized",
+            &filename,
+            &mime_type,
+            bytes,
+        )
+        .await?;
+    voice.display_name = Some(name);
+    Ok(Json(voice))
 }
 
 async fn preview_voice(
@@ -4995,10 +5136,10 @@ async fn import_library_asset(
         .agent_projects
         .resolve_relative(&project_id, &relative)
         .map_err(ApiError::Project)?;
-    fs::copy(source, destination).await?;
+    fs::copy(&source, destination).await?;
     let name = item
         .source_name
-        .unwrap_or_else(|| item.prompt.unwrap_or_else(|| item.id.clone()));
+        .unwrap_or_else(|| format!("{}_{}.{}", item.category, item.id, extension));
     state
         .agent_projects
         .append_media_asset(
@@ -5241,7 +5382,7 @@ impl AssetStore {
                         .revised_prompt
                         .clone()
                         .or_else(|| fallback_prompt.map(str::to_owned)),
-                    source_name: None,
+                    source_name: Some(format!("image_{id}.{extension}")),
                     kind: "generated".to_owned(),
                     created_at: unix_millis(SystemTime::now()),
                     folder_id: None,
@@ -6021,6 +6162,7 @@ mod tests {
         let listed = store.library_item(&image.id).await.unwrap();
         assert_eq!(listed.url, image.url);
         assert_eq!(listed.prompt.as_deref(), Some("orange pinwheel"));
+        assert_eq!(listed.source_name, Some(format!("image_{}.png", image.id)));
         store.rename_asset(&image.id, "pinwheel.png").await.unwrap();
         store.delete_asset(&image.id).await.unwrap();
         assert!(store.list_library().await.unwrap().is_empty());

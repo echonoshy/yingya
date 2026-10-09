@@ -1,13 +1,22 @@
+import { createPortal } from "react-dom";
+import { ActionDialog } from "./ActionDialog";
+import "./render-panel.css";
 import { SelectControl } from "./SelectControl";
-import { Check, CircleNotch, DownloadSimple, FilmSlate, Warning, DotsThree, CaretDown } from "@phosphor-icons/react";
+import { Check, CircleNotch, DownloadSimple, FilmSlate, Warning, CaretDown } from "@phosphor-icons/react";
 import { ShareDialog, type ShareSource } from "../sharing/ShareDialog";
 import { ShareNetwork } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { defaultExportFps } from "../workbench";
+import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
+import { sourceFilePath } from "../workbench";
 import { api } from "../api";
 import type { DraftVersion, ProjectDetail, RenderJob } from "../types";
 
 type RenderResolution = "landscape" | "landscape-4k" | "portrait" | "portrait-4k" | "square" | "square-4k";
+
+const renderConfigSchema = z.object({
+  engine: z.literal("remotion"),
+  composition: z.object({ fps: z.number().int().min(1).max(120) }),
+});
 
 const resolutionLabels: Record<RenderResolution, string> = {
   landscape: "1920 × 1080 p",
@@ -30,18 +39,16 @@ function resolutionOptions(aspectRatio: string): RenderResolution[] {
   return ["landscape", "landscape-4k"];
 }
 
-export function RenderPanel({ project, version, videoPath, exportRequest = 0, onRefresh }: { project: ProjectDetail; version?: DraftVersion; videoPath?: string; exportRequest?: number; onRefresh: () => Promise<void>; onGeneratePreview?: () => void; generationDisabled?: boolean }) {
+export function RenderPanel({ project, version, videoPath, exportRequest = 0, onRefresh }: { project: ProjectDetail; version?: DraftVersion; videoPath?: string; exportRequest?: number; onRefresh: () => Promise<void> }) {
+  const [dialogOpen, setDialogOpen] = useState(Boolean(exportRequest));
   const [sharing, setSharing] = useState<ShareSource | null>(null);
   const [resolution, setResolution] = useState<RenderResolution>(() => defaultResolution(project.aspectRatio));
-  const [fps, setFps] = useState(() => defaultExportFps(project));
-  const projectFps = defaultExportFps(project);
-  useEffect(() => setFps(projectFps), [project.id, projectFps]);
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState("");
   const activeJob = project.renderJobs.find(job => job.status === "queued" || job.status === "running");
   const rendering = requested || Boolean(activeJob);
   const [exportOpen, setExportOpen] = useState(Boolean(activeJob));
-  useEffect(() => { if (exportRequest) setExportOpen(true); }, [exportRequest]);
+  useEffect(() => { if (exportRequest) setDialogOpen(true); }, [exportRequest]);
   useEffect(() => { if (activeJob) setExportOpen(true); }, [activeJob?.id]);
   const options = useMemo(() => resolutionOptions(project.aspectRatio), [project.aspectRatio]);
   const videoArtifact = project.manifest.artifacts.find(artifact => artifact.path === videoPath && artifact.version === version?.id && ["final-video", "video", "draft-video"].includes(artifact.kind));
@@ -56,12 +63,28 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
   const downloadSpec = ["MP4", typeof recordedResolution === "string" ? recordedResolution : null, typeof recordedFps === "number" ? `${recordedFps} FPS` : null].filter(Boolean).join(" · ");
   useEffect(() => setResolution(defaultResolution(project.aspectRatio)), [project.aspectRatio]);
 
-  async function render(input: { versionId: string; resolution: RenderResolution; fps: number }) {
+  async function render(input: { versionId: string; resolution: RenderResolution }) {
     if (rendering) return;
     setRequested(true);
     setError("");
     try {
-      await api.renderVideo(project.id, input);
+      // Read the immutable version being exported, including historical retries.
+      // Current project metadata and a previous failed job may have a different FPS.
+      let fps: number;
+      try {
+        const selected = project.manifest.versions.find(item => item.id === input.versionId);
+        if (!selected) throw new Error("Missing version");
+        const source = selected.sourcePath.endsWith(".html")
+          ? selected.sourcePath.slice(0, selected.sourcePath.lastIndexOf("/") + 1) || "."
+          : selected.sourcePath;
+        const configPath = sourceFilePath(source, "remotion.json");
+        if (!configPath) throw new Error("Invalid version path");
+        const config = renderConfigSchema.parse(JSON.parse(await api.readProjectFile(project.id, configPath)));
+        fps = config.composition.fps;
+      } catch {
+        throw new Error("暂时无法读取这个版本的导出信息，请重试。");
+      }
+      await api.renderVideo(project.id, { ...input, fps });
       await onRefresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "视频导出失败");
@@ -72,27 +95,30 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
 
   function retry(job: RenderJob) {
     if (!isRenderResolution(job.resolution)) return;
-    void render({ versionId: job.versionId, resolution: job.resolution, fps: job.fps });
+    void render({ versionId: job.versionId, resolution: job.resolution });
   }
 
-  return <section className="render-panel" aria-label="视频分享与导出">
+  // Keep request, error and export choices alive when the delivery dialog closes.
+  if (!dialogOpen) return null;
+  const panel = <ActionDialog title="分享与下载" className="video-delivery-dialog" closeLabel="关闭分享与下载" onClose={() => setDialogOpen(false)}>
+    <p className="delivery-version">{version?.label ?? "视频生成后，可在这里分享或下载。"}</p>
+    <section className="render-panel" aria-label="视频分享与导出">
     {source ? <div className="current-video-actions">
       <p className="render-existing-spec">{downloadSpec}</p>
       <div className="current-video-buttons">
         <button className="render-download" aria-label="分享当前视频" onClick={() => setSharing(source)}><ShareNetwork/>分享</button>
-        <VideoDownloadMenu projectId={project.id} path={source.path}/>
+        <a className="render-download" href={api.fileUrl(project.id, source.path)} download aria-label="下载当前视频"><DownloadSimple/>下载 MP4</a>
       </div>
     </div> : null}
-    <details className="export-settings" open={exportOpen} onToggle={event => setExportOpen(event.currentTarget.open)}>
+    {version ? <details className="export-settings" open={exportOpen} onToggle={event => setExportOpen(event.currentTarget.open)}>
       <summary>导出其他规格{rendering ? <span><CircleNotch className="spin"/>导出中</span> : null}<CaretDown className="export-chevron"/></summary>
-      <p className="render-hint">{editableSnapshot ? "导出这个已保存版本；之后的修改需重新保存版本后导出" : project.manifest.dirty ? "按所选分辨率和帧率导出已有版本，不包含未渲染的源文件修改" : "按所选分辨率和帧率生成新的 MP4"}</p>
+      <p className="render-hint">导出当前所选的已保存版本，不包含之后的修改。</p>
       {activeJob ? <div className="render-progress" role="status"><div><span style={{ width: `${Math.max(4, activeJob.progress)}%` }}/></div><p>{activeJob.status === "queued" ? "等待导出" : `已完成 ${Math.round(activeJob.progress)}%`}</p></div> : null}
     <div className="render-options">
       <label><span>分辨率</span><SelectControl aria-label="分辨率" value={resolution} disabled={rendering} onChange={event => setResolution(event.target.value as RenderResolution)}>{options.map(value => <option value={value} key={value}>{resolutionLabels[value]}</option>)}</SelectControl></label>
-      <label><span>帧率</span><SelectControl aria-label="帧率" value={fps} disabled={rendering} onChange={event => setFps(Number(event.target.value))}>{[...new Set([projectFps, 30, 60])].map(value => <option value={value} key={value}>{value} FPS{value === projectFps ? " · 项目帧率" : ""}</option>)}</SelectControl></label>
     </div>
     <div className="render-actions">
-      <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution, fps })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在导出 MP4…" : editableSnapshot ? "导出此版本" : project.manifest.dirty ? "导出已有版本" : "开始导出"}</button>
+      <button className="render-primary" disabled={rendering || Boolean(project.activeTurnId) || !version} onClick={() => version && void render({ versionId: version.id, resolution })}>{rendering ? <CircleNotch className="spin"/> : <FilmSlate/>}{rendering ? "正在导出 MP4…" : editableSnapshot ? "导出此版本" : project.manifest.dirty ? "导出已有版本" : "开始导出"}</button>
     </div>
     {project.activeTurnId ? <p className="render-hint">当前修改完成后可导出</p> : null}
     {error ? <p className="render-error" role="alert"><Warning/>{error}</p> : null}
@@ -103,28 +129,11 @@ export function RenderPanel({ project, version, videoPath, exportRequest = 0, on
         <div className="render-history-actions">{job.status === "completed" && job.outputPath ? <a href={api.fileUrl(project.id, job.outputPath)} download aria-label="下载这次导出的视频"><DownloadSimple/></a> : null}{(job.status === "failed" || job.status === "interrupted") && isRenderResolution(job.resolution) ? <button type="button" disabled={rendering} onClick={() => retry(job)}>重试</button> : null}</div>
       </article>)}
     </div></details> : null}
-    </details>
+    </details> : null}
+    </section>
     {sharing ? <ShareDialog projectId={project.id} title={project.title} source={sharing} onClose={() => setSharing(null)}/> : null}
-  </section>;
-}
-
-function VideoDownloadMenu({ projectId, path }: { projectId: string; path: string }) {
-  const root = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    const close = (event: PointerEvent) => { if (root.current && !root.current.contains(event.target as Node)) root.current.open = false; };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, []);
-  useEffect(() => { if (root.current) root.current.open = false; }, [path]);
-  return <details className="video-download-menu" ref={root} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onKeyDown={event => {
-    if (event.key === "Escape" && event.currentTarget.open) {
-      event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false;
-      event.currentTarget.querySelector("summary")?.focus();
-    }
-  }}>
-    <summary aria-label="更多视频操作" title="更多视频操作"><DotsThree/></summary>
-    <a href={api.fileUrl(projectId, path)} download aria-label="下载当前视频" onClick={() => { if (root.current) root.current.open = false; }}><DownloadSimple/>下载 MP4</a>
-  </details>;
+  </ActionDialog>;
+  return typeof document === "undefined" ? panel : createPortal(panel, document.body);
 }
 
 function isRenderResolution(value: string): value is RenderResolution {

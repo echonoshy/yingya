@@ -2,9 +2,9 @@ import type { ProjectDetail, ProjectRecord } from "./types";
 
 export type ProjectGroup = "active" | "review" | "ready" | "completed" | "failed";
 /** Library categories stay broad while the workspace retains precise task states. */
-export function projectCategory(project: ProjectRecord): "active" | "review" | "ready" {
+export function projectCategory(project: ProjectRecord): "active" | "review" | "ready" | "completed" {
   const group = projectGroup(project);
-  return group === "failed" ? "review" : group === "completed" ? "ready" : group;
+  return group === "failed" ? "review" : group;
 }
 export function projectGroup(project: ProjectRecord): ProjectGroup {
   if (project.activeTurnId || ["starting", "queued", "running"].includes(project.status)) return "active";
@@ -19,7 +19,9 @@ export function projectStatus(project: ProjectRecord): string {
   const group = projectGroup(project);
   if (group === "active") return project.workflowLabel === "正在导出" ? "正在导出" : project.activeTurnId ? "正在制作" : "等待处理";
   if (group === "failed") return project.status === "incomplete" ? "制作待收尾" : project.status === "interrupted" ? "制作已中断" : "制作失败";
-  return project.workflowLabel || (group === "ready" ? "视频可导出" : group === "completed" ? "当前版本已导出" : project.statusLabel);
+  if (group === "ready") return "可导出";
+  if (group === "completed") return "已导出";
+  return project.workflowLabel || project.statusLabel;
 }
 export function workflowState(project: ProjectDetail) {
   const rendering = project.renderJobs.some(job => job.status === "queued" || job.status === "running");

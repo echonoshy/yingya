@@ -83,7 +83,7 @@ function InfoContent({ info }: { info: Info }) {
   if (info === 'contact') return <div className="home-info-body"><p className="home-info-lead">获取邀请码，或需要协助？</p><p>欢迎发邮件给我们，说明你的需求或遇到的问题</p><p><a href="mailto:echonoshy@gmail.com">echonoshy@gmail.com</a></p><p className="home-info-lead">提交问题或建议</p><p>请在 GitHub Issues 描述你想完成的事情、操作步骤和遇到的现象</p><a href="https://github.com/echonoshy/yingya/issues/new" target="_blank" rel="noopener noreferrer">提交问题或建议<ArrowRight aria-hidden="true" /></a><p className="home-info-note">公开反馈请勿包含密码、账户信息或未公开的客户资料</p></div>;
   return <div className="home-info-body home-help"><p className="home-info-lead">带上内容与参考，一起做好视频</p>
     <details open><summary>怎样开始创作？</summary><p>提供参考视频链接、想复刻的网站、剧本或视觉风格，并说明希望保留和改变的部分。具体内容与清楚的参考，能帮助我们一起确定更好的画面</p><p>例如：把这篇文章做成一分钟中文讲解视频，给第一次接触这个概念的人看</p></details>
-    <details><summary>点击“准备创作”会直接制作视频吗？</summary><p>不会。首页会把你填写的内容带到创作页，你可以继续补充。可以先生成参考图，再点击“生成图文方案”，查看关键画面并确认后制作视频</p></details>
+    <details><summary>点击“准备创作”会直接制作视频吗？</summary><p>不会。首页会把你填写的内容带到创作页，你可以继续补充。提交创作后会一起准备内容方案与关键画面，确认后再制作视频</p></details>
     <details><summary>怎样修改视频？</summary><p>在制作工作台描述修改要求。指出时间点、画面或具体文字，会更方便准确修改；需要大幅调整方向时，可以重新讨论方案</p></details>
     <details><summary>作品和素材在哪里？</summary><p>登录后从“项目”打开已有任务，从“素材”查找或上传文件。已有作品与素材会保留在你的账户中</p></details>
     <details><summary>任务失败或页面关闭了怎么办？</summary><p>从“项目”重新打开任务查看进度。如果页面提示失败，保留内容并按提示重试；需要反馈时记录任务名称和错误提示</p></details>

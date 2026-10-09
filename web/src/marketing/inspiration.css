@@ -32,7 +32,7 @@
 .inspiration-detail .inspiration-uses { font-size: 12px; }
 .inspiration-uses > span { margin-right: 12px; color: var(--text); font-weight: 600; }
 .inspiration-start { margin-top: 22px; }
-.inspiration-start button { display: inline-flex; align-items: center; gap: 24px; min-height: 44px; padding: 10px 18px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--text); font: 550 14px var(--font-ui); }
+.inspiration-start button { display: inline-flex; align-items: center; gap: 24px; min-height: 44px; padding: 10px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-button); background: transparent; color: var(--text); font: var(--weight-medium) var(--text-control)/var(--leading-ui) var(--font-ui); }
 .inspiration-start button:hover { background: #fff; border-color: var(--text); }
 .inspiration-start p { margin-top: 9px; color: var(--muted); font: 12px/1.7 var(--font-ui); }
 @media(max-width:1100px) { .home-inspiration, .inspiration-header { column-gap: 32px; }.home-inspiration h2 { font-size: 40px; }.inspiration-pick { gap: 12px; }.inspiration-pick strong { font-size: 18px; }.inspiration-action { padding: 0; } }

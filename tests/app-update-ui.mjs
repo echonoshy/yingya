@@ -97,7 +97,7 @@ try {
     return route.fulfill({ status: 500, json: { message: '受控测试：上传结束' } });
   });
   await page.goto(base + '/app#/assets');
-  await page.locator('.asset-library-header input[type="file"]').setInputFiles({ name: '更新测试.txt', mimeType: 'text/plain', buffer: Buffer.from('test') });
+  await page.locator('.asset-workspace-toolbar input[type="file"]').setInputFiles({ name: '更新测试.txt', mimeType: 'text/plain', buffer: Buffer.from('test') });
   await page.getByRole('region', { name: '素材上传进度' }).waitFor();
   assert.ok(uploadStarted);
   await page.locator('.account-panel > summary').click(); await badge().click();

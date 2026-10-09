@@ -22,9 +22,9 @@ try {
  await page.goto(base+'/app#/');
  assert.equal(await page.getByRole('button',{name:'创作设置',exact:true}).count(),0);
  const duration = () => page.getByRole('button',{name:/参考时长：约/});
- assert.equal(await duration().textContent(),'约 30 秒');
+ assert.equal(await duration().getAttribute('aria-label'),'参考时长：约 30 秒');
  await duration().click();await page.getByRole('spinbutton',{name:'参考时长（秒）'}).fill('0');await page.getByRole('button',{name:'确定',exact:true}).click();assert.ok(await page.getByRole('dialog',{name:'参考时长',exact:true}).isVisible());
- await page.getByRole('spinbutton',{name:'参考时长（秒）'}).fill('45');await page.keyboard.press('Enter');await page.getByRole('dialog',{name:'参考时长',exact:true}).waitFor({state:'hidden'});await page.reload();assert.equal(await duration().textContent(),'约 45 秒');
+ await page.getByRole('spinbutton',{name:'参考时长（秒）'}).fill('45');await page.keyboard.press('Enter');await page.getByRole('dialog',{name:'参考时长',exact:true}).waitFor({state:'hidden'});await page.reload();assert.equal(await duration().getAttribute('aria-label'),'参考时长：约 45 秒');
  await duration().click();await page.getByRole('button',{name:'30 秒',exact:true}).click();
  for (const width of [1920,1536,1440,1280,390,320]) {
   await page.setViewportSize({width,height:1000});await duration().click();
@@ -44,9 +44,9 @@ try {
   const item=asset(name,route.request().postDataBuffer().toString().includes('folder-brand')?'folder-brand':null);stored.push(item);return route.fulfill({json:item});
  });
  await page.goto(base+'/app#/assets');await page.getByRole('button',{name:/^品牌素材/}).click();
- await page.locator('.asset-library-header input[type="file"]').setInputFiles(files(5));
- await until(()=>requests.length===3);await page.getByRole('region',{name:'素材上传进度'}).waitFor();
- assert.equal(await page.locator('.upload-progress-list li').count(),5);assert.equal(await page.getByText('等待上传',{exact:true}).count(),2);
+ await page.locator('.asset-workspace-toolbar input[type="file"]').setInputFiles(files(5));
+ await until(()=>requests.length===3);await page.getByRole('link',{name:/^任务记录/}).click(); await page.getByRole('region',{name:'素材任务记录'}).waitFor();
+ assert.equal(await page.locator('.asset-task-list li[data-kind=upload]').count(),5);assert.equal(await page.getByText('等待上传',{exact:true}).count(),2);
  await page.screenshot({path:`${out}/upload-queued.png`});
  // Navigation keeps library transfers alive and visible in a compact progress panel.
  await page.getByRole('button',{name:'新建视频',exact:true}).click();await page.locator('.upload-dock').waitFor();
@@ -55,16 +55,18 @@ try {
  await page.getByRole('button',{name:'素材工坊',exact:true}).click();
  await page.getByRole('button',{name:/^品牌素材/}).click();assert.equal(await page.locator('.asset-card-item').count(),4);
  await page.screenshot({path:`${out}/upload-partial.png`});
- fail=false;await page.getByRole('button',{name:'重试上传 素材-1.txt',exact:true}).click();await until(()=>requests.length===6);releases.get('素材-1.txt')();await page.getByText('已完成 5/5',{exact:true}).waitFor();
+ await page.getByRole('link',{name:/^任务记录/}).click();
+ fail=false;await page.getByRole('button',{name:'重试上传 素材-1.txt',exact:true}).click();await until(()=>requests.length===6);releases.get('素材-1.txt')();await until(async()=>await page.locator('.asset-task-list li[data-kind=upload][data-state=completed]').count()===5);
  assert.deepEqual(requests.filter(name=>name!=='素材-1.txt').sort(),['素材-2.txt','素材-3.txt','素材-4.txt','素材-5.txt']);
+ await page.getByRole('link',{name:'素材库',exact:true}).click();
  assert.equal(await page.locator('.asset-card-item').count(),5);
  for(const width of [1440,390,320]){await page.setViewportSize({width,height:1000});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:`${out}/uploads-complete-${width}.png`});}
  // Removing an uploaded asset must remain authoritative when another upload completes.
  await page.setViewportSize({width:1440,height:1000});
  await page.route(/\/assets\/library\/[^/]+$/,route=>{if(route.request().method()!=='DELETE')return route.fallback();const name=decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1));const index=stored.findIndex(item=>item.id===name);if(index>=0)stored.splice(index,1);return route.fulfill({json:{ok:true}});});
  await page.locator('.asset-card-item').filter({hasText:'素材-2.txt'}).locator('.asset-card-open').click();await page.getByRole('button',{name:'删除素材',exact:true}).click();await page.getByRole('button',{name:'确认删除',exact:true}).click();await until(async()=>await page.locator('.asset-card-item').count()===4);
- await page.locator('.asset-library-header input[type="file"]').setInputFiles([{name:'新增素材.txt',mimeType:'text/plain',buffer:Buffer.from('new asset')}]);await until(()=>requests.length===7);releases.get('新增素材.txt')();await page.getByText('已完成 6/6',{exact:true}).waitFor();assert.equal(await page.locator('.asset-card-item').count(),5);assert.equal(await page.locator('.asset-card-item').filter({hasText:'素材-2.txt'}).count(),0);
- await page.getByRole('button',{name:'清除已完成',exact:true}).click();assert.equal(await page.getByRole('region',{name:'素材上传进度'}).count(),0);await page.reload();await page.locator('.asset-card-item').first().waitFor();assert.equal(await page.locator('.asset-card-item').count(),5);
+ await page.locator('.asset-workspace-toolbar input[type="file"]').setInputFiles([{name:'新增素材.txt',mimeType:'text/plain',buffer:Buffer.from('new asset')}]);await until(()=>requests.length===7);releases.get('新增素材.txt')();await until(async()=>await page.locator('.asset-task-list li[data-kind=upload][data-state=completed]').count()===6);assert.equal(await page.locator('.asset-card-item').count(),5);assert.equal(await page.locator('.asset-card-item').filter({hasText:'素材-2.txt'}).count(),0);
+ await page.getByRole('link',{name:/^任务记录/}).click(); await page.getByRole('button',{name:'清理已完成',exact:true}).click();assert.equal(await page.locator('.asset-task-list li[data-kind=upload]').count(),0);await page.getByRole('link',{name:'素材库',exact:true}).click(); await page.reload();await page.locator('.asset-card-item').first().waitFor();assert.equal(await page.locator('.asset-card-item').count(),5);
  // Project attachments get the same per-file feedback; successful files are reused on retry.
  await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/app#/');
  let creation;const uploaded=[],projectRelease=new Map();let failProject=true,turns=0;
@@ -73,10 +75,10 @@ try {
  await page.route(/\/agent-projects\/[^/]+\/turns$/,route=>{turns++;return route.fallback();});
  await page.locator('#creation-prompt').fill('请制作约 60 秒的动画，根据素材安排内容，不需要旁白或字幕');
  await page.locator('.home-creation-options input[type=file]:not([accept])').setInputFiles(files(2));
- await page.getByText('附件已暂存，提交时上传',{exact:true}).waitFor();await page.getByRole('button',{name:'生成图文方案',exact:true}).click();await until(()=>uploaded.length===2);
+ await page.locator('.composer-attachments > li').nth(1).waitFor();await page.getByRole('button',{name:'开始创作',exact:true}).click();await until(()=>uploaded.length===2);
  assert.equal(creation.requirements.targetDurationSeconds,30);assert.equal(creation.requirements.durationMode,'target');assert.equal(creation.requirements.audioMode,'auto');assert.equal(creation.requirements.subtitles,'auto');assert.equal(creation.requirements.music,'auto');assert.equal(creation.requirements.audience,undefined);assert.match(creation.prompt,/60 秒/);
  await page.locator('.creation-pending .upload-progress-list').waitFor();await page.screenshot({path:`${out}/creation-uploading.png`});assert.equal(turns,0);
- projectRelease.get('素材-1.txt')();projectRelease.get('素材-2.txt')();await page.getByText('测试：第二个附件未上传',{exact:true}).first().waitFor();await page.getByRole('button',{name:'生成图文方案',exact:true}).waitFor();assert.equal(turns,0);
- failProject=false;await page.getByRole('button',{name:'生成图文方案',exact:true}).click();await until(()=>uploaded.length===3);assert.equal(uploaded[2],'素材-2.txt');projectRelease.get('素材-2.txt')();await until(()=>turns===1);await page.waitForURL(/#\/projects\//);
+ projectRelease.get('素材-1.txt')();projectRelease.get('素材-2.txt')();await page.getByText('测试：第二个附件未上传',{exact:true}).first().waitFor();await page.getByRole('button',{name:'开始创作',exact:true}).waitFor();assert.equal(turns,0);
+ failProject=false;await page.getByRole('button',{name:'开始创作',exact:true}).click();await until(()=>uploaded.length===3);assert.equal(uploaded[2],'素材-2.txt');projectRelease.get('素材-2.txt')();await until(()=>turns===1);await page.waitForURL(/#\/projects\//);
  assert.deepEqual(errors,[]);console.log('PASS: default 30s / custom duration / legacy settings ignored, voice in materials, six widths, bounded upload queue / per-file status / partial failures / retry / navigation / persistence, project upload progress and no duplicate successful attachments. Isolated API fixtures.');
 } catch(error){await page.screenshot({path:`${out}/failure.png`});throw error;} finally{await browser.close();}

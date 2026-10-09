@@ -80,8 +80,7 @@ try {
   }
   await page.setViewportSize({ width: 1400, height: 1151 });
   await page.getByRole('navigation', { name: '素材类型' }).getByRole('button', { name: /^全部/ }).click();
-  const spacing = await page.getByRole('navigation', { name: '素材来源' }).evaluate(el => [...el.children].slice(1).map((item, i) => item.getBoundingClientRect().left - el.children[i].getBoundingClientRect().right));
-  assert.ok(spacing.every(gap => gap >= 20), JSON.stringify(spacing));
+  await bounds(combo('素材来源'));
   await choose('素材排序', '名称排序');
   empty = true; await page.reload();
   await page.getByText('这个分类还没有素材', { exact: true }).waitFor();
@@ -90,7 +89,7 @@ try {
   // Source changes must not move or resize the empty-state copy.
   const emptyMetrics = [];
   for (const source of ['上传', 'AI 生成']) {
-    await page.getByRole('navigation', { name: '素材来源' }).getByRole('button', { name: source, exact: true }).click();
+    await choose('素材来源', source);
     await page.locator('.asset-empty-state h2').filter({ hasText: source === 'AI 生成' ? '这里还没有 AI 生成的素材' : '这个分类还没有素材' }).waitFor();
     emptyMetrics.push(await page.locator('.asset-empty-state').evaluate(el => ['h2', 'p', 'button'].map(selector => {
       const item = el.querySelector(selector), rect = item.getBoundingClientRect();
@@ -98,20 +97,11 @@ try {
     })));
   }
   assert.deepEqual(emptyMetrics[0], emptyMetrics[1]);
-  const createMenu = page.getByRole('menu', { name: '创建素材', exact: true });
-  await page.getByRole('button', { name: '创建素材', exact: true }).click();
-  await createMenu.waitFor();
-  await page.locator('.asset-library-header h1').click();
-  await createMenu.waitFor({ state: 'hidden' });
-  await page.getByRole('button', { name: '创建素材', exact: true }).press('ArrowDown');
-  await page.keyboard.press('End');
-  assert.ok(await page.getByRole('menuitem', { name: '创建音色', exact: true }).evaluate(el => el === document.activeElement));
-  await page.keyboard.press('Escape');
-  await createMenu.waitFor({ state: 'hidden' });
-  assert.ok(await page.getByRole('button', { name: '创建素材', exact: true }).evaluate(el => el === document.activeElement));
-  await page.getByRole('button', { name: '创建素材', exact: true }).click();
-  await page.getByRole('menuitem', { name: '创建音色', exact: true }).click();
-  await noDecoration(); await page.keyboard.press('Escape');
+  const generation = page.getByRole('link', { name: '生成素材', exact: true });
+  await generation.focus(); await page.keyboard.press('Enter');
+  await page.getByRole('navigation', { name: '生成类型' }).getByRole('link', { name: '音色', exact: true }).click();
+  await page.getByRole('region', { name: '音色管理' }).waitFor();
+  await noDecoration();
   // Admin uses an uncontrolled named select; verify the actual submitted FormData.
   const quota = { tokenLimit: 100, usedTokens: 0, reservedTokens: 0, remainingTokens: 100, mediaLimit: 0, usedMedia: 0, reservedMedia: 0, remainingMedia: 0, disabled: false, unknownCalls: 0 };
   let member = { id: 'member', revision: 1, email: 'member@example.test', username: null, name: '', notes: '', registered: true, isAdmin: false, configuredAdmin: false, archived: false, createdAt: 1781593567000, lastLogin: null, quota };

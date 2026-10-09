@@ -11,6 +11,8 @@ pub(super) struct ImageJob {
     model: String,
     reasoning_effort: String,
     status: String,
+    #[serde(default)]
+    dismissed: bool,
     created_at: u64,
     updated_at: u64,
     images: Vec<ImageAsset>,
@@ -95,13 +97,48 @@ impl ImageJobs {
                 .cmp(&a.created_at)
                 .then_with(|| b.id.cmp(&a.id))
         });
+        jobs.retain(|job| !job.dismissed);
         Ok(jobs)
+    }
+
+    // Keep the private receipt so a delayed retry cannot regenerate or charge twice.
+    // History cleanup never touches the library asset or voice profile.
+    async fn dismiss(&self, id: Option<&str>) -> Result<Vec<String>, ApiError> {
+        let _lock = self.lock.lock().await;
+        let records = if let Some(id) = id {
+            let job = self.read(id).await.map_err(|error| match error {
+                ApiError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    ApiError::NotFound("任务记录不存在".into())
+                }
+                error => error,
+            })?;
+            if job.status == "running" {
+                return Err(ApiError::Conflict("进行中的任务不能删除".into()));
+            }
+            vec![job]
+        } else {
+            self.list()
+                .await?
+                .into_iter()
+                .filter(|job| job.status == "completed")
+                .collect()
+        };
+        let mut removed = Vec::new();
+        for mut job in records {
+            job.dismissed = true;
+            self.write(&job).await?;
+            removed.push(job.id);
+        }
+        Ok(removed)
     }
 
     async fn create(&self, job: ImageJob) -> Result<(ImageJob, bool), ApiError> {
         let _lock = self.lock.lock().await;
         match self.read(&job.id).await {
             Ok(existing) => {
+                if existing.dismissed {
+                    return Err(ApiError::Conflict("记录已清理，请新建生成任务。".into()));
+                }
                 if existing.prompt != job.prompt
                     || existing.reference_images != job.reference_images
                     || existing.model != job.model
@@ -128,6 +165,18 @@ pub(super) struct CreateImageJob {
     client_request_id: String,
     #[serde(flatten)]
     request: TurnRequest,
+}
+
+pub(super) async fn clear_completed(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    Ok(Json(state.image_jobs.dismiss(None).await?))
+}
+pub(super) async fn dismiss(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    Ok(Json(state.image_jobs.dismiss(Some(&id)).await?))
 }
 
 pub(super) async fn list(State(state): State<AppState>) -> Result<Json<Vec<ImageJob>>, ApiError> {
@@ -185,6 +234,7 @@ pub(super) async fn start(
             model,
             reasoning_effort: effort,
             status: "running".into(),
+            dismissed: false,
             created_at: now,
             updated_at: now,
             images: Vec::new(),
@@ -241,6 +291,7 @@ mod tests {
             model: "gpt-6-astra".into(),
             reasoning_effort: "medium".into(),
             status: "running".into(),
+            dismissed: false,
             created_at: 1,
             updated_at: 1,
             images: vec![],
@@ -275,6 +326,50 @@ mod tests {
         let other = ImageJobs::new(root.join("other-user")).await.unwrap();
         assert!(other.list().await.unwrap().is_empty());
         assert!(other.read(&input.id).await.is_err());
+        fs::remove_dir_all(root).await.unwrap();
+    }
+    #[tokio::test]
+    async fn image_history_cleanup_preserves_receipts_and_running_jobs() {
+        let root = env::temp_dir().join(format!("yingya-image-cleanup-{}", Uuid::new_v4()));
+        let store = ImageJobs::new(root.clone()).await.unwrap();
+        let running = job();
+        let mut completed = job();
+        completed.status = "completed".into();
+        let mut failed = job();
+        failed.status = "failed".into();
+        for input in [&running, &completed, &failed] {
+            store.create(input.clone()).await.unwrap();
+        }
+        assert!(matches!(
+            store.dismiss(Some(&running.id)).await,
+            Err(ApiError::Conflict(_))
+        ));
+        assert_eq!(
+            store.dismiss(None).await.unwrap(),
+            vec![completed.id.clone()]
+        );
+        assert_eq!(store.list().await.unwrap().len(), 2);
+        assert!(store.dismiss(None).await.unwrap().is_empty());
+        assert!(matches!(
+            store.create(completed.clone()).await,
+            Err(ApiError::Conflict(_))
+        ));
+        store.dismiss(Some(&failed.id)).await.unwrap();
+        store.dismiss(Some(&failed.id)).await.unwrap(); // Lost DELETE receipt can be retried.
+        assert!(matches!(
+            store.dismiss(Some(&Uuid::new_v4().to_string())).await,
+            Err(ApiError::NotFound(_))
+        ));
+        let reopened = ImageJobs::new(root.clone()).await.unwrap();
+        assert_eq!(reopened.list().await.unwrap().len(), 1);
+        assert!(reopened.read(&completed.id).await.unwrap().dismissed);
+        let mut legacy = serde_json::to_value(job()).unwrap();
+        legacy.as_object_mut().unwrap().remove("dismissed");
+        assert!(
+            !serde_json::from_value::<ImageJob>(legacy)
+                .unwrap()
+                .dismissed
+        );
         fs::remove_dir_all(root).await.unwrap();
     }
     #[tokio::test]

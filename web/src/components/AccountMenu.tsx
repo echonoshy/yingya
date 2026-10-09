@@ -32,6 +32,13 @@ export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onA
     hoverTimer.current = null;
   }
 
+  function dismissHoverSection() {
+    if (submenuMode === 'page') return;
+    cancelHoverClose();
+    setSection('main');
+    setSubmenuMode('page');
+  }
+
   function close(restoreFocus = false) {
     const details = root.current;
     if (!details) return;
@@ -56,8 +63,9 @@ export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onA
     const rightFits = bounds.right + gap + width <= window.innerWidth - inset;
     const leftFits = bounds.left - gap - width >= inset;
     if (rightFits || leftFits) {
-      const height = 14 + 44 * (next === 'settings' && !isAdmin ? 1 : 2);
-      const top = Math.max(inset - bounds.top, Math.min(target.getBoundingClientRect().top - bounds.top - 6, window.innerHeight - inset - bounds.top - height));
+      const rows = next === 'settings' && !isAdmin ? 1 : 2;
+      const height = 18 + 44 * rows + 4 * (rows - 1);
+      const top = Math.max(inset - bounds.top, Math.min(target.getBoundingClientRect().top - bounds.top - 9, window.innerHeight - inset - bounds.top - height));
       setFlyoutPosition({ side: rightFits ? 'right' : 'left', top });
       setSubmenuMode('flyout');
     } else setSubmenuMode('inline');
@@ -127,7 +135,8 @@ export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onA
         const next = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-account-section]')?.dataset.accountSection;
         if (next === 'usage' || next === 'settings' || next === 'help') { event.preventDefault(); openSection(next); }
       } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
-        const controls = Array.from(menu.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]') ?? []);
+        const scope = (event.target as HTMLElement).closest('.account-submenu') ?? menu.current?.querySelector('.account-menu-main') ?? menu.current;
+        const controls = Array.from(scope?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]') ?? []);
         if (!controls.length) return;
         event.preventDefault();
         const current = controls.indexOf(document.activeElement as HTMLElement);
@@ -144,12 +153,24 @@ export function AccountMenu({ email, isAdmin, avatarUrl, error, returnFocus, onA
         cancelHoverClose();
         hoverTimer.current = setTimeout(() => { setSection('main'); setSubmenuMode('page'); hoverTimer.current = null; }, 160);
       }}>
-      {section === 'main' || submenuMode !== 'page' ? <div className="account-menu-main">
+      {section === 'main' || submenuMode !== 'page' ? <div className="account-menu-main"
+        onPointerOver={event => {
+          const control = (event.target as HTMLElement).closest('button, a');
+          if (event.pointerType === 'mouse' && control && !control.closest('[data-account-section], .account-submenu')) dismissHoverSection();
+        }}
+        onFocusCapture={event => {
+          const control = (event.target as HTMLElement).closest('button, a');
+          if (control && !control.closest('.account-submenu') && control.getAttribute('data-account-section') !== section) dismissHoverSection();
+        }}>
         <div className="account-menu-identity"><AvatarImage url={avatarUrl}/><div><b title={email}>{email}</b><small>{isAdmin ? '管理员' : '内测账号'}</small></div></div>
         <UpdateBadge beforeOpen={() => close(true)} />
         {sections.map(({ id, Icon }) => <div key={id}>
           <button type="button" data-account-section={id} aria-controls={menuId} aria-expanded={section === id}
-            onPointerEnter={event => { if (event.pointerType === 'mouse' && matchMedia('(hover: hover) and (pointer: fine)').matches) hoverSection(id, event.currentTarget); }}
+            onPointerMove={event => {
+              // Returning from a keyboard submenu can mount a row under a
+              // stationary pointer. Only actual pointer movement opens it.
+              if (event.pointerType === 'mouse' && (event.movementX || event.movementY) && section !== id && matchMedia('(hover: hover) and (pointer: fine)').matches) hoverSection(id, event.currentTarget);
+            }}
             onClick={() => openSection(id)}><Icon aria-hidden="true"/><span>{sectionLabels[id]}</span><CaretRight className="account-menu-caret" aria-hidden="true"/></button>
           {submenuMode === 'inline' && section === id ? submenu : null}
         </div>)}

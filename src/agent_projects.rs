@@ -298,6 +298,7 @@ pub struct MediaAsset {
     pub url: String,
     #[serde(alias = "path", alias = "hyperframesPath")]
     pub project_path: String,
+    #[serde(alias = "type")]
     pub kind: String,
     #[serde(default)]
     pub source: String,
@@ -2723,10 +2724,21 @@ mod tests {
         let store = AgentProjectStore::new(root.clone()).await.unwrap();
         let project = store.create(&request()).await.unwrap();
         let path = store.project_dir(&project.id).unwrap().join("assets.json");
-        let original = serde_json::json!([{ "id": "voice-1", "kind": "audio", "path": "assets/narration.wav", "voiceId": "default", "durationSeconds": 12.0 }]);
+        let original = serde_json::json!([
+            { "id": "voice-1", "kind": "audio", "path": "assets/narration.wav", "voiceId": "default", "durationSeconds": 12.0 },
+            { "id": "voice-2", "type": "audio", "path": "assets/narration-aligned.mp3", "voiceId": "default", "durationSeconds": 30.0 },
+            { "id": "captions-1", "type": "captions", "path": "assets/captions-reviewed.json" }
+        ]);
         write_json(&path, &original).await.unwrap();
         let media = store.media(&project.id).await.unwrap();
-        assert_eq!(media.assets.len(), 1);
+        assert_eq!(media.assets.len(), 3);
+        assert_eq!(media.assets[1].kind, "audio");
+        assert_eq!(media.assets[1].duration_seconds, Some(30.0));
+        assert_eq!(media.assets[2].kind, "captions");
+        assert_eq!(
+            serde_json::to_value(&media).unwrap()["assets"][1]["kind"],
+            "audio"
+        );
         assert_eq!(media.assets[0].name, "narration.wav");
         assert_eq!(media.assets[0].project_path, "assets/narration.wav");
         assert!(media.assets[0].url.ends_with("/files/assets/narration.wav"));

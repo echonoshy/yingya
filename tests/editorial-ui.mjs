@@ -60,7 +60,8 @@ try {
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('menu', { name: '添加素材' }).getByRole('menuitem', { name: '参考视频', exact: true }).click();
   await (await chooser).setFiles({ name: 'style-reference.mp4', mimeType: 'video/mp4', buffer: Buffer.from('isolated UI fixture') });
-  assert.equal(await page.getByRole('combobox', { name: 'style-reference.mp4的素材用途', exact: true }).textContent(), '仅供参考', 'Reference upload is marked only for reference');
+  await page.getByRole('button', { name: '预览附件 style-reference.mp4', exact: true }).waitFor();
+  assert.equal(await page.getByRole('combobox', { name: 'style-reference.mp4的素材用途', exact: true }).count(), 0);
   assert.equal(await page.locator('.home-create textarea').inputValue(), '已有草稿\n首页的新想法');
   await page.getByRole('button', { name: '移除 style-reference.mp4', exact: true }).click();
   await preparation.getByRole('button', { name: '剧本', exact: true }).click();
@@ -118,7 +119,7 @@ try {
   }
   await page.setViewportSize({ width: 1536, height: 1024 });
   await page.getByRole('button', { name: '素材工坊', exact: true }).click();
-  await page.getByRole('heading', { name: '我的素材', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '素材', exact: true }).waitFor();
   await page.locator('.asset-card-item').first().waitFor();
   assert.equal(new URL(page.url()).hash, '#/assets');
   assert.equal(await page.locator('.editorial-inspector').count(), 0);
